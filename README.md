@@ -1,21 +1,24 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 30 blockchain chains across 6 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
+Multi-chain strategic intelligence system. Monitors 30 blockchain chains across 7 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
 
 ## Quick Start
 
 ```bash
-# Clone and enter
 cd chain-monitor
 
-# Run setup (creates venv, installs deps, verifies sources)
-bash scripts/setup.sh
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Playwright browsers
+python -m playwright install chromium
+
+# Install Camoufox (anti-detect browser for Cloudflare-protected sites)
+camoufox fetch
 
 # Edit .env with your API keys
+cp .env.example .env
 nano .env
-
-# Verify all data sources
-python3 scripts/verify_sources.py
 
 # Run a collection cycle
 python3 main.py
@@ -27,10 +30,10 @@ All configuration is YAML-based. No code changes needed to add/remove chains or 
 
 | File | Purpose |
 |------|---------|
-| `config/chains.yaml` | Chain definitions, data sources, governance forums |
+| `config/chains.yaml` | 30 chain definitions, data sources, GitHub repos |
 | `config/baselines.yaml` | Per-chain scoring thresholds |
 | `config/narratives.yaml` | Narrative categories and keywords |
-| `config/sources.yaml` | Global RSS feeds, API endpoints |
+| `config/sources.yaml` | RSS feeds, API endpoints, TradingView config |
 
 ### Adding a New Chain
 
@@ -44,11 +47,6 @@ newchain:
   github_repos:
     - "newchain-org/newchain"
   blog_rss: "https://newchain.io/blog/rss.xml"
-  youtube_channel: "@NewChain"
-  status_page: null
-  governance_forum:
-    url: "https://gov.newchain.io"
-    type: "discourse"
 ```
 
 2. Add baseline to `config/baselines.yaml`:
@@ -58,60 +56,70 @@ newchain:
   tvl_change_notable: 25
   tvl_change_spike: 50
   regulatory_sensitivity: "LOW"
-  upgrade_impact_floor: 3
-  trader_context_notes: "Early stage. Watch for ecosystem growth."
-```
-
-3. Run `python3 scripts/verify_sources.py` to verify
-
-### Adding a New Narrative
-
-Add to `config/narratives.yaml`:
-```yaml
-narratives:
-  new_narrative:
-    name: "New Narrative"
-    keywords:
-      - "keyword1"
-      - "keyword2"
-    description: "Description of this narrative theme"
 ```
 
 ## Architecture
 
 ```
-collectors/     → Data ingestion (DefiLlama, CoinGecko, GitHub, RSS, scraping)
-processors/     → Event processing (categorizer, scorer, reinforcer, narrative tracker)
+collectors/     → Data ingestion (8 collectors)
+processors/     → Categorizer, scorer, reinforcer, narrative tracker
 output/         → Digest formatting and Telegram delivery
-config/         → YAML configuration files
+config/         → YAML configuration
 storage/        → Event data, health logs, narrative history
 scripts/        → Setup and verification scripts
 tests/          → Unit, integration, system tests
 ```
 
-## Data Sources
+## Collectors
 
-| Category | Sources |
-|----------|---------|
-| Financial | DefiLlama (TVL, fees, volume), CoinGecko (price, mcap) |
-| Tech Events | GitHub API (releases, commits), chain blog RSS |
-| Governance | Discourse forums, GitHub proposal repos |
-| News | CoinDesk, The Block, CoinTelegraph RSS |
-| Regulatory | SEC EDGAR, CoinCenter, legal blog RSS |
-| Risk | DeFiLlama hacks, Rekt News, GitHub issues |
-| Visibility | YouTube API, podcast RSS, CryptoRank events |
-| Scraping | Hyperliquid announcements, OKX announcements (Camoufox) |
+| Collector | Source | Method | Signals |
+|-----------|--------|--------|---------|
+| DefiLlama | TVL, fees, volume, protocol attribution | REST API | FINANCIAL |
+| CoinGecko | Price, market cap anomalies | REST API | FINANCIAL |
+| GitHub | Version tags, high-signal PRs, EIP descriptions | REST API | TECH_EVENT |
+| RSS | 11 news feeds + chain blogs | RSS/Atom | All categories |
+| Regulatory | SEC EDGAR filings, CoinCenter policy | RSS | REGULATORY |
+| Risk Alert | DeFiLlama hacks, TVL crashes, Immunefi | REST API | RISK_ALERT |
+| TradingView | News flow from 16+ providers | Playwright (Chromium) | All categories |
+| Events | ethereum.org conferences, ETHGlobal hackathons | Camoufox (anti-detect) | VISIBILITY |
 
 ## Event Categories
 
-| Category | What It Captures |
-|----------|-----------------|
-| TECH_EVENT | Upgrades, releases, audits, governance proposals |
-| PARTNERSHIP | Integrations, collaborations, co-launches |
-| REGULATORY | Licenses, approvals, bans, enforcement |
-| RISK_ALERT | Hacks, exploits, outages, critical bugs |
-| VISIBILITY | Conferences, AMAs, hires, departures |
-| FINANCIAL | TVL milestones, volume spikes, funding rounds |
+| Category | What It Captures | Sources |
+|----------|-----------------|---------|
+| TECH_EVENT | Mainnet launches, upgrades, releases, EIPs, audits | GitHub, RSS, TradingView |
+| PARTNERSHIP | Integrations, collaborations, deployments, co-launches | RSS keyword matching, TradingView |
+| REGULATORY | SEC filings, licenses, approvals, bans, enforcement | SEC EDGAR, CoinCenter, RSS, TradingView |
+| RISK_ALERT | Hacks, exploits, outages, critical bugs | DeFiLlama, RSS, TradingView |
+| VISIBILITY | Conferences, hackathons, AMAs, hires, departures | ethereum.org, ETHGlobal, RSS, TradingView |
+| FINANCIAL | TVL milestones, volume spikes, funding, airdrops, TGEs | DefiLlama, CoinGecko, RSS, TradingView |
+| AI_NARRATIVE | AI agent activity, LLM integrations | RSS keyword matching |
+
+## Data Sources Detail
+
+### Financial
+- **DefiLlama**: TVL per chain (with top protocol attribution), fees, revenue, stablecoin flows
+- **CoinGecko**: Price, market cap anomaly detection
+
+### Technical
+- **GitHub**: Version tags (major releases only), high-signal PRs (EIPs, security, breaking changes)
+- **EIP context**: Auto-fetches EIP descriptions and release notes from GitHub
+
+### News & Events
+- **RSS feeds**: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks, CryptoSlate, CoinGape, Bitcoin.com, AMBCrypto
+- **TradingView**: Playwright scraper for crypto news flow (bypasses JS rendering)
+- **ethereum.org**: 38+ upcoming conferences with dates, locations, tags (Camoufox anti-detect)
+- **ETHGlobal**: Hackathons, meetups, conferences (Camoufox anti-detect)
+
+### Regulatory
+- **SEC EDGAR**: Recent filings for crypto-related entities
+- **CoinCenter**: Policy analysis and developer rights advocacy
+- **DeFi Education Fund**: Legislative tracking
+
+### Risk
+- **DeFiLlama hacks**: Known hack incidents
+- **TVL crashes**: Automated detection of >15% TVL drops
+- **Immunefi**: Bug bounty and vulnerability disclosures
 
 ## Scoring
 
@@ -126,23 +134,25 @@ Every event gets an **Impact** (1-5) × **Urgency** (1-3) = **Priority Score**.
 
 Thresholds are per-chain (configurable in baselines.yaml).
 
+## Keyword Matching (Partnership & Visibility)
+
+The categorizer uses expanded keyword sets to catch announcements from RSS/TradingView:
+
+**Partnership keywords**: partnership, partners with, integration, deployed on, live on, launches on, available on, adds support for, expands to, migrates to, built on, powered by, alliance, consortium, strategic, ecosystem partner
+
+**Visibility keywords**: conference, hackathon, ama, keynote, speaker, podcast, live stream, community call, new ceo/cto, hired, appointed, resigned, stepped down
+
 ## Data Retention
 
 - Raw events: 180 days (6 months)
 - Aggregated metrics: 180 days
 - Weekly reports: indefinite
-- Run logs: 180 days
 
 ## Testing
 
 ```bash
-# Run all tests
 python3 -m pytest tests/
-
-# Run unit tests only
 python3 -m pytest tests/unit/
-
-# Run with coverage
 python3 -m pytest tests/ --cov=collectors --cov=processors --cov=output
 ```
 
@@ -151,7 +161,5 @@ python3 -m pytest tests/ --cov=collectors --cov=processors --cov=output
 | Key | Cost | Where to Get |
 |-----|------|-------------|
 | CoinGecko | Free (30 req/min, 10K/mo) | coingecko.com/api |
-| CryptoRank | Free (Core tier) | cryptorank.io/public-api/pricing |
-| YouTube Data API v3 | Free (10K units/day) | console.cloud.google.com |
-| Telegram Bot | Free | @BotFather |
 | GitHub Token | Free (5000 req/hr) | github.com/settings/tokens |
+| Telegram Bot | Free | @BotFather |
