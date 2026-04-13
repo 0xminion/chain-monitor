@@ -85,15 +85,29 @@ class EventCategorizer:
     """Classifies raw events into categories and subcategories."""
 
     def categorize(self, event: dict) -> dict:
-        """Add category and subcategory to event dict. Only categorize if not already set by collector."""
+        """Add category and subcategory to event dict."""
+        # Build text for matching from all available fields
+        text_parts = [event.get("description", "")]
+
+        # Handle evidence as dict (extract title, summary) or string
+        evidence = event.get("evidence", "")
+        if isinstance(evidence, dict):
+            text_parts.append(evidence.get("title", ""))
+            text_parts.append(evidence.get("summary", ""))
+            text_parts.append(evidence.get("pr_title", ""))
+            text_parts.append(evidence.get("link", ""))
+        else:
+            text_parts.append(str(evidence))
+
+        text = " ".join(str(p) for p in text_parts if p).lower()
+
         # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
-        if event.get("category") and event["category"] != "TECH_EVENT":
-            # Just add subcategory
-            text = f"{event.get('description', '')} {event.get('evidence', '')}".lower()
-            event["subcategory"] = self._detect_subcategory(text, event["category"])
+        # EXCEPT for NEWS — re-categorize these
+        existing = event.get("category", "")
+        if existing and existing not in ("NEWS", "TECH_EVENT"):
+            event["subcategory"] = self._detect_subcategory(text, existing)
             return event
 
-        text = f"{event.get('description', '')} {event.get('evidence', '')}".lower()
         category = self._detect_category(text)
         subcategory = self._detect_subcategory(text, category)
         event["category"] = category

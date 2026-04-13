@@ -13,6 +13,7 @@ from collectors.github_collector import GitHubCollector
 from collectors.rss_collector import RSSCollector
 from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
+from collectors.tradingview_collector import TradingViewCollector
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
@@ -39,6 +40,7 @@ def run_collectors() -> list[dict]:
         RSSCollector(),
         RegulatoryCollector(),
         RiskAlertCollector(),
+        TradingViewCollector(),
     ]
 
     for collector in collectors:

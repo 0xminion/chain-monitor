@@ -7,32 +7,22 @@ rss_feeds:
       url: "https://www.coindesk.com/arc/outboundfeeds/rss/"
     - name: "The Block"
       url: "https://www.theblock.co/rss.xml"
-    - name: "CoinTelegraph"
+    - name: "Cointelegraph"
       url: "https://cointelegraph.com/rss"
-
-  podcasts:
-    - name: "Bankless"
-      url: "https://feeds.transistor.fm/bankless-podcast"
-    - name: "Unchained"
-      url: "https://unchainedcrypto.com/feed/podcast"
-    - name: "What Bitcoin Did"
-      url: "https://feeds.transistor.fm/what-bitcoin-did"
-    - name: "Lightspeed"
-      url: "https://feeds.transistor.fm/lightspeed"
-    - name: "The Defiant"
-      url: "https://thedefiant.io/feed/podcast"
+    - name: "NewsBTC"
+      url: "https://www.newsbtc.com/feed/"
+    - name: "99Bitcoins"
+      url: "https://99bitcoins.com/feed/"
+    - name: "Decrypt"
+      url: "https://decrypt.co/feed"
+    - name: "Blockworks"
+      url: "https://blockworks.co/feed"
 
   regulatory:
     - name: "CoinCenter"
       url: "https://www.coincenter.org/feed/"
     - name: "DeFi Education Fund"
       url: "https://defieducationfund.org/feed/"
-
-  legal_blogs:
-    - name: "Anderson Kill"
-      url: "https://www.andersonkill.com/rss"
-    - name: "DLx Law"
-      url: "https://dlxlaw.com/feed"
 
 # DefiLlama
 defillama:
