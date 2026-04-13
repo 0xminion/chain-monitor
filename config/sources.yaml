@@ -38,6 +38,37 @@ rss_feeds:
     - name: "Coinpedia Events"
       url: "https://events.coinpedia.org/feed/"
 
+  # Chain-specific event/blog feeds
+  chain_events:
+    - name: "Solana Blog"
+      url: "https://solana.com/news/rss.xml"
+    - name: "Solana Foundation"
+      url: "https://solana.org/news/rss.xml"
+    - name: "Arbitrum Blog"
+      url: "https://arbitrum.io/blog/rss.xml"
+    - name: "Optimism Blog"
+      url: "https://optimism.mirror.xyz/feed/atom"
+    - name: "Avalanche Blog"
+      url: "https://medium.com/feed/avalancheavax"
+    - name: "Polygon Blog"
+      url: "https://polygon.technology/blog/rss.xml"
+    - name: "BNB Chain Blog"
+      url: "https://www.bnbchain.org/en/blog/rss.xml"
+    - name: "Sui Blog"
+      url: "https://blog.sui.io/feed"
+    - name: "Aptos Blog"
+      url: "https://aptosfoundation.org/blog/rss.xml"
+    - name: "Sei Blog"
+      url: "https://blog.sei.io/rss.xml"
+    - name: "Near Blog"
+      url: "https://near.org/blog/feed/"
+    - name: "TON Blog"
+      url: "https://blog.ton.org/rss.xml"
+    - name: "Starknet Blog"
+      url: "https://www.starknet.io/blog/rss.xml"
+    - name: "Mantle Blog"
+      url: "https://www.mantle.xyz/blog/rss.xml"
+
 # TradingView (Playwright scraper)
 tradingview:
   url: "https://www.tradingview.com/news-flow/?market=crypto"

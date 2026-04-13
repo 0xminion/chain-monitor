@@ -5,10 +5,62 @@ import re
 from datetime import datetime, timezone
 
 from collectors.base import BaseCollector
+from config.loader import get_chains
 
 logger = logging.getLogger(__name__)
 
 TRADINGVIEW_URL = "https://www.tradingview.com/news-flow/?market=crypto"
+
+# Load our tracked chains for relevance filtering
+_TRACKED_CHAINS = set()
+_CHAIN_KEYWORDS = {}  # chain_name -> list of search keywords
+
+def _init_chain_keywords():
+    """Build keyword lookup from chains.yaml config."""
+    global _TRACKED_CHAINS, _CHAIN_KEYWORDS
+    if _CHAIN_KEYWORDS:
+        return
+    try:
+        chains = get_chains()
+        _TRACKED_CHAINS = set(chains.keys())
+
+        # Map chain names to search keywords
+        keyword_map = {
+            "ethereum": ["ethereum", "eth ", "eth,", "ether", "eip", "erc-", "vitalik"],
+            "bitcoin": ["bitcoin", "btc ", "btc,", "ordinals", "brc-20", "runes", "saylor"],
+            "solana": ["solana", "sol ", "sol,", "svm", "solana "],
+            "base": ["base chain", "coinbase l2", "base l2", "base network"],
+            "arbitrum": ["arbitrum", "arb ", "arb,", "arbitrum one"],
+            "optimism": ["optimism", "op stack", "superchain"],
+            "polygon": ["polygon", "matic", "pol ", "polygon "],
+            "avalanche": ["avalanche", "avax"],
+            "bsc": ["bnb chain", "bsc", "binance smart chain", "bnb "],
+            "xlayer": ["xlayer", "x layer", "okx chain"],
+            "monad": ["monad"],
+            "hyperliquid": ["hyperliquid", "hype "],
+            "sui": ["sui "],
+            "aptos": ["aptos"],
+            "sei": ["sei "],
+            "near": ["near ", "near protocol"],
+            "ton": ["ton ", "toncoin", "ton "],
+            "starknet": ["starknet", "strk"],
+            "mantle": ["mantle", "mnt "],
+            "gnosis": ["gnosis", "xdai"],
+            "ink": ["ink chain", "ink network"],
+            "morph": ["morph "],
+            "megaeth": ["megaeth", "mega-evm"],
+            "tempo": ["tempo chain", "tempo network"],
+            "plasma": ["plasma "],
+            "stablechain": ["stablechain"],
+            "bittensor": ["bittensor", "tao "],
+            "virtuals": ["virtuals protocol", "virtual "],
+        }
+        for chain_name in _TRACKED_CHAINS:
+            _CHAIN_KEYWORDS[chain_name] = keyword_map.get(chain_name, [chain_name])
+    except Exception:
+        pass
+
+_init_chain_keywords()
 
 # JS extraction script for Playwright
 EXTRACT_JS = '''() => {
@@ -138,8 +190,13 @@ class TradingViewCollector(BaseCollector):
         # Categorize based on keywords in title
         category = self._categorize_title(title)
 
-        # Detect chain relevance
+        # Detect chain relevance — only keep items matching our tracked chains
         chain_relevance = self._detect_chain_relevance(title)
+        if not chain_relevance:
+            # Skip news not related to any tracked chain
+            # EXCEPT for regulatory/cross-chain macro news
+            if category not in ("REGULATORY", "RISK_ALERT"):
+                return None
 
         return {
             "type": "tradingview_news",
@@ -227,35 +284,13 @@ class TradingViewCollector(BaseCollector):
         return "NEWS"
 
     def _detect_chain_relevance(self, title: str) -> str | None:
-        """Detect which chain this news is about."""
+        """Detect which tracked chain this news is about."""
         t = title.lower()
 
-        chain_keywords = {
-            "ethereum": ["ethereum", "eth ", "eth,", "ether", "eip", "erc-"],
-            "bitcoin": ["bitcoin", "btc ", "btc,", "ordinals", "brc-20", "runes"],
-            "hyperliquid": ["hyperliquid", "hype "],
-            "solana": ["solana", "sol ", "sol,", "svm"],
-            "base": ["base chain", "coinbase base", "base l2"],
-            "arbitrum": ["arbitrum", "arb ", "arb,"],
-            "optimism": ["optimism", "op "],
-            "polygon": ["polygon", "matic", "pol "],
-            "avalanche": ["avalanche", "avax"],
-            "bnb chain": ["bnb chain", "bsc", "binance smart chain"],
-            "xlayer": ["xlayer", "x layer", "okx chain"],
-            "monad": ["monad"],
-            "sui": ["sui "],
-            "aptos": ["aptos"],
-            "sei": ["sei "],
-            "near": ["near "],
-            "cosmos": ["cosmos", "atom"],
-            "polkadot": ["polkadot", "dot "],
-            "cardano": ["cardano", "ada "],
-        }
-
-        for chain, keywords in chain_keywords.items():
+        for chain_name, keywords in _CHAIN_KEYWORDS.items():
             for kw in keywords:
-                if kw in t:
-                    return chain
+                if kw.lower() in t:
+                    return chain_name
         return None
 
     def _score_importance(self, title: str, category: str) -> str:
