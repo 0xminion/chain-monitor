@@ -81,7 +81,7 @@ xlayer:
   category: "cex_affiliated"
   tier: 2
   coingecko_id: null  # uses OKB
-  defillama_slug: "xlayer"
+  defillama_slug: "X Layer"
   github_repos: []  # no public repo — monitor via OKX announcements scrape
   blog_rss: null  # scrape OKX announcements
   scrape_url: "https://www.okx.com/help/section/announcements-latest-announcements"
@@ -241,7 +241,7 @@ gnosis:
   defillama_slug: "gnosis"
   github_repos:
     - "gnosischain/specs"
-  blog_rss: "https://www.gnosis.io/blog/rss.xml"
+  blog_rss: null  # 404 — monitor via RSS feeds
   youtube_channel: "@GnosisChain"
   status_page: "https://status.gnosischain.com"
   governance_forum:

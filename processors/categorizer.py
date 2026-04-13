@@ -152,8 +152,12 @@ class EventCategorizer:
         text = " ".join(str(p) for p in text_parts if p).lower()
 
         # Filter out price/trading noise from FINANCIAL
+        # But NEVER filter DefiLlama TVL data (it's real on-chain data)
+        source = event.get("source", "") or event.get("source_name", "")
+        is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
+        
         existing = event.get("category", "")
-        if existing == "FINANCIAL" or existing == "NEWS":
+        if (existing == "FINANCIAL" or existing == "NEWS") and not is_defillama:
             for noise_kw in PRICE_NOISE_KEYWORDS:
                 if noise_kw in text:
                     # Mark as filtered — digest can skip these
