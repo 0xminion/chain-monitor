@@ -186,9 +186,12 @@ class RSSCollector(BaseCollector):
             logger.warning(f"[RSS] Feed parse error for {feed_url}: {feed.bozo_exception}")
             return signals
 
-        # Only process entries from the last 48 hours
+        # Only process entries from the last 48 hours (7 days for chain blogs)
         now = datetime.now(timezone.utc)
-        cutoff = now.timestamp() - (48 * 3600)
+        if default_chain:
+            cutoff = now.timestamp() - (7 * 24 * 3600)  # 7 days for chain-specific blogs
+        else:
+            cutoff = now.timestamp() - (48 * 3600)  # 48h for news feeds
 
         for entry in feed.entries:
             pub_date = self._parse_date(entry)
@@ -265,6 +268,26 @@ class RSSCollector(BaseCollector):
 
         # 2. Global news feeds from sources.yaml
         rss_feeds = self._sources_cfg.get("rss_feeds", {})
+        
+        # Map chain_event feed names to chain names for attribution
+        chain_name_map = {
+            "Solana Blog": "solana",
+            "Avalanche Blog": "avalanche",
+            "Sui Blog": "sui",
+            "Near Blog": "near",
+            "Aptos Blog": "aptos",
+            "Monad Blog": "monad",
+            "Arbitrum Blog": "arbitrum",
+            "Starknet Blog": "starknet",
+            "Mantle Blog": "mantle",
+            "Morph Blog": "morph",
+            "BNB Chain Blog": "bsc",
+            "Hyperliquid": "hyperliquid",
+            "Gnosis Blog": "gnosis",
+            "Stablechain Blog": "stablechain",
+            "Virtuals": "virtuals",
+        }
+        
         for category, feeds in rss_feeds.items():
             if not isinstance(feeds, list):
                 continue
@@ -275,11 +298,12 @@ class RSSCollector(BaseCollector):
                 feed_name = feed_cfg.get("name", category)
                 if not feed_url:
                     continue
-                # News feeds: no default chain, must match via keywords
+                # Chain event feeds: attribute to specific chain
+                default_chain = chain_name_map.get(feed_name) if category == "chain_events" else None
                 signals.extend(self._process_feed(
                     feed_url=feed_url,
                     source_name=feed_name,
-                    default_chain=None,
+                    default_chain=default_chain,
                 ))
 
         logger.info(f"[RSS] Collected {len(signals)} signals")
