@@ -38,28 +38,43 @@ rss_feeds:
     - name: "Coinpedia Events"
       url: "https://events.coinpedia.org/feed/"
 
-  # Chain-specific event/blog feeds (verified working Apr 2026)
+  # Chain-specific event/blog feeds (verified working Apr 13, 2026)
   chain_events:
+    # L1s
     - name: "Solana Blog"
       url: "https://solana.com/news/rss.xml"
-    - name: "Arbitrum Blog"
-      url: "https://arbitrumfoundation.medium.com/feed"
     - name: "Avalanche Blog"
       url: "https://medium.com/feed/avalancheavax"
     - name: "Sui Blog"
       url: "https://blog.sui.io/feed"
-    - name: "Mantle Blog"
-      url: "https://www.mantle.xyz/blog/rss.xml"
-    - name: "Aptos Blog"
-      url: "https://medium.com/feed/aptoslabs"
-    - name: "Starknet Blog"
-      url: "https://medium.com/feed/@starkware"
     - name: "Near Blog"
       url: "https://medium.com/feed/@nearprotocol"
+    - name: "Aptos Blog"
+      url: "https://medium.com/feed/aptoslabs"
+    - name: "Monad Blog"
+      url: "https://medium.com/feed/@monad_xyz"
+    # L2s / Rollups
+    - name: "Arbitrum Blog"
+      url: "https://arbitrumfoundation.medium.com/feed"
+    - name: "Starknet Blog"
+      url: "https://medium.com/feed/@starkware"
+    - name: "Mantle Blog"
+      url: "https://www.mantle.xyz/blog/rss.xml"
+    - name: "Morph Blog"
+      url: "https://blog.morphl2.io/feed"
     - name: "BNB Chain Blog"
       url: "https://medium.com/feed/@bnbchain"
+    # Trading / DeFi
+    - name: "Hyperliquid"
+      url: "https://medium.com/feed/@hyperliquid"
+    - name: "Gnosis Blog"
+      url: "https://gnosischain.substack.com/feed"
+    - name: "Stablechain Blog"
+      url: "https://blog.stable.xyz/rss"
     - name: "Virtuals"
       url: "https://virtuals.substack.com/feed"
+  # Chains with NO working RSS (monitor via DefiLlama TVL + TradingView + GitHub):
+  # TON, XLayer (OKX)
 
 # TradingView (Playwright scraper)
 tradingview:

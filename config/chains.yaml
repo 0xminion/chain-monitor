@@ -214,7 +214,7 @@ stablechain:
   coingecko_id: null
   defillama_slug: null
   github_repos: []  # no public repos found
-  blog_rss: "https://blog.stable.xyz"
+  blog_rss: "https://blog.stable.xyz/rss"
   youtube_channel: null
   status_page: null
   governance_forum: null  # enterprise-controlled
