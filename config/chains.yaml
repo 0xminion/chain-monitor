@@ -55,7 +55,7 @@ hyperliquid:
   category: "cex_affiliated"
   tier: 1
   coingecko_id: "hyperliquid"
-  defillama_slug: "hyperliquid"
+  defillama_slug: "Hyperliquid L1"
   github_repos:
     - "hyperliquid-dex/hyperliquid-rust-sdk"
   blog_rss: null  # scrape announcements page
@@ -194,7 +194,7 @@ tempo:
   coingecko_id: null  # no native token
   defillama_slug: null  # may not be indexed
   github_repos:
-    - "tempoxyz"
+    - "tempoxyz/tempo"
   blog_rss: "https://tempo.xyz/blog/"
   youtube_channel: null
   status_page: null
@@ -206,7 +206,7 @@ plasma:
   coingecko_id: "plasma"
   defillama_slug: "plasma"
   github_repos:
-    - "PlasmaLaboratories"
+    - "PlasmaLaboratories/reth"
   blog_rss: "https://www.plasma.to/insights"
   youtube_channel: null
   status_page: null
@@ -217,8 +217,7 @@ stablechain:
   tier: 3
   coingecko_id: null
   defillama_slug: null
-  github_repos:
-    - "stable-xyz"
+  github_repos: []  # no public repos found
   blog_rss: "https://blog.stable.xyz"
   youtube_channel: null
   status_page: null
@@ -244,7 +243,7 @@ gnosis:
   category: "payment"
   tier: 3
   coingecko_id: "gnosis"
-  defillama_slug: "xdai"
+  defillama_slug: "gnosis"
   github_repos:
     - "gnosischain/specs"
   blog_rss: "https://www.gnosis.io/blog/rss.xml"
@@ -264,7 +263,7 @@ megaeth:
   coingecko_id: null  # pre-TGE
   defillama_slug: null  # pre-mainnet
   github_repos:
-    - "megaeth-labs"
+    - "megaeth-labs/mega-evm"
   blog_rss: "https://megaeth.com/blog/rss.xml"
   youtube_channel: null
   status_page: null
@@ -332,7 +331,7 @@ aptos:
 virtuals:
   category: "ai_infra"
   tier: 3
-  coingecko_id: "virtuals-protocol"
+  coingecko_id: "virtual-protocol"
   defillama_slug: null  # protocol on Base
   github_repos:
     - "virtuals-protocol"
@@ -378,7 +377,7 @@ optimism:
   category: "others"
   tier: 2
   coingecko_id: "optimism"
-  defillama_slug: "optimism"
+  defillama_slug: "op-mainnet"
   github_repos:
     - "ethereum-optimism/optimism"
     - "ethereum-optimism/specs"
