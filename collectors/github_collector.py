@@ -115,26 +115,50 @@ class GitHubCollector(BaseCollector):
         # Only report if GitHub Releases didn't already catch it
         if not signals:
             url = f"{self.api_base}/repos/{repo}/tags"
-            data = self.fetch_with_retry(url, params={"per_page": 3})
+            data = self.fetch_with_retry(url, params={"per_page": 5})
             if data and isinstance(data, list) and len(data) >= 2:
                 latest_tag = data[0]["name"]
-                prev_tag = data[1]["name"]
-                if latest_tag != prev_tag:
-                    release_ctx = extract_release_context(latest_tag, prev_tag, repo)
-                    signals.append(self._make_signal(
-                        chain=chain,
-                        description=f"New tag: {latest_tag} (was {prev_tag}) — {repo}",
-                        reliability=0.85,
-                        evidence={
-                            "metric": "new_tag",
-                            "repo": repo,
-                            "tag": latest_tag,
-                            "prev_tag": prev_tag,
-                            "release_context": release_ctx,
-                        },
-                    ))
+                # Find the previous tag with a different major version
+                prev_tag = None
+                for t in data[1:]:
+                    if t["name"] != latest_tag:
+                        prev_tag = t["name"]
+                        break
+                if prev_tag and latest_tag != prev_tag:
+                    # Only report MAJOR version changes
+                    if self._is_major_release(latest_tag, prev_tag):
+                        release_ctx = extract_release_context(latest_tag, prev_tag, repo)
+                        signals.append(self._make_signal(
+                            chain=chain,
+                            description=f"Major release: {latest_tag} (was {prev_tag}) — {repo}",
+                            reliability=0.9,
+                            evidence={
+                                "metric": "major_release",
+                                "repo": repo,
+                                "tag": latest_tag,
+                                "prev_tag": prev_tag,
+                                "release_context": release_ctx,
+                            },
+                        ))
 
         return signals
+
+    def _is_major_release(self, tag: str, prev_tag: str) -> bool:
+        """Check if this is a major version bump (not minor/patch)."""
+        import re
+        ver_match = re.search(r'v?(\d+)\.(\d+)', tag)
+        prev_match = re.search(r'v?(\d+)\.(\d+)', prev_tag)
+        if not ver_match or not prev_match:
+            return False
+        major, minor = int(ver_match.group(1)), int(ver_match.group(2))
+        prev_major, prev_minor = int(prev_match.group(1)), int(prev_match.group(2))
+        # Major version increase OR significant minor bump (0.x → 1.x pattern)
+        if major > prev_major:
+            return True
+        # Also flag minor bumps for pre-1.0 projects (0.4 → 0.5 is significant)
+        if major == 0 and prev_major == 0 and minor > prev_minor:
+            return True
+        return False
 
     def _check_high_signal_prs(self, chain: str, repo: str) -> list[dict]:
         """Find high-signal merged PRs (EIPs, forks, security, audits)."""

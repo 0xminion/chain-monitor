@@ -234,9 +234,8 @@ class SignalScorer:
 
         if category == "FINANCIAL" and evidence and isinstance(evidence, dict):
             pct_change = evidence.get("pct_change", 0)
-            current_tvl = evidence.get("current_tvl", 0)
-            if current_tvl:
-                current_tvl_b = current_tvl / 1e9
+            current_tvl = evidence.get("current_tvl", 0) or 0
+            current_tvl_b = current_tvl / 1e9 if current_tvl else 0
 
             # Build base context from template
             result = template.format(
