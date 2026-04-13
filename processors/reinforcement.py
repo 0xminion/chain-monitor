@@ -51,7 +51,8 @@ class SignalReinforcer:
             evidence=new_signal.activity[0]["evidence"] if new_signal.activity else new_signal.description,
         )
 
-        if new_signal.trader_context and not existing.trader_context:
+        # Always update trader_context to the latest (better reasoning on re-runs)
+        if new_signal.trader_context:
             existing.trader_context = new_signal.trader_context
 
         self._save_signal(existing)
