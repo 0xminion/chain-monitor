@@ -24,6 +24,33 @@ rss_feeds:
     - name: "DeFi Education Fund"
       url: "https://defieducationfund.org/feed/"
 
+  partnerships:
+    - name: "CryptoSlate"
+      url: "https://cryptoslate.com/feed/"
+    - name: "CoinGape"
+      url: "https://coingape.com/feed/"
+    - name: "Bitcoin.com News"
+      url: "https://news.bitcoin.com/feed/"
+    - name: "AMBCrypto"
+      url: "https://ambcrypto.com/feed/"
+
+  events:
+    - name: "Coinpedia Events"
+      url: "https://events.coinpedia.org/feed/"
+
+# TradingView (Playwright scraper)
+tradingview:
+  url: "https://www.tradingview.com/news-flow/?market=crypto"
+  browser: "chromium"  # chromium or camoufox
+  timeout_seconds: 30
+  scroll_passes: 3
+
+# Events calendar
+events:
+  cryptorank_url: "https://api.cryptorank.io/v1/events"
+  ethglobal_url: "https://ethglobal.com/events"
+  coinpedia_events_url: "https://events.coinpedia.org/feed/"
+
 # DefiLlama
 defillama:
   chains_endpoint: "https://api.llama.fi/chains"

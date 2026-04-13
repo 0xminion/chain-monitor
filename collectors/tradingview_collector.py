@@ -1,196 +1,289 @@
-"""TradingView news collector — crypto news from tradingview.com/news-flow."""
+"""TradingView News Flow collector — scrapes crypto news via Playwright Chromium."""
 
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Optional
 
 from collectors.base import BaseCollector
-from config.loader import get_chains
 
 logger = logging.getLogger(__name__)
 
-# Skip paywalled/generic entries
-SKIP_TITLES = ["sign in to read", "exclusive news"]
+TRADINGVIEW_URL = "https://www.tradingview.com/news-flow/?market=crypto"
 
-# Category keyword rules (order matters — first match wins)
-CATEGORY_RULES = [
-    ("RISK_ALERT", [
-        "hack", "exploit", "stolen", "drained", "rug pull", "scam",
-        "vulnerability", "attack", "compromised", "breach", "drained",
-        "murder", "arrested", "charged", "lawsuit against",
-    ]),
-    ("REGULATORY", [
-        "sec ", "sec,", "sec.", "regulation", "regulatory", "enforcement",
-        "ban", "approval", "license", "compliance", "lawsuit", "court",
-        "senate", "congress", "european commission", "ecb ", "mica",
-        "stablecoin bill", "crypto bill", "guidance", "framework",
-        "broker registration", "tokenized",
-    ]),
-    ("PARTNERSHIP", [
-        "partnership", "partners with", "teams up", "collaboration",
-        "integration", "integrates with", "co-launch", "joint",
-        "announce", "launches with", "debuts",
-    ]),
-    ("VISIBILITY", [
-        "conference", "hackathon", "ama", "keynote", "speaker",
-        "hired", "appointed", "joins", "departed", "podcast",
-        "interview", "summit",
-    ]),
-    ("FINANCIAL", [
-        "tvl", "volume", "funding", "raised", "grant", "airdrop",
-        "tge", "token launch", "billion", "million", "etf",
-        "inflows", "outflows", "ipo", "valuation", "holdings",
-        "supply", "whale",
-    ]),
-    ("TECH_EVENT", [
-        "upgrade", "mainnet", "testnet", "launch", "release",
-        "hard fork", "eip", "deploy", "update", "version",
-        "agentic", "agent",
-    ]),
-]
+# JS extraction script for Playwright
+EXTRACT_JS = '''() => {
+    const items = [];
+    const links = document.querySelectorAll('a[href*="/news/"]');
+    const seen = new Set();
 
-# Chain detection from headlines
-CHAIN_KEYWORDS = {
-    "bitcoin": ["bitcoin", "btc"],
-    "ethereum": ["ethereum", "eth ", "ether"],
-    "solana": ["solana", "sol "],
-    "base": ["base", "coinbase"],
-    "bsc": ["bnb", "binance"],
-    "polygon": ["polygon", "matic"],
-    "xrp": ["xrp", "ripple"],
-    "cardano": ["cardano", "ada"],
-    "avalanche": ["avalanche", "avax"],
-    "arbitrum": ["arbitrum"],
-    "optimism": ["optimism"],
-    "hyperliquid": ["hyperliquid"],
-    "sui": ["sui"],
-    "aptos": ["aptos"],
-    "sei": ["sei"],
-    "ton": ["toncoin", "ton "],
-}
+    links.forEach(a => {
+        const href = a.href || '';
+        const text = a.innerText?.trim();
+        if (!text || text.length < 10 || seen.has(href)) return;
+        if (text === 'Sign in to read exclusive news') return;
+
+        seen.add(href);
+
+        // Extract source from URL: /news/[source]:[id]:[slug]/
+        const sourceMatch = href.match(/\\/news\\/([^:]+):/);
+        const source = sourceMatch ? sourceMatch[1] : 'unknown';
+
+        // Clean title — extract actual headline
+        let title = text;
+        // Handle "SourceName\\nActual Title" pattern
+        if (title.includes('\\n')) {
+            const parts = title.split('\\n').map(p => p.trim()).filter(p => p);
+            if (parts.length >= 2) {
+                title = parts.slice(1).join(' ').trim();
+            }
+        }
+        // Handle "SourceName Actual Title" (no newline)
+        const sourceClean = source.replace(/_/g, ' ').replace(/_/g, ' ');
+        if (title.toLowerCase().startsWith(sourceClean.toLowerCase()) && title.length > sourceClean.length + 5) {
+            title = title.substring(sourceClean.length).trim();
+        }
+
+        items.push({
+            source: source,
+            title: title,
+            href: href,
+        });
+    });
+
+    return items;
+}'''
 
 
 class TradingViewCollector(BaseCollector):
-    """Collects crypto news from TradingView News Flow page.
+    """Collects news from TradingView's News Flow page using Playwright."""
 
-    Uses cloudscraper to bypass CloudFlare, parses headline text.
-    Categorizes into: RISK_ALERT, REGULATORY, PARTNERSHIP, VISIBILITY,
-    FINANCIAL, TECH_EVENT based on keyword matching.
-    """
-
-    CATEGORY = "NEWS"  # default, overridden by categorizer
-
-    def __init__(self, max_retries: int = 3, backoff_base: int = 2):
-        super().__init__(name="TradingView", max_retries=max_retries, backoff_base=backoff_base)
-        self._chains_cfg = get_chains()
-
-    def _make_signal(self, chain: str, category: str, description: str, reliability: float, evidence: dict) -> dict:
-        return {
-            "chain": chain,
-            "category": category,
-            "description": description,
-            "source": evidence.get("source", "TradingView"),
-            "reliability": min(max(reliability, 0.0), 1.0),
-            "evidence": evidence,
-        }
-
-    def _classify(self, title: str) -> tuple[str, float]:
-        """Classify title into category with confidence."""
-        title_lower = title.lower()
-        for category, keywords in CATEGORY_RULES:
-            for kw in keywords:
-                if kw in title_lower:
-                    # Higher reliability for regulatory/risk keywords
-                    if category in ("RISK_ALERT", "REGULATORY"):
-                        return category, 0.85
-                    return category, 0.75
-        return "NEWS", 0.5
-
-    def _detect_chain(self, title: str) -> Optional[str]:
-        title_lower = title.lower()
-        for chain, keywords in CHAIN_KEYWORDS.items():
-            if any(kw in title_lower for kw in keywords):
-                return chain
-        return None
+    def __init__(self, browser_type: str = "chromium"):
+        super().__init__(name="tradingview")
+        self.browser_type = browser_type
+        self._playwright = None
+        self._browser = None
 
     def collect(self) -> list[dict]:
-        """Scrape TradingView crypto news flow."""
+        """Scrape TradingView news flow for crypto news."""
         signals = []
 
         try:
-            import cloudscraper
-            scraper = cloudscraper.create_scraper()
-            resp = scraper.get("https://www.tradingview.com/news-flow/?market=crypto", timeout=20)
-            if resp.status_code != 200:
-                logger.warning(f"[TradingView] HTTP {resp.status_code}")
-                return signals
-        except ImportError:
-            # Fallback to requests
-            resp = self.fetch_text_with_retry("https://www.tradingview.com/news-flow/?market=crypto")
-            if not resp:
-                return signals
-            # Wrap in mock response
-            class MockResp:
-                text = resp
-            resp = MockResp()
+            from playwright.sync_api import sync_playwright
+            self._playwright = sync_playwright().start()
 
-        # Parse news from page text
-        # Pattern: alternating lines of "Source" then "Title"
-        text = resp.text
-        lines = text.split("\n")
+            if self.browser_type == "camoufox":
+                try:
+                    from camoufox.sync_api import Camoufox
+                    self._browser = Camoufox(headless=True).__enter__()
+                    # Camoufox returns a context, get the browser
+                    page = self._browser.new_page()
+                except Exception as e:
+                    logger.warning(f"Camoufox failed ({e}), falling back to Chromium")
+                    self._browser = self._playwright.chromium.launch(headless=True)
+                    page = self._browser.new_page()
+            else:
+                self._browser = self._playwright.chromium.launch(headless=True)
+                page = self._browser.new_page()
 
-        # Find news section (after "Reset all" and before article content)
-        news_items = []
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            # Skip empty, short, or UI elements
-            if len(line) < 5 or line in ("Close", "Save", "Reset all"):
-                i += 1
-                continue
+            logger.info(f"Navigating to TradingView News Flow...")
+            page.goto(TRADINGVIEW_URL, timeout=30000)
+            page.wait_for_timeout(8000)  # Wait for JS rendering
 
-            # Check if next line is a title (longer, capitalized)
-            if i + 1 < len(lines):
-                next_line = lines[i + 1].strip()
-                # Source names are short (1-3 words), titles are longer
-                if (len(line) < 30 and len(next_line) > 15
-                    and not any(skip in next_line.lower() for skip in SKIP_TITLES)):
-                    # Potential source + title pair
-                    # Validate: source should look like a news source name
-                    if re.match(r'^[A-Z][a-zA-Z\s]+$', line) and len(line.split()) <= 4:
-                        news_items.append({
-                            "source": line.strip(),
-                            "title": next_line.strip(),
-                        })
-                        i += 2
-                        continue
-            i += 1
+            # Scroll to load more items
+            for _ in range(3):
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_timeout(2000)
 
-        # Deduplicate
-        seen_titles = set()
-        for item in news_items:
-            key = item["title"][:60]
-            if key in seen_titles:
-                continue
-            seen_titles.add(key)
+            # Extract news items
+            news_items = page.evaluate(EXTRACT_JS)
+            logger.info(f"TradingView: extracted {len(news_items)} news items")
 
-            title = item["source"] + ": " + item["title"]
-            category, reliability = self._classify(item["title"])
-            chain = self._detect_chain(item["title"])
+            for item in news_items:
+                if not item.get("title") or len(item["title"]) < 10:
+                    continue
 
-            signals.append(self._make_signal(
-                chain=chain or "unknown",
-                category=category,
-                description=title[:200],
-                reliability=reliability,
-                evidence={
-                    "source": item["source"],
-                    "metric": "tradingview_news",
-                    "title": item["title"],
-                    "provider": item["source"],
-                },
-            ))
+                signal = self._parse_news_item(item)
+                if signal:
+                    signals.append(signal)
 
-        logger.info(f"[TradingView] Collected {len(signals)} signals")
-        return signals[:30]  # cap at 30
+        except Exception as e:
+            logger.error(f"TradingView scraper failed: {e}")
+            self.health.mark_failure(str(e))
+            return signals
+        finally:
+            self._cleanup()
+
+        self.health.mark_success()
+        return signals
+
+    def _parse_news_item(self, item: dict) -> dict | None:
+        """Parse a news item into a signal dict."""
+        title = item.get("title", "").strip()
+        source = item.get("source", "unknown")
+        href = item.get("href", "")
+
+        # Filter out paywalled/generic items
+        skip_phrases = [
+            "sign in to read",
+            "exclusive news",
+            "subscribe to",
+            "premium content",
+        ]
+        if any(phrase in title.lower() for phrase in skip_phrases):
+            return None
+
+        if not title or len(title) < 10:
+            return None
+
+        # Categorize based on keywords in title
+        category = self._categorize_title(title)
+
+        # Detect chain relevance
+        chain_relevance = self._detect_chain_relevance(title)
+
+        return {
+            "type": "tradingview_news",
+            "category": category,
+            "chain": chain_relevance if chain_relevance else "general",
+            "title": title[:300],
+            "source_name": f"TradingView ({source})",
+            "description": title,
+            "evidence": {
+                "title": title,
+                "source": source,
+                "url": href,
+                "raw_source": "tradingview",
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "importance": self._score_importance(title, category),
+        }
+
+    def _categorize_title(self, title: str) -> str:
+        """Quick categorization from headline keywords."""
+        t = title.lower()
+
+        # Partnership signals
+        partnership_words = [
+            "partnership", "partners with", "teams up", "integration",
+            "collaborates", "co-launch", "joins forces", "in partnership",
+            "joint venture", "alliance", "works with", "joins",
+            "deployed on", "live on", "launches on", "available on",
+            "adds support for", "expands to", "enters",
+        ]
+        if any(w in t for w in partnership_words):
+            return "PARTNERSHIP"
+
+        # Visibility signals
+        visibility_words = [
+            "conference", "hackathon", "ama", "keynote", "speaker",
+            "podcast", "interview", "summit", "workshop", "demo day",
+            "hired", "appointed", "joins as", "new ceo", "new cto",
+            "departed", "resigned", "stepped down", "leaving",
+            "live stream", "community call", "town hall",
+        ]
+        if any(w in t for w in visibility_words):
+            return "VISIBILITY"
+
+        # Regulatory signals
+        regulatory_words = [
+            "sec ", "sec,", "sec.", "enforcement", "lawsuit", "ban",
+            "prohibition", "license", "approval", "regulation",
+            "compliance", "fine", "penalty", "mica", "fatf",
+            "broker registration", "wells notice", "subpoena",
+            "regulator", "cftc", "doj", "treasury",
+        ]
+        if any(w in t for w in regulatory_words):
+            return "REGULATORY"
+
+        # Risk signals
+        risk_words = [
+            "hack", "exploit", "vulnerability", "outage", "downtime",
+            "halt", "critical bug", "drained", "stolen", "attack",
+            "compromised", "rug pull", "scam", "breach", "incident",
+        ]
+        if any(w in t for w in risk_words):
+            return "RISK_ALERT"
+
+        # Tech signals
+        tech_words = [
+            "upgrade", "mainnet", "testnet", "launch", "release",
+            "hard fork", "eip", "deploy", "update", "version",
+            "network", "protocol", "chain", "layer 2", "l2",
+            "rollup", "bridge", "staking",
+        ]
+        if any(w in t for w in tech_words):
+            return "TECH_EVENT"
+
+        # Financial signals
+        financial_words = [
+            "tvl", "volume", "funding", "raised", "grant", "airdrop",
+            "tge", "token launch", "milestone", "billion", "million",
+            "inflows", "outflows", "buyback", "treasury", "yield",
+            "revenue", "earnings", "profit", "loss",
+        ]
+        if any(w in t for w in financial_words):
+            return "FINANCIAL"
+
+        return "NEWS"
+
+    def _detect_chain_relevance(self, title: str) -> str | None:
+        """Detect which chain this news is about."""
+        t = title.lower()
+
+        chain_keywords = {
+            "ethereum": ["ethereum", "eth ", "eth,", "ether", "eip", "erc-"],
+            "bitcoin": ["bitcoin", "btc ", "btc,", "ordinals", "brc-20", "runes"],
+            "hyperliquid": ["hyperliquid", "hype "],
+            "solana": ["solana", "sol ", "sol,", "svm"],
+            "base": ["base chain", "coinbase base", "base l2"],
+            "arbitrum": ["arbitrum", "arb ", "arb,"],
+            "optimism": ["optimism", "op "],
+            "polygon": ["polygon", "matic", "pol "],
+            "avalanche": ["avalanche", "avax"],
+            "bnb chain": ["bnb chain", "bsc", "binance smart chain"],
+            "xlayer": ["xlayer", "x layer", "okx chain"],
+            "monad": ["monad"],
+            "sui": ["sui "],
+            "aptos": ["aptos"],
+            "sei": ["sei "],
+            "near": ["near "],
+            "cosmos": ["cosmos", "atom"],
+            "polkadot": ["polkadot", "dot "],
+            "cardano": ["cardano", "ada "],
+        }
+
+        for chain, keywords in chain_keywords.items():
+            for kw in keywords:
+                if kw in t:
+                    return chain
+        return None
+
+    def _score_importance(self, title: str, category: str) -> str:
+        """Score importance from headline."""
+        t = title.lower()
+
+        # Critical indicators
+        critical_words = ["hack", "exploit", "drained", "stolen", "outage", "halt", "emergency"]
+        if any(w in t for w in critical_words):
+            return "critical"
+
+        # High indicators
+        high_words = ["mainnet launch", "sec charges", "sec sues", "billion", "partnership", "integration", "upgrade"]
+        if any(w in t for w in high_words):
+            return "high"
+
+        # Medium for regulatory and partnerships
+        if category in ("REGULATORY", "PARTNERSHIP", "RISK_ALERT"):
+            return "medium"
+
+        return "low"
+
+    def _cleanup(self):
+        """Clean up Playwright resources."""
+        try:
+            if self._browser:
+                self._browser.close()
+            if self._playwright:
+                self._playwright.stop()
+        except Exception:
+            pass

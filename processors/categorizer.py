@@ -9,33 +9,55 @@ CATEGORY_KEYWORDS = {
     "RISK_ALERT": [
         "hack", "exploit", "vulnerability", "outage", "downtime", "halt",
         "critical bug", "drained", "stolen", "attack", "compromised",
-        "bridge hack", "rug pull", "scam",
+        "bridge hack", "rug pull", "scam", "breach", "incident",
+        "emergency", "paused", "frozen", "blackhat", "whitehat",
+        "bug bounty", "responsible disclosure",
     ],
     "REGULATORY": [
         "sec enforcement", "sec charges", "sec sues", "sec filing",
         "enforcement", "lawsuit", "ban", "prohibition", "license",
         "approval", "regulation", "compliance", "fine", "penalty",
         "wells notice", "subpoena", "mica", "fatf", "sfc",
+        "broker registration", "cftc", "doj", "treasury",
+        "stablecoin bill", "crypto bill", "executive order",
+        "comment period", "proposed rule",
     ],
     "FINANCIAL": [
         "tvl", "volume", "funding", "raised", "grant", "airdrop",
         "tge", "token launch", "token sale", "milestone", "$",
         "million", "billion", "inflows", "outflows",
+        "buyback", "treasury", "yield", "revenue",
     ],
     "PARTNERSHIP": [
-        "partnership", "integration", "collaboration", "co-launch",
-        "joint", "together with", "teams up", "announce",
+        # Explicit partnership language
+        "partnership", "partners with", "in partnership", "partnered",
+        "integration", "integrate with", "integrated into",
+        "collaboration", "collaborates with", "co-launch",
+        "joint", "together with", "teams up", "joins forces",
+        # Deployment / availability language (implies integration)
+        "deployed on", "live on", "launches on", "available on",
+        "adds support for", "now on", "now live on", "goes live on",
+        "expands to", "enters", "comes to", "migrates to",
+        "built on", "powered by", "powered on",
+        # Business development language
+        "alliance", "consortium", "works with", "works alongside",
+        "signs mou", "memorandum", "strategic", "cooperation",
+        "ecosystem partner", "joins ecosystem", "joins network",
     ],
     "TECH_EVENT": [
         "upgrade", "mainnet", "testnet", "launch", "release",
         "audit", "eip", "bip", "simd", "mip", "aip", "pip",
         "hard fork", "soft fork", "deploy", "proposal", "vote",
         "governance", "feature", "update", "version",
+        "devnet", "canary", "release candidate", "rc1", "rc2",
     ],
     "VISIBILITY": [
         "conference", "hackathon", "ama", "interview", "keynote",
         "hired", "joined", "departed", "appointed", "podcast",
-        "speaker", "panel", "summit",
+        "speaker", "panel", "summit", "workshop", "demo day",
+        "live stream", "community call", "town hall",
+        "new ceo", "new cto", "new coo", "new head of",
+        "resigned", "stepped down", "leaving", "replacement",
     ],
 }
 
@@ -102,9 +124,10 @@ class EventCategorizer:
         text = " ".join(str(p) for p in text_parts if p).lower()
 
         # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
-        # EXCEPT for NEWS — re-categorize these
+        # EXCEPT for generic categories — re-categorize these into specific ones
         existing = event.get("category", "")
-        if existing and existing not in ("NEWS", "TECH_EVENT"):
+        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
+        if existing and existing not in GENERIC_CATEGORIES:
             event["subcategory"] = self._detect_subcategory(text, existing)
             return event
 
