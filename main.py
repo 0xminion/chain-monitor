@@ -15,6 +15,7 @@ from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
 from collectors.tradingview_collector import TradingViewCollector
 from collectors.events_collector import EventsCollector
+from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
@@ -43,6 +44,7 @@ def run_collectors() -> list[dict]:
         RiskAlertCollector(),
         TradingViewCollector(),
         EventsCollector(),
+        HackathonOutcomesCollector(),
     ]
 
     for collector in collectors:

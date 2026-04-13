@@ -103,6 +103,34 @@ SUBCATEGORY_MAP = {
 }
 
 
+# Price/trading noise to filter out of FINANCIAL category
+PRICE_NOISE_KEYWORDS = [
+    # Price predictions and analysis
+    "price prediction", "price forecast", "price target", "price analysis",
+    "technical analysis", "chart pattern", "support level", "resistance level",
+    "bull case", "bear case", "bullish", "bearish", "rally", "selloff",
+    "bottom", "top signal", "breakout", "consolidation", "pullback",
+    "correction", "dip", "surge", "plunge", "soars", "tumbles",
+    "slides", "falls", "rises", "drops", "jumps", "gains", "loses",
+    # Market commentary
+    "what the", "here's what", "what you should", "what to",
+    "should you buy", "should you sell", "is it time to",
+    "analysts say", "traders bet", "market sentiment",
+    "funding rate", "open interest", "long position", "short position",
+    "liquidation", "leverage", "margin call",
+    # Speculative content
+    "could hit", "could reach", "might", "set to", "poised to",
+    "what's next for", "where", "headed", "outlook",
+    "relief rally", "selling pressure", "buying pressure",
+    "whale transaction", "whale moves", "whale transfers",
+    # Price defense/milestone rhetoric
+    "can .* defend", "can .* survive", "can .* hold",
+    "defend $", "survive $", "hold $", "above $", "below $",
+    "support test", "resistance test", "price falls", "price slides",
+    "price drops", "price jumps", "price surges",
+]
+
+
 class EventCategorizer:
     """Classifies raw events into categories and subcategories."""
 
@@ -123,9 +151,19 @@ class EventCategorizer:
 
         text = " ".join(str(p) for p in text_parts if p).lower()
 
+        # Filter out price/trading noise from FINANCIAL
+        existing = event.get("category", "")
+        if existing == "FINANCIAL" or existing == "NEWS":
+            for noise_kw in PRICE_NOISE_KEYWORDS:
+                if noise_kw in text:
+                    # Mark as filtered — digest can skip these
+                    event["_filtered_price_noise"] = True
+                    event["category"] = "PRICE_NOISE"
+                    event["subcategory"] = "price_commentary"
+                    return event
+
         # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
         # EXCEPT for generic categories — re-categorize these into specific ones
-        existing = event.get("category", "")
         GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
         if existing and existing not in GENERIC_CATEGORIES:
             event["subcategory"] = self._detect_subcategory(text, existing)
