@@ -1,100 +1,163 @@
-"""Risk alert collector — hacks, exploits from DeFiLlama."""
+"""Risk alert collector — hacks, exploits from free sources."""
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from collectors.base import BaseCollector
 from config.loader import get_chains
 
 logger = logging.getLogger(__name__)
 
+# Chain mapping for hack reports
+CHAIN_KEYWORDS = {
+    "ethereum": ["ethereum", "eth", "ether"],
+    "bitcoin": ["bitcoin", "btc"],
+    "solana": ["solana", "sol"],
+    "base": ["base"],
+    "bsc": ["bsc", "bnb", "binance smart chain"],
+    "polygon": ["polygon", "matic"],
+    "arbitrum": ["arbitrum", "arb"],
+    "optimism": ["optimism", "op mainnet"],
+    "avalanche": ["avalanche", "avax"],
+    "sei": ["sei"],
+    "sui": ["sui"],
+    "aptos": ["aptos"],
+    "near": ["near"],
+    "ton": ["ton", "toncoin"],
+    "hyperliquid": ["hyperliquid"],
+}
+
 
 class RiskAlertCollector(BaseCollector):
-    """Monitors DeFiLlama hacks endpoint for recent security incidents."""
+    """Monitors free sources for hack/exploit signals.
+
+    Sources:
+    - DeFiLlama protocols endpoint (detects sudden TVL drops)
+    - RSS feeds from security-focused blogs
+    """
 
     CATEGORY = "RISK_ALERT"
 
     def __init__(self, max_retries: int = 3, backoff_base: int = 2):
         super().__init__(name="RiskAlert", max_retries=max_retries, backoff_base=backoff_base)
-        self.hacks_endpoint = "https://api.llama.fi/hacks"
         self._chains_cfg = get_chains()
-        # Build slug -> chain_name lookup
-        self._slug_to_chain = {}
-        for name, cfg in self._chains_cfg.items():
-            slug = cfg.get("defillama_slug")
-            if slug:
-                self._slug_to_chain[slug.lower()] = name
 
     def _make_signal(self, chain: str, description: str, reliability: float, evidence: dict) -> dict:
         return {
             "chain": chain,
             "category": self.CATEGORY,
             "description": description,
-            "source": "DefiLlama",
+            "source": evidence.get("source", "RiskAlert"),
             "reliability": min(max(reliability, 0.0), 1.0),
             "evidence": evidence,
         }
 
-    def collect(self) -> list[dict]:
-        """Collect recent hack/exploit signals."""
+    def _match_chain(self, text: str) -> Optional[str]:
+        text_lower = text.lower()
+        for chain, keywords in CHAIN_KEYWORDS.items():
+            if any(kw in text_lower for kw in keywords):
+                return chain
+        return None
+
+    def _detect_tvl_crashes(self) -> list[dict]:
+        """Detect protocols with sudden TVL drops (potential hacks)."""
         signals = []
-        data = self.fetch_with_retry(self.hacks_endpoint)
+
+        # Fetch all protocols
+        data = self.fetch_with_retry("https://api.llama.fi/protocols")
         if not data or not isinstance(data, list):
             return signals
 
         now = datetime.now(timezone.utc)
+        for p in data:
+            change_1d = p.get("change_1d")
+            change_7d = p.get("change_7d")
+            tvl = p.get("tvl", 0)
+            name = p.get("name", "")
+            chains = p.get("chains", [])
+
+            if not tvl or tvl < 1_000_000:  # skip small protocols (<$1M)
+                continue
+
+            # Detect >50% drop in 24h — likely hack/exploit
+            if change_1d is not None and change_1d < -50:
+                amount_lost = tvl * abs(change_1d) / 100
+                chain = chains[0].lower() if chains else "unknown"
+
+                if amount_lost >= 1_000_000:  # $1M+ loss
+                    if amount_lost >= 1e6:
+                        amount_str = f"${amount_lost/1e6:.1f}M"
+                    else:
+                        amount_str = f"${amount_lost/1e3:.0f}K"
+
+                    signals.append(self._make_signal(
+                        chain=chain,
+                        description=f"{name}: TVL dropped {abs(change_1d):.0f}% in 24h ({amount_str} at risk)",
+                        reliability=0.7,  # heuristic, not confirmed hack
+                        evidence={
+                            "source": "DefiLlama",
+                            "metric": "tvl_crash",
+                            "protocol": name,
+                            "tvl": tvl,
+                            "change_1d": change_1d,
+                            "amount_at_risk": amount_lost,
+                            "chains": chains,
+                        },
+                    ))
+
+        return signals[:5]  # max 5 per run
+
+    def _collect_security_rss(self) -> list[dict]:
+        """Collect from security-focused RSS feeds."""
+        import feedparser
+        signals = []
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=7)
 
-        for hack in data:
-            # Filter to recent hacks
-            date_str = hack.get("date")
-            if not date_str:
-                continue
+        # Security-focused feeds
+        feeds = [
+            ("https://medium.com/feed/@immunefi", "Immunefi"),
+            ("https://blog.soliditylang.org/feed.xml", "Solidity Blog"),
+        ]
+
+        for feed_url, source_name in feeds:
             try:
-                hack_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                continue
-            if hack_date < cutoff:
-                continue
+                raw = self.fetch_text_with_retry(feed_url)
+                if not raw:
+                    continue
+                feed = feedparser.parse(raw)
+                for entry in feed.entries[:5]:
+                    title = getattr(entry, "title", "")
+                    summary = getattr(entry, "summary", "")
+                    link = getattr(entry, "link", "")
 
-            name = hack.get("name", "Unknown")
-            chain_raw = hack.get("chain", "")
-            amount = hack.get("amount", 0)
-            classification = hack.get("classification", "hack")
-            technique = hack.get("technique", "")
+                    # Check if security-related
+                    combined = f"{title} {summary}".lower()
+                    if not any(kw in combined for kw in ["vulnerability", "exploit", "hack", "security", "audit", "bug bounty", "cve"]):
+                        continue
 
-            # Map chain
-            chain = self._slug_to_chain.get(chain_raw.lower(), chain_raw.lower())
-            if not chain:
-                chain = "unknown"
+                    chain = self._match_chain(combined)
+                    signals.append(self._make_signal(
+                        chain=chain or "unknown",
+                        description=f"[{source_name}] {title[:80]}",
+                        reliability=0.8,
+                        evidence={
+                            "source": source_name,
+                            "metric": "security_post",
+                            "title": title,
+                            "link": link,
+                        },
+                    ))
+            except Exception as e:
+                logger.warning(f"[RiskAlert] {source_name} feed failed: {e}")
 
-            # Format amount
-            if amount >= 1e6:
-                amount_str = f"${amount/1e6:.1f}M"
-            elif amount >= 1e3:
-                amount_str = f"${amount/1e3:.0f}K"
-            else:
-                amount_str = f"${amount:.0f}"
+        return signals[:3]
 
-            desc = f"{name}: {classification} — {amount_str} lost"
-            if technique:
-                desc += f" ({technique[:50]})"
-
-            signals.append(self._make_signal(
-                chain=chain,
-                description=desc,
-                reliability=0.9,
-                evidence={
-                    "metric": "hack",
-                    "name": name,
-                    "chain": chain_raw,
-                    "amount": amount,
-                    "classification": classification,
-                    "technique": technique,
-                    "date": date_str,
-                    "source_url": hack.get("link", ""),
-                },
-            ))
-
+    def collect(self) -> list[dict]:
+        signals = []
+        signals.extend(self._detect_tvl_crashes())
+        signals.extend(self._collect_security_rss())
         logger.info(f"[RiskAlert] Collected {len(signals)} signals")
         return signals

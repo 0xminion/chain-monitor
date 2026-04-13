@@ -11,7 +11,8 @@ from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.github_collector import GitHubCollector
 from collectors.rss_collector import RSSCollector
-# RiskAlertCollector disabled — DeFiLlama /hacks endpoint is paid (402)
+from collectors.regulatory_collector import RegulatoryCollector
+from collectors.risk_alert_collector import RiskAlertCollector
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
@@ -36,6 +37,8 @@ def run_collectors() -> list[dict]:
         CoinGeckoCollector(),
         GitHubCollector(),
         RSSCollector(),
+        RegulatoryCollector(),
+        RiskAlertCollector(),
     ]
 
     for collector in collectors:
