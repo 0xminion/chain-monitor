@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from collectors.base import BaseCollector
+from collectors.release_context import extract_eip_context, extract_release_context
 from config.loader import get_chains, get_sources, get_env
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,7 @@ class GitHubCollector(BaseCollector):
                 latest_tag = data[0]["name"]
                 prev_tag = data[1]["name"]
                 if latest_tag != prev_tag:
+                    release_ctx = extract_release_context(latest_tag, prev_tag, repo)
                     signals.append(self._make_signal(
                         chain=chain,
                         description=f"New tag: {latest_tag} (was {prev_tag}) — {repo}",
@@ -128,6 +130,7 @@ class GitHubCollector(BaseCollector):
                             "repo": repo,
                             "tag": latest_tag,
                             "prev_tag": prev_tag,
+                            "release_context": release_ctx,
                         },
                     ))
 
@@ -182,6 +185,11 @@ class GitHubCollector(BaseCollector):
             if not is_signal:
                 continue
 
+            # Fetch EIP context for upgrade PRs
+            eip_context = ""
+            if signal_type in ("upgrade", "breaking"):
+                eip_context = extract_eip_context(title, repo)
+
             signals.append(self._make_signal(
                 chain=chain,
                 description=f"{title[:80]} ({repo})",
@@ -194,6 +202,7 @@ class GitHubCollector(BaseCollector):
                     "signal_type": signal_type,
                     "labels": labels,
                     "merged_at": pr["merged_at"][:10],
+                    "eip_context": eip_context,
                 },
             ))
 

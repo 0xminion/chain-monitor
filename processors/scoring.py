@@ -201,15 +201,23 @@ class SignalScorer:
             if metric in ("new_release", "new_tag"):
                 tag = evidence.get("tag", "")
                 name = evidence.get("name", tag)
-                return f"{chain.capitalize()}: {name or tag} released ({repo})."
+                release_ctx = evidence.get("release_context", "")
+                result = f"{chain.capitalize()}: {name or tag} released ({repo})."
+                if release_ctx:
+                    result += f"\n  What: {release_ctx}"
+                notes = baseline.get("trader_context_notes", "")
+                if notes:
+                    result += f"\n  Context: {notes}"
+                return result
 
             if metric == "high_signal_pr":
                 pr_title = evidence.get("pr_title", "")
                 signal_type = evidence.get("signal_type", "feature")
-                merged_at = evidence.get("merged_at", "")
                 type_label = {"upgrade": "Upgrade", "security": "Security", "breaking": "Breaking change", "feature": "Feature"}.get(signal_type, signal_type)
-                result = f"{chain.capitalize()}: {type_label.lower()}: {pr_title} ({repo})."
-
+                eip_ctx = evidence.get("eip_context", "")
+                result = f"{chain.capitalize()}: {type_label}: {pr_title} ({repo})."
+                if eip_ctx:
+                    result += f"\n  What: {eip_ctx}"
                 notes = baseline.get("trader_context_notes", "")
                 if notes:
                     result += f"\n  Context: {notes}"
