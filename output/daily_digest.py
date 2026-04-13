@@ -104,18 +104,30 @@ class DailyDigestFormatter:
         """Format source health summary."""
         lines = ["⚠️ Source Health"]
 
-        healthy = sum(1 for h in health.values() if h.get("status") == "healthy")
-        degraded = sum(1 for h in health.values() if h.get("status") == "degraded")
-        down = sum(1 for h in health.values() if h.get("status") == "down")
+        # Normalize statuses: "ok" → "healthy", "error"/"down" → "down"
+        def _norm(status: str) -> str:
+            s = status.lower().strip()
+            if s in ("healthy", "ok", "up"):
+                return "healthy"
+            if s in ("degraded", "slow", "partial"):
+                return "degraded"
+            return "down"
+
+        healthy = sum(1 for h in health.values() if _norm(h.get("status", "")) == "healthy")
+        degraded = sum(1 for h in health.values() if _norm(h.get("status", "")) == "degraded")
+        down = sum(1 for h in health.values() if _norm(h.get("status", "")) == "down")
         total = len(health)
 
         lines.append(f"  Healthy: {healthy}/{total} | Degraded: {degraded} | Down: {down}")
 
-        issues = [h for h in health.values() if h.get("status") != "healthy"]
+        issues = [
+            (name, h) for name, h in health.items()
+            if _norm(h.get("status", "")) != "healthy"
+        ]
         if issues:
             details = []
-            for h in issues[:3]:
-                details.append(f"{h['source_name']} {h['status']} ({h.get('failures_24h', 0)} failures)")
+            for name, h in issues[:3]:
+                details.append(f"{name} {h.get('status', 'unknown')} ({h.get('failures_24h', 0)} failures)")
             lines.append(f"  [{', '.join(details)}]")
 
         lines.append("")

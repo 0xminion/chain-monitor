@@ -57,7 +57,7 @@ hyperliquid:
   coingecko_id: "hyperliquid"
   defillama_slug: "Hyperliquid L1"
   github_repos:
-    - "hyperliquid-dex/hyperliquid-rust-sdk"
+    - "hyperliquid-dex/hyperliquid-core"
   blog_rss: null  # scrape announcements page
   scrape_url: "https://app.hyperliquid.xyz/announcements"
   youtube_channel: "@HyperliquidX"
@@ -83,8 +83,7 @@ xlayer:
   tier: 2
   coingecko_id: null  # uses OKB
   defillama_slug: "xlayer"
-  github_repos:
-    - "x-layer/x-layer"
+  github_repos: []  # no public repo — monitor via OKX announcements scrape
   blog_rss: null  # scrape OKX announcements
   scrape_url: "https://www.okx.com/help/section/announcements-latest-announcements"
   scrape_filter: "x layer"  # only keep items matching this keyword
@@ -205,8 +204,7 @@ plasma:
   tier: 3
   coingecko_id: "plasma"
   defillama_slug: "plasma"
-  github_repos:
-    - "PlasmaLaboratories/reth"
+  github_repos: []  # no public repo found — monitor via blog scrape
   blog_rss: "https://www.plasma.to/insights"
   youtube_channel: null
   status_page: null
@@ -231,7 +229,6 @@ polygon:
   github_repos:
     - "maticnetwork/bor"
     - "0xPolygonHermez/zkevm-node"
-    - "0xPolygon/pol"
   blog_rss: "https://polygon.technology/blog/feed/"
   youtube_channel: "@0xPolygon"
   status_page: "https://status.polygon.technology"
@@ -274,8 +271,7 @@ monad:
   tier: 2
   coingecko_id: "monad"
   defillama_slug: "monad"
-  github_repos:
-    - "monadxyz"
+  github_repos: []  # no public repo yet — monitor via blog scrape
   blog_rss: "https://www.monad.xyz/blog/rss.xml"
   youtube_channel: "@monad_xyz"
   status_page: null
@@ -333,8 +329,7 @@ virtuals:
   tier: 3
   coingecko_id: "virtual-protocol"
   defillama_slug: null  # protocol on Base
-  github_repos:
-    - "virtuals-protocol"
+  github_repos: []  # no public repo — monitor via blog scrape
   blog_rss: "https://virtuals.substack.com/feed"
   youtube_channel: null
   status_page: null
