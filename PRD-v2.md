@@ -11,7 +11,7 @@
 
 | Item | Why | Cost | How to Get |
 |------|-----|------|------------|
-| **CoinGecko API key** | Market data (price, mcap, volume) | Free (Demo: 30 req/min, 10K/mo) | REDACTED_COINGECKO_KEY ✓ |
+| **CoinGecko API key** | Market data (price, mcap, volume) | Free (Demo: 30 req/min, 10K/mo) | coingecko.com/en/api/pricing → get demo key |
 | **CoinGecko CLI** | Alternative for one-off queries | Free (installed + logged in) | Use `cg` commands directly |
 | **CryptoRank API key** | Events calendar, project data | Free (Core tier) | cryptorank.io/public-api/pricing → Start Free |
 | **YouTube Data API key** | Channel monitoring for visibility events | Free (10K units/day) | console.cloud.google.com → enable YouTube Data API v3 → create key |
