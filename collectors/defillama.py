@@ -28,6 +28,7 @@ class DefiLlamaCollector(BaseCollector):
         self.chains_endpoint = dl_cfg.get("chains_endpoint", "https://api.llama.fi/chains")
         self.tvl_endpoint = dl_cfg.get("tvl_endpoint", "https://api.llama.fi/v2/historicalChainTvl")
         self.fees_endpoint = dl_cfg.get("fees_endpoint", "https://api.llama.fi/overview/fees")
+        self.protocols_endpoint = dl_cfg.get("protocols_endpoint", "https://api.llama.fi/protocols")
 
         self._chains_cfg = get_chains()
         self._baselines_cfg = get_baselines()
@@ -38,6 +39,70 @@ class DefiLlamaCollector(BaseCollector):
             slug = cfg.get("defillama_slug")
             if slug:
                 self._slug_to_chain[slug.lower()] = chain_name
+
+        # Cache for all protocols (fetched once per run)
+        self._all_protocols: Optional[list] = None
+
+    def _get_all_protocols(self) -> list:
+        """Fetch all protocols once per run and cache."""
+        if self._all_protocols is None:
+            data = self.fetch_with_retry(self.protocols_endpoint)
+            self._all_protocols = data if data and isinstance(data, list) else []
+        return self._all_protocols
+
+    def _get_top_tvl_drivers(self, chain_name: str, limit: int = 3) -> list[dict]:
+        """Get top protocols driving TVL change on a chain (by absolute 7d delta).
+
+        Uses protocol-level change_7d as proxy since chainTvls doesn't have per-chain deltas.
+        Filters to protocols that are actually on this chain.
+        """
+        all_protocols = self._get_all_protocols()
+        if not all_protocols:
+            return []
+
+        # Normalize chain name for matching (DefiLlama uses capitalized names)
+        chain_lower = chain_name.lower()
+
+        drivers = []
+        for p in all_protocols:
+            chains = p.get("chains", [])
+            # Case-insensitive chain matching
+            if not any(c.lower() == chain_lower for c in chains):
+                continue
+
+            # Get chain-specific TVL from chainTvls
+            chain_tvls = p.get("chainTvls", {})
+            chain_tvl = None
+            for key, val in chain_tvls.items():
+                # Keys can be "Optimism", "Optimism-borrowed", etc.
+                base_key = key.split("-")[0]
+                if base_key.lower() == chain_lower and "borrowed" not in key.lower():
+                    if isinstance(val, list):
+                        chain_tvl = val[-1].get("tvl", 0) if val else 0
+                    else:
+                        chain_tvl = val
+                    break
+
+            if not chain_tvl or chain_tvl == 0:
+                continue
+
+            # Use protocol-level change_7d as proxy for chain-specific change
+            change_7d = p.get("change_7d")
+            if change_7d is None:
+                continue
+
+            delta = chain_tvl * change_7d / 100
+            drivers.append({
+                "name": p["name"],
+                "category": p.get("category", ""),
+                "tvl": chain_tvl,
+                "change_7d": change_7d,
+                "delta": delta,
+            })
+
+        # Sort by chain TVL (largest protocols first) — change_7d is global, not chain-specific
+        drivers.sort(key=lambda x: x["tvl"], reverse=True)
+        return drivers[:limit]
 
     def _make_signal(
         self,
@@ -90,6 +155,9 @@ class DefiLlamaCollector(BaseCollector):
         spike_threshold = baseline.get("tvl_change_spike", 30)
         notable_threshold = baseline.get("tvl_change_notable", 15)
 
+        # Get protocol-level attribution for the TVL change
+        top_drivers = self._get_top_tvl_drivers(chain, limit=3)
+
         if abs(pct_change) >= spike_threshold:
             direction = "surged" if pct_change > 0 else "dropped"
             signals.append(self._make_signal(
@@ -102,6 +170,7 @@ class DefiLlamaCollector(BaseCollector):
                     "tvl_7d_ago": old_tvl,
                     "pct_change": round(pct_change, 2),
                     "threshold": spike_threshold,
+                    "top_drivers": top_drivers,
                 },
             ))
         elif abs(pct_change) >= notable_threshold:
@@ -116,6 +185,7 @@ class DefiLlamaCollector(BaseCollector):
                     "tvl_7d_ago": old_tvl,
                     "pct_change": round(pct_change, 2),
                     "threshold": notable_threshold,
+                    "top_drivers": top_drivers,
                 },
             ))
 

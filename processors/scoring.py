@@ -13,27 +13,10 @@ logger = logging.getLogger(__name__)
 TRADER_TEMPLATES = {
     "TECH_EVENT": "{chain} dev activity is accelerating. {detail}. Signal: engineering investment before a major release.",
     "PARTNERSHIP": "{chain} + {detail}. Ecosystem expanding through integrations. Watch for follow-on protocol deployments.",
-    "FINANCIAL": "{chain} TVL moved {pct_change:+.1f}% in 7 days (${current_tvl:.1f}B). Likely driver: {likely_driver}.",
+    "FINANCIAL": "{chain} TVL moved {pct_change:+.1f}% in 7 days (${current_tvl:.1f}B).",
     "RISK_ALERT": "{chain} {detail} — incident detected. Check exposure. Monitor withdrawals and bridge risk.",
     "REGULATORY": "{detail}. Direct impact: token listing risk, exchange access. Timeline: immediate to 90 days.",
     "VISIBILITY": "{chain} {detail}. Chains with multiple visibility events often see narrative forming.",
-}
-
-# Heuristic "likely drivers" for TVL movements
-TVL_DRIVERS = {
-    "positive": [
-        "new protocol launches or incentive programs",
-        "institutional capital rotation into ecosystem",
-        "major partnership or integration announcement",
-        "rising memecoin/speculation activity",
-        "improved yields vs competing chains",
-    ],
-    "negative": [
-        "capital rotation to competing L1s/L2s",
-        "protocol exploit or security concern",
-        "declining yields or incentive program expiry",
-        "broader market risk-off rotation",
-    ],
 }
 
 # Per-chain trader context overrides
@@ -217,38 +200,43 @@ class SignalScorer:
             return ""
 
         if category == "FINANCIAL" and evidence and isinstance(evidence, dict):
-            # Use actual evidence data for the "Why?" explanation
             pct_change = evidence.get("pct_change", 0)
             current_tvl = evidence.get("current_tvl", 0)
             if current_tvl:
-                current_tvl = current_tvl / 1e9  # convert to billions
+                current_tvl_b = current_tvl / 1e9
 
-            # Pick likely driver based on direction and magnitude
-            if pct_change > 0:
-                drivers = TVL_DRIVERS["positive"]
-                # Higher % change = more likely to be speculative
-                if abs(pct_change) > 80:
-                    likely_driver = drivers[3]  # memecoin/speculation
-                elif abs(pct_change) > 40:
-                    likely_driver = drivers[1]  # institutional capital
-                else:
-                    likely_driver = drivers[0]  # new protocols/incentives
-            else:
-                drivers = TVL_DRIVERS["negative"]
-                if abs(pct_change) > 30:
-                    likely_driver = drivers[0]  # capital rotation
-                else:
-                    likely_driver = drivers[2]  # declining yields
-
-            notes = baseline.get("trader_context_notes", "")
+            # Build base context from template
             result = template.format(
                 chain=chain.capitalize(),
                 detail=description[:80],
                 pct_change=pct_change,
-                current_tvl=current_tvl,
-                likely_driver=likely_driver,
+                current_tvl=current_tvl_b,
             )
-            return f"{result} {notes}".strip()
+
+            # Add evidence-backed protocol attribution
+            top_drivers = evidence.get("top_drivers", [])
+            if top_drivers:
+                driver_lines = []
+                for d in top_drivers[:3]:
+                    name = d["name"]
+                    tvl = d["tvl"]
+                    change_7d = d["change_7d"]
+                    cat = d.get("category", "")
+                    if tvl >= 1e9:
+                        tvl_str = f"${tvl/1e9:.1f}B"
+                    elif tvl >= 1e6:
+                        tvl_str = f"${tvl/1e6:.0f}M"
+                    else:
+                        tvl_str = f"${tvl/1e3:.0f}K"
+                    driver_lines.append(f"{name} ({cat}) {tvl_str} {change_7d:+.1f}%")
+                result += "\n  On-chain: " + "; ".join(driver_lines)
+
+            # Append chain-specific notes
+            notes = baseline.get("trader_context_notes", "")
+            if notes:
+                result += f"\n  Context: {notes}"
+
+            return result
 
         # Non-financial templates
         baseline_val = baseline.get("tvl_absolute_milestone", "N/A")
