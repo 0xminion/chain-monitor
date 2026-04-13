@@ -1,0 +1,405 @@
+# Chain Monitor — Chain Configuration
+# Add/remove chains here without touching code.
+# Each chain defines its data sources. Set to null or remove if unavailable.
+
+# ============================================================
+# CEX AFFILIATED / TRADING
+# ============================================================
+
+base:
+  category: "cex_affiliated"
+  tier: 1
+  coingecko_id: null  # no native token
+  defillama_slug: "base"
+  github_repos:
+    - "base-org/node"
+    - "ethereum-optimism/optimism"  # shared OP Stack code
+  blog_rss: "https://base.mirror.xyz/feed/atom"
+  youtube_channel: "@Base"
+  status_page: "https://status.base.org"
+  governance_forum:
+    url: "https://gov.optimism.io"
+    type: "discourse"
+    filter_tags: ["base"]
+
+bsc:
+  category: "cex_affiliated"
+  tier: 1
+  coingecko_id: "binancecoin"
+  defillama_slug: "bsc"
+  github_repos:
+    - "bnb-chain/bsc"
+    - "bnb-chain/BEPs"
+  blog_rss: "https://www.bnbchain.org/en/blog/rss.xml"
+  youtube_channel: "@BNBChain"
+  status_page: null
+  governance_forum:
+    url: "https://github.com/bnb-chain/BEPs"
+    type: "github"
+
+mantle:
+  category: "cex_affiliated"
+  tier: 2
+  coingecko_id: "mantle"
+  defillama_slug: "mantle"
+  github_repos:
+    - "mantlenetworkio/mantle"
+  blog_rss: "https://www.mantle.xyz/blog/rss.xml"
+  youtube_channel: "@MantleOffl"
+  status_page: null
+  governance_forum:
+    url: "https://forum.mantle.xyz"
+    type: "discourse"
+
+hyperliquid:
+  category: "cex_affiliated"
+  tier: 1
+  coingecko_id: "hyperliquid"
+  defillama_slug: "hyperliquid"
+  github_repos:
+    - "hyperliquid-dex/hyperliquid-rust-sdk"
+  blog_rss: null  # scrape announcements page
+  scrape_url: "https://app.hyperliquid.xyz/announcements"
+  youtube_channel: "@HyperliquidX"
+  status_page: "https://hyperliquid.statuspage.io"
+  governance_forum:
+    url: "https://hyperliquid.gitbook.io"
+    type: "docs"
+
+ink:
+  category: "cex_affiliated"
+  tier: 3
+  coingecko_id: null  # no native token yet
+  defillama_slug: "ink"
+  github_repos:
+    - "inkonchain/node"
+  blog_rss: "https://inkonchain.com/blog/rss.xml"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # enterprise-controlled
+
+xlayer:
+  category: "cex_affiliated"
+  tier: 2
+  coingecko_id: null  # uses OKB
+  defillama_slug: "xlayer"
+  github_repos:
+    - "x-layer/x-layer"
+  blog_rss: null  # scrape OKX announcements
+  scrape_url: "https://www.okx.com/help/section/announcements-latest-announcements"
+  scrape_filter: "x layer"  # only keep items matching this keyword
+  youtube_channel: null  # use OKX as proxy
+  status_page: null
+  governance_forum: null  # enterprise-controlled
+
+morph:
+  category: "cex_affiliated"
+  tier: 3
+  coingecko_id: "morph"
+  defillama_slug: "morph"
+  github_repos:
+    - "morph-l2/morph"
+  blog_rss: "https://www.morphl2.io/blog/rss.xml"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # too early
+
+# ============================================================
+# MAJORS
+# ============================================================
+
+ethereum:
+  category: "majors"
+  tier: 1
+  coingecko_id: "ethereum"
+  defillama_slug: "ethereum"
+  github_repos:
+    - "ethereum/go-ethereum"
+    - "ethereum/consensus-specs"
+    - "ethereum/execution-specs"
+  blog_rss: "https://blog.ethereum.org/feed.xml"
+  youtube_channel: "@EthereumFoundation"
+  status_page: "https://ethstats.net"
+  governance_forum:
+    url: "https://ethereum-magicians.org"
+    type: "discourse"
+  governance_docs: "https://eips.ethereum.org"
+
+bitcoin:
+  category: "majors"
+  tier: 1
+  coingecko_id: "bitcoin"
+  defillama_slug: null  # no DeFi TVL
+  github_repos:
+    - "bitcoin/bitcoin"
+  blog_rss: null  # no central blog
+  youtube_channel: null
+  status_page: null
+  governance_forum:
+    url: "https://github.com/bitcoin/bips"
+    type: "github"
+
+solana:
+  category: "majors"
+  tier: 1
+  coingecko_id: "solana"
+  defillama_slug: "solana"
+  github_repos:
+    - "solana-labs/solana"
+    - "anza-xyz/agave"
+  blog_rss: "https://solana.com/news/rss.xml"
+  youtube_channel: "@Solana"
+  status_page: "https://status.solana.com"
+  governance_forum:
+    url: "https://github.com/solana-foundation/solana-improvement-documents"
+    type: "github"
+
+arbitrum:
+  category: "majors"
+  tier: 1
+  coingecko_id: "arbitrum"
+  defillama_slug: "arbitrum"
+  github_repos:
+    - "OffchainLabs/nitro"
+    - "OffchainLabs/arbitrum-sdk"
+  blog_rss: "https://medium.com/feed/@arbitrum"
+  youtube_channel: "@Arbitrum"
+  status_page: "https://status.arbitrum.io"
+  governance_forum:
+    url: "https://forum.arbitrum.foundation"
+    type: "discourse"
+
+starknet:
+  category: "majors"
+  tier: 1
+  coingecko_id: "starknet"
+  defillama_slug: "starknet"
+  github_repos:
+    - "starkware-libs/starknet"
+    - "starkware-libs/cairo"
+  blog_rss: "https://www.starknet.io/en/blog/rss.xml"
+  youtube_channel: "@StarknetFndn"
+  status_page: "https://status.starknet.io"
+  governance_forum:
+    url: "https://community.starknet.io"
+    type: "discourse"
+
+# ============================================================
+# PAYMENT
+# ============================================================
+
+tempo:
+  category: "payment"
+  tier: 3
+  coingecko_id: null  # no native token
+  defillama_slug: null  # may not be indexed
+  github_repos:
+    - "tempoxyz"
+  blog_rss: "https://tempo.xyz/blog/"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # enterprise-controlled
+
+plasma:
+  category: "payment"
+  tier: 3
+  coingecko_id: "plasma"
+  defillama_slug: "plasma"
+  github_repos:
+    - "PlasmaLaboratories"
+  blog_rss: "https://www.plasma.to/insights"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # enterprise-controlled
+
+stablechain:
+  category: "payment"
+  tier: 3
+  coingecko_id: null
+  defillama_slug: null
+  github_repos:
+    - "stable-xyz"
+  blog_rss: "https://blog.stable.xyz"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # enterprise-controlled
+
+polygon:
+  category: "payment"
+  tier: 2
+  coingecko_id: "matic-network"
+  defillama_slug: "polygon"
+  github_repos:
+    - "maticnetwork/bor"
+    - "0xPolygonHermez/zkevm-node"
+    - "0xPolygon/pol"
+  blog_rss: "https://polygon.technology/blog/feed/"
+  youtube_channel: "@0xPolygon"
+  status_page: "https://status.polygon.technology"
+  governance_forum:
+    url: "https://forum.polygon.technology"
+    type: "discourse"
+
+gnosis:
+  category: "payment"
+  tier: 3
+  coingecko_id: "gnosis"
+  defillama_slug: "xdai"
+  github_repos:
+    - "gnosischain/specs"
+  blog_rss: "https://www.gnosis.io/blog/rss.xml"
+  youtube_channel: "@GnosisChain"
+  status_page: "https://status.gnosischain.com"
+  governance_forum:
+    url: "https://forum.gnosis.io"
+    type: "discourse"
+
+# ============================================================
+# HIGH TPS CHAINS
+# ============================================================
+
+megaeth:
+  category: "high_tps"
+  tier: 3
+  coingecko_id: null  # pre-TGE
+  defillama_slug: null  # pre-mainnet
+  github_repos:
+    - "megaeth-labs"
+  blog_rss: "https://megaeth.com/blog/rss.xml"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # pre-launch
+
+monad:
+  category: "high_tps"
+  tier: 2
+  coingecko_id: "monad"
+  defillama_slug: "monad"
+  github_repos:
+    - "monadxyz"
+  blog_rss: "https://www.monad.xyz/blog/rss.xml"
+  youtube_channel: "@monad_xyz"
+  status_page: null
+  governance_forum:
+    url: "https://forum.monad.xyz"
+    type: "discourse"
+
+sei:
+  category: "high_tps"
+  tier: 2
+  coingecko_id: "sei-network"
+  defillama_slug: "sei"
+  github_repos:
+    - "sei-protocol/sei-chain"
+  blog_rss: "https://blog.sei.io/rss.xml"
+  youtube_channel: "@SeiNetwork"
+  status_page: "https://status.sei.io"
+  governance_forum: null  # on-chain Cosmos SDK only
+  cosmos_rpc: "https://rpc.sei.io"
+
+sui:
+  category: "high_tps"
+  tier: 2
+  coingecko_id: "sui"
+  defillama_slug: "sui"
+  github_repos:
+    - "MystenLabs/sui"
+  blog_rss: "https://blog.sui.io/feed/"
+  youtube_channel: "@SuiNetwork"
+  status_page: "https://status.sui.io"
+  governance_forum:
+    url: "https://forums.sui.io/c/sips/27"
+    type: "discourse"
+
+aptos:
+  category: "high_tps"
+  tier: 2
+  coingecko_id: "aptos"
+  defillama_slug: "aptos"
+  github_repos:
+    - "aptos-labs/aptos-core"
+  blog_rss: "https://aptosfoundation.org/news/rss.xml"
+  youtube_channel: "@AptosLabs"
+  status_page: "https://status.aptoslabs.com"
+  governance_forum:
+    url: "https://github.com/aptos-foundation/AIPs"
+    type: "github"
+
+# ============================================================
+# AI / INFRA
+# ============================================================
+
+virtuals:
+  category: "ai_infra"
+  tier: 3
+  coingecko_id: "virtuals-protocol"
+  defillama_slug: null  # protocol on Base
+  github_repos:
+    - "virtuals-protocol"
+  blog_rss: "https://virtuals.substack.com/feed"
+  youtube_channel: null
+  status_page: null
+  governance_forum: null  # token-gated, skip
+
+bittensor:
+  category: "ai_infra"
+  tier: 3
+  coingecko_id: "bittensor"
+  defillama_slug: null  # subnet-based
+  github_repos:
+    - "opentensor/bittensor"
+    - "opentensor/subtensor"
+  blog_rss: "https://bittensor.com/blog/rss.xml"
+  youtube_channel: "@bittensor"
+  status_page: "https://status.bittensor.com"
+  governance_forum:
+    url: "https://github.com/opentensor/bits"
+    type: "github"
+
+# ============================================================
+# OTHERS
+# ============================================================
+
+ton:
+  category: "others"
+  tier: 3
+  coingecko_id: "the-open-network"
+  defillama_slug: "ton"
+  github_repos:
+    - "ton-blockchain/ton"
+  blog_rss: "https://ton.org/blog/rss.xml"
+  youtube_channel: "@tonblockchain"
+  status_page: "https://status.ton.org"
+  governance_forum:
+    url: "https://github.com/ton-blockchain/TIPs"
+    type: "github"
+
+optimism:
+  category: "others"
+  tier: 2
+  coingecko_id: "optimism"
+  defillama_slug: "optimism"
+  github_repos:
+    - "ethereum-optimism/optimism"
+    - "ethereum-optimism/specs"
+  blog_rss: "https://optimism.mirror.xyz/feed/atom"
+  youtube_channel: "@OptimismCollective"
+  status_page: "https://status.optimism.io"
+  governance_forum:
+    url: "https://gov.optimism.io"
+    type: "discourse"
+    filter_tags: ["optimism"]  # shared with Base
+
+near:
+  category: "others"
+  tier: 3
+  coingecko_id: "near"
+  defillama_slug: "near"
+  github_repos:
+    - "near/nearcore"
+  blog_rss: "https://near.org/blog/rss.xml"
+  youtube_channel: "@NEARProtocol"
+  status_page: "https://status.near.org"
+  governance_forum:
+    url: "https://gov.near.org"
+    type: "discourse"

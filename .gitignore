@@ -1,0 +1,14 @@
+.env
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+storage/events/*.json
+storage/health/*.json
+storage/narratives/*.json
+.venv/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/

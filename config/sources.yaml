@@ -1,0 +1,77 @@
+# Chain Monitor — Data Source Configuration
+
+# RSS feeds (not chain-specific)
+rss_feeds:
+  news:
+    - name: "CoinDesk"
+      url: "https://www.coindesk.com/arc/outboundfeeds/rss/"
+    - name: "The Block"
+      url: "https://www.theblock.co/rss.xml"
+    - name: "CoinTelegraph"
+      url: "https://cointelegraph.com/rss"
+
+  podcasts:
+    - name: "Bankless"
+      url: "https://feeds.transistor.fm/bankless-podcast"
+    - name: "Unchained"
+      url: "https://unchainedcrypto.com/feed/podcast"
+    - name: "What Bitcoin Did"
+      url: "https://feeds.transistor.fm/what-bitcoin-did"
+    - name: "Lightspeed"
+      url: "https://feeds.transistor.fm/lightspeed"
+    - name: "The Defiant"
+      url: "https://thedefiant.io/feed/podcast"
+
+  regulatory:
+    - name: "CoinCenter"
+      url: "https://www.coincenter.org/feed/"
+    - name: "DeFi Education Fund"
+      url: "https://defieducationfund.org/feed/"
+
+  legal_blogs:
+    - name: "Anderson Kill"
+      url: "https://www.andersonkill.com/rss"
+    - name: "DLx Law"
+      url: "https://dlxlaw.com/feed"
+
+# DefiLlama
+defillama:
+  chains_endpoint: "https://api.llama.fi/chains"
+  tvl_endpoint: "https://api.llama.fi/v2/historicalChainTvl"
+  protocols_endpoint: "https://api.llama.fi/protocols"
+  fees_endpoint: "https://api.llama.fi/overview/fees"
+  stablecoins_endpoint: "https://stablecoins.llama.fi/stablecoins"
+  hacks_endpoint: "https://api.llama.fi/hacks"
+
+# CoinGecko
+coingecko:
+  base_url: "https://api.coingecko.com/api/v3"
+  rate_limit_per_min: 30
+
+# CryptoRank
+cryptorank:
+  base_url: "https://api.cryptorank.io/v1"
+  rate_limit_per_min: 10
+
+# GitHub
+github:
+  api_base: "https://api.github.com"
+  rate_limit_per_hour: 5000
+
+# YouTube
+youtube:
+  api_base: "https://www.googleapis.com/youtube/v3"
+  daily_quota: 10000
+
+# Telegram
+telegram:
+  parse_mode: "HTML"
+  max_message_length: 4096
+  split_on_overflow: true
+
+# Source health
+health:
+  max_retries: 3
+  backoff_base_seconds: 2
+  unhealthy_threshold_failures: 5
+  degraded_threshold_failures: 2

@@ -1,0 +1,128 @@
+# Chain Monitor — Narrative Seed Categories
+# Add/remove narrative themes here. System auto-detects new themes.
+
+narratives:
+  ai_agents:
+    name: "AI/Agents"
+    keywords:
+      - "ai"
+      - "agent"
+      - "autonomous"
+      - "llm"
+      - "inference"
+      - "machine learning"
+      - "neural"
+      - "model"
+      - "training"
+      - "compute"
+    description: "Agent frameworks, AI infra, autonomous agents"
+
+  payments_stablecoins:
+    name: "Payments/Stablecoins"
+    keywords:
+      - "stablecoin"
+      - "payment"
+      - "remittance"
+      - "settlement"
+      - "usdt"
+      - "usdc"
+      - "bridge"
+      - "fiat"
+      - "on-ramp"
+      - "off-ramp"
+    description: "Stablecoin rails, payment chains, remittance"
+
+  defi:
+    name: "DeFi"
+    keywords:
+      - "lending"
+      - "dex"
+      - "yield"
+      - "swap"
+      - "amm"
+      - "liquidity"
+      - "borrowing"
+      - "collateral"
+      - "vault"
+      - "derivatives"
+      - "perps"
+      - "options"
+      - "staking"
+    description: "Lending, DEX, yield, derivatives, liquid staking"
+
+  l2_infrastructure:
+    name: "L2 Infrastructure"
+    keywords:
+      - "rollup"
+      - "sequencer"
+      - "bridge"
+      - "cross-chain"
+      - "layer 2"
+      - "l2"
+      - "optimistic"
+      - "zk"
+      - "zero knowledge"
+      - "data availability"
+    description: "Rollups, sequencers, bridges, cross-chain"
+
+  rwa:
+    name: "RWA"
+    keywords:
+      - "rwa"
+      - "real world"
+      - "tokenized"
+      - "treasury"
+      - "bond"
+      - "commodity"
+      - "real estate"
+      - "institutional"
+    description: "Tokenized assets, treasuries, real-world integration"
+
+  gaming:
+    name: "Gaming"
+    keywords:
+      - "gaming"
+      - "game"
+      - "nft"
+      - "metaverse"
+      - "play-to-earn"
+      - "p2e"
+      - "avatar"
+      - "virtual world"
+    description: "On-chain gaming, NFTs, metaverse"
+
+  privacy:
+    name: "Privacy"
+    keywords:
+      - "privacy"
+      - "zk proof"
+      - "private"
+      - "anonymous"
+      - "mixer"
+      - "shielded"
+      - "confidential"
+    description: "ZK proofs, private transactions"
+
+  security:
+    name: "Security/Audits"
+    keywords:
+      - "audit"
+      - "security"
+      - "bug bounty"
+      - "vulnerability"
+      - "exploit"
+      - "hack"
+      - "formal verification"
+      - "immunefi"
+    description: "Bug bounties, formal verification, audit reports"
+
+# Narrative velocity thresholds
+velocity_thresholds:
+  accelerating: 50   # >+50% vs 3-week avg = accelerating
+  fading: -30        # <-30% vs 3-week avg = fading
+  convergence: 3     # 3+ chains entering same narrative = convergence flag
+
+# Auto-detection for new themes
+auto_detect:
+  min_signals: 5     # 5+ signals sharing keywords = potential new theme
+  review_in_weekly: true  # surface new themes in weekly report for human review

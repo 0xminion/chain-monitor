@@ -1,0 +1,223 @@
+# Chain Monitor — Per-Chain Baseline Configs
+# Scoring thresholds differ per chain. Adjust after 4 weeks of data.
+
+ethereum:
+  tvl_absolute_milestone: 60000000000  # $60B
+  tvl_change_notable: 10
+  tvl_change_spike: 25
+  volume_spike_multiplier: 3
+  fee_spike_multiplier: 2
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 4
+  trader_context_notes: "Watch gas fees, validator client diversity, L2 TVL impact. Historically ETH sees 5-15% moves 2 weeks pre-upgrade."
+
+bitcoin:
+  tvl_absolute_milestone: null
+  price_change_notable: 10
+  price_change_spike: 20
+  volume_spike_multiplier: 2.5
+  regulatory_sensitivity: "CRITICAL"
+  upgrade_impact_floor: 4
+  trader_context_notes: "Regulatory news flows through ETF issuers. Watch IBIT flows."
+
+solana:
+  tvl_absolute_milestone: 10000000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  volume_spike_multiplier: 3
+  fee_spike_multiplier: 2
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Watch for outage risk during upgrades. SOL price correlates with memecoin volume."
+
+arbitrum:
+  tvl_absolute_milestone: 15000000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "ARB token governance votes are high-signal. Watch treasury proposals."
+
+starknet:
+  tvl_absolute_milestone: 2000000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Cairo ecosystem is distinct. Dev activity is the leading indicator."
+
+base:
+  tvl_absolute_milestone: 5000000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Coinbase's chain. Any Coinbase regulatory news = Base impact."
+
+bsc:
+  tvl_absolute_milestone: 6000000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 3
+  trader_context_notes: "BNB price is the BSC proxy. Binance regulatory news dominates."
+
+mantle:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Mantle = Bybit ecosystem. Watch Bybit exchange news."
+
+hyperliquid:
+  tvl_absolute_milestone: 1000000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  volume_spike_multiplier: 2
+  fee_spike_multiplier: 1.5
+  regulatory_sensitivity: "CRITICAL"
+  regulatory_any_mention_impact: 5
+  upgrade_impact_floor: 3
+  trader_context_notes: "Volume ATH often precedes CEX listing rumors. Regulatory is THE risk."
+
+ink:
+  tvl_absolute_milestone: 100000000
+  tvl_change_notable: 30
+  tvl_change_spike: 50
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 2
+  trader_context_notes: "Kraken's chain. Early stage. Watch for Kraken ecosystem announcements."
+
+xlayer:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 25
+  tvl_change_spike: 50
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 2
+  trader_context_notes: "OKX deploying capital without announcement = stealth accumulation."
+
+morph:
+  tvl_absolute_milestone: 50000000
+  tvl_change_notable: 30
+  tvl_change_spike: 50
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 2
+  trader_context_notes: "Too early. Auto-adjust after 4 weeks."
+
+tempo:
+  tvl_absolute_milestone: null
+  tvl_change_notable: 30
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 2
+  trader_context_notes: "Stripe's chain. No native token. Monitor stablecoin settlement volume."
+
+plasma:
+  tvl_absolute_milestone: 2000000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "HIGH"
+  upgrade_impact_floor: 2
+  trader_context_notes: "$2B at launch but no visibility. Institutional money in, retail hasn't noticed."
+
+stablechain:
+  tvl_absolute_milestone: 100000000
+  tvl_change_notable: 30
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 2
+  trader_context_notes: "USDT-native chain. Monitor stablecoin transfer volume."
+
+polygon:
+  tvl_absolute_milestone: 2000000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "POL token is the proxy. Enterprise partnerships are Polygon's moat."
+
+gnosis:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "GNO + Gnosis Pay = payments angle. Watch European regulatory alignment."
+
+megaeth:
+  tvl_absolute_milestone: null
+  tvl_change_notable: 50
+  tvl_change_spike: 100
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 2
+  trader_context_notes: "Pre-mainnet. All signals are visibility/hype."
+
+monad:
+  tvl_absolute_milestone: 200000000
+  tvl_change_notable: 30
+  tvl_change_spike: 50
+  volume_spike_multiplier: 5
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Governance proposals = pre-mainnet DeFi wave setup."
+
+sei:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "EVM + Cosmos dual-vm. Watch for EVM-native protocol migrations."
+
+sui:
+  tvl_absolute_milestone: 2000000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Move language ecosystem. SUI price correlates with gaming/NFT activity."
+
+aptos:
+  tvl_absolute_milestone: 1000000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Move language, like Sui. Watch APT price for gaming narrative."
+
+virtuals:
+  tvl_absolute_milestone: null
+  tvl_change_notable: 30
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 2
+  trader_context_notes: "AI agent platform. VIRTUAL token is the proxy."
+
+bittensor:
+  tvl_absolute_milestone: null
+  tvl_change_notable: 30
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "TAO/wTAO price. Subnet activity is the real metric."
+
+ton:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "Telegram's chain. Telegram feature integration = TON catalyst."
+
+optimism:
+  tvl_absolute_milestone: 1500000000
+  tvl_change_notable: 15
+  tvl_change_spike: 30
+  regulatory_sensitivity: "MEDIUM"
+  upgrade_impact_floor: 3
+  trader_context_notes: "OP Stack = Base, Ink share code. OP governance affects entire Superchain."
+
+near:
+  tvl_absolute_milestone: 500000000
+  tvl_change_notable: 20
+  tvl_change_spike: 40
+  regulatory_sensitivity: "LOW"
+  upgrade_impact_floor: 3
+  trader_context_notes: "NEAR AI narrative. Watch for AI partnerships."
