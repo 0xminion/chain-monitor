@@ -96,58 +96,58 @@ class DailyDigestFormatter:
         return "\n".join(lines)
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
-        """Detect the day's dominant theme — show tech events first, then other categories."""
+        """Detect the single most important theme across ALL categories."""
         if not signals:
             return None
 
-        # Priority: TECH_EVENT > RISK_ALERT > PARTNERSHIP > FINANCIAL > REGULATORY > VISIBILITY
-        # TVL/financial is data noise — tech events and partnerships are the real news
-        theme_priority = ["TECH_EVENT", "RISK_ALERT", "PARTNERSHIP", "REGULATORY", "VISIBILITY"]
+        # Sort all signals by priority, pick the top one for the theme
+        top = sorted(signals, key=lambda x: -x.priority_score)[0]
 
-        category_counts = {}
-        for s in signals:
-            category_counts[s.category] = category_counts.get(s.category, 0) + 1
+        # Count how many high-priority signals exist per category
+        high_signals = [s for s in signals if s.priority_score >= 6]
+        if not high_signals:
+            # Show most interesting dev activity
+            tech = [s for s in signals if s.category == "TECH_EVENT"]
+            if tech:
+                top_tech = sorted(tech, key=lambda x: -x.priority_score)[0]
+                desc = top_tech.description.split("(")[0].strip()
+                return f"{top_tech.chain.capitalize()}: {desc.lower()}"
+            return None
 
-        # Pick highest-priority category that has signals
-        dominant = None
-        for cat in theme_priority:
-            if cat in category_counts:
-                dominant = cat
-                break
+        cat_counts = {}
+        for s in high_signals:
+            cat_counts[s.category] = cat_counts.get(s.category, 0) + 1
+        dominant_cat = max(cat_counts, key=cat_counts.get)
+        dominant_signals = [s for s in high_signals if s.category == dominant_cat]
 
-        if not dominant:
-            # Fall back to most common if none of the priority categories
-            dominant = max(category_counts, key=category_counts.get)
+        if dominant_cat == "RISK_ALERT":
+            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
+            return f"⚠️ Security incident on {', '.join(chains)}. Check exposure."
 
-        dominant_signals = [s for s in signals if s.category == dominant]
+        if dominant_cat == "REGULATORY":
+            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
+            return f"⚖️ Regulatory action affecting {', '.join(chains)}."
 
-        if dominant == "TECH_EVENT":
+        if dominant_cat == "PARTNERSHIP":
             items = []
-            for s in dominant_signals[:5]:
-                chain = s.chain.capitalize()
+            for s in dominant_signals[:3]:
                 desc = s.description.split("(")[0].strip()
-                items.append(f"{chain} — {desc.lower()}")
-            return "Protocol activity: " + "; ".join(items)
+                items.append(f"{s.chain.capitalize()} — {desc.lower()}")
+            return "🤝 " + "; ".join(items)
 
-        elif dominant == "RISK_ALERT":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"Security incidents on {', '.join(chains)}. Check exposure."
-
-        elif dominant == "PARTNERSHIP":
+        if dominant_cat == "TECH_EVENT":
             items = []
-            for s in dominant_signals[:5]:
-                chain = s.chain.capitalize()
+            for s in dominant_signals[:3]:
                 desc = s.description.split("(")[0].strip()
-                items.append(f"{chain} — {desc.lower()}")
-            return "Ecosystem expansion: " + "; ".join(items)
+                items.append(f"{s.chain.capitalize()} — {desc.lower()}")
+            return "🔧 " + "; ".join(items)
 
-        elif dominant == "REGULATORY":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"Regulatory activity affecting {', '.join(chains)}. Watch closely."
-
-        elif dominant == "VISIBILITY":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"Visibility surge on {', '.join(chains)}."
+        if dominant_cat == "FINANCIAL":
+            items = []
+            for s in dominant_signals[:3]:
+                desc = s.description.split("(")[0].strip()
+                items.append(f"{s.chain.capitalize()} — {desc.lower()}")
+            return "💰 " + "; ".join(items)
 
         return None
 

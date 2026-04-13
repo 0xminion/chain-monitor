@@ -13,7 +13,7 @@ base:
   defillama_slug: "base"
   github_repos:
     - "base-org/node"
-    - "ethereum-optimism/optimism"  # shared OP Stack code
+    # OP Stack shared code tracked under optimism, not duplicated here
   blog_rss: "https://base.mirror.xyz/feed/atom"
   youtube_channel: "@Base"
   status_page: "https://status.base.org"

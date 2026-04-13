@@ -193,21 +193,31 @@ class SignalScorer:
         if category in chain_ctx:
             return chain_ctx[category]
 
-        # TECH_EVENT — build from actual merged PR evidence
+        # TECH_EVENT — build from high-signal PR/release evidence
         if category == "TECH_EVENT" and evidence and isinstance(evidence, dict):
-            recent_prs = evidence.get("recent_prs", [])
-            commits_7d = evidence.get("commits_7d", 0)
+            metric = evidence.get("metric", "")
             repo = evidence.get("repo", "")
 
-            result = f"{chain.capitalize()}: {commits_7d} commits this week ({repo})."
-            if recent_prs:
-                pr_lines = [f'"{pr["title"][:60]}"' for pr in recent_prs[:3]]
-                result += " Recent: " + "; ".join(pr_lines)
+            if metric in ("new_release", "new_tag"):
+                tag = evidence.get("tag", "")
+                name = evidence.get("name", tag)
+                return f"{chain.capitalize()}: {name or tag} released ({repo})."
 
+            if metric == "high_signal_pr":
+                pr_title = evidence.get("pr_title", "")
+                signal_type = evidence.get("signal_type", "feature")
+                merged_at = evidence.get("merged_at", "")
+                type_label = {"upgrade": "Upgrade", "security": "Security", "breaking": "Breaking change", "feature": "Feature"}.get(signal_type, signal_type)
+                result = f"{chain.capitalize()}: {type_label.lower()}: {pr_title} ({repo})."
+
+                notes = baseline.get("trader_context_notes", "")
+                if notes:
+                    result += f"\n  Context: {notes}"
+                return result
+
+            # Fallback for other metrics
             notes = baseline.get("trader_context_notes", "")
-            if notes:
-                result += f"\n  Context: {notes}"
-            return result
+            return f"{chain.capitalize()}: {evidence.get('metric', 'dev activity')} on {repo}. {notes}".strip()
 
         # Fall back to template
         template = TRADER_TEMPLATES.get(category, "")

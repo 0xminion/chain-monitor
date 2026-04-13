@@ -7,9 +7,8 @@ ethereum:
   tvl_change_spike: 25
   volume_spike_multiplier: 3
   fee_spike_multiplier: 2
-  regulatory_sensitivity: "HIGH"
+  regulatory_sensitivity: HIGH
   upgrade_impact_floor: 4
-  trader_context_notes: "Watch gas fees, validator client diversity, L2 TVL impact. Historically ETH sees 5-15% moves 2 weeks pre-upgrade."
 
 bitcoin:
   tvl_absolute_milestone: null
