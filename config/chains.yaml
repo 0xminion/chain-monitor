@@ -56,8 +56,7 @@ hyperliquid:
   tier: 1
   coingecko_id: "hyperliquid"
   defillama_slug: "Hyperliquid L1"
-  github_repos:
-    - "hyperliquid-dex/hyperliquid-core"
+  github_repos: []  # no public repo — monitor via announcements scrape
   blog_rss: null  # scrape announcements page
   scrape_url: "https://app.hyperliquid.xyz/announcements"
   youtube_channel: "@HyperliquidX"
@@ -174,7 +173,6 @@ starknet:
   coingecko_id: "starknet"
   defillama_slug: "starknet"
   github_repos:
-    - "starkware-libs/starknet"
     - "starkware-libs/cairo"
   blog_rss: "https://www.starknet.io/en/blog/rss.xml"
   youtube_channel: "@StarknetFndn"

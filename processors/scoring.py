@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Trader context templates per category — written as "Why?" explanations
 TRADER_TEMPLATES = {
-    "TECH_EVENT": "{chain} dev activity is accelerating. {detail}. Signal: engineering investment before a major release.",
+    "TECH_EVENT": "",
     "PARTNERSHIP": "{chain} + {detail}. Ecosystem expanding through integrations. Watch for follow-on protocol deployments.",
     "FINANCIAL": "{chain} TVL moved {pct_change:+.1f}% in 7 days (${current_tvl:.1f}B).",
     "RISK_ALERT": "{chain} {detail} — incident detected. Check exposure. Monitor withdrawals and bridge risk.",
@@ -22,7 +22,6 @@ TRADER_TEMPLATES = {
 # Per-chain trader context overrides
 CHAIN_TRADER_CONTEXT = {
     "ethereum": {
-        "TECH_EVENT": "Expect gas fee volatility around upgrade. Validators need to update. Historically ETH sees 5-15% moves 2 weeks pre-upgrade.",
         "FINANCIAL": "Ethereum TVL = dominance metric. Shifts in ETH TVL share signal capital rotation to/from L2s.",
     },
     "bitcoin": {
@@ -193,6 +192,22 @@ class SignalScorer:
         chain_ctx = CHAIN_TRADER_CONTEXT.get(chain, {})
         if category in chain_ctx:
             return chain_ctx[category]
+
+        # TECH_EVENT — build from actual merged PR evidence
+        if category == "TECH_EVENT" and evidence and isinstance(evidence, dict):
+            recent_prs = evidence.get("recent_prs", [])
+            commits_7d = evidence.get("commits_7d", 0)
+            repo = evidence.get("repo", "")
+
+            result = f"{chain.capitalize()}: {commits_7d} commits this week ({repo})."
+            if recent_prs:
+                pr_lines = [f'"{pr["title"][:60]}"' for pr in recent_prs[:3]]
+                result += " Recent: " + "; ".join(pr_lines)
+
+            notes = baseline.get("trader_context_notes", "")
+            if notes:
+                result += f"\n  Context: {notes}"
+            return result
 
         # Fall back to template
         template = TRADER_TEMPLATES.get(category, "")

@@ -9,10 +9,6 @@ from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
 
-# Commit-tracking signals are noise — skip them
-SKIP_SUBCATEGORIES = {"commit_activity_spike", "commit_burst"}
-
-
 class DailyDigestFormatter:
     """Formats signals into a daily Telegram digest."""
 
@@ -20,24 +16,18 @@ class DailyDigestFormatter:
         """Format signals into daily digest text."""
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
 
-        # Filter out commit-tracking noise
-        filtered = [
-            s for s in signals
-            if not self._is_commit_noise(s)
-        ]
-
         # Group by priority
-        critical = [s for s in filtered if s.priority_score >= 10]
-        high = [s for s in filtered if 8 <= s.priority_score < 10]
-        notable = [s for s in filtered if 6 <= s.priority_score < 8]
+        critical = [s for s in signals if s.priority_score >= 10]
+        high = [s for s in signals if 8 <= s.priority_score < 10]
+        notable = [s for s in signals if 6 <= s.priority_score < 8]
 
         sections = [
             f"📊 Chain Monitor — {now}",
             "",
         ]
 
-        # Theme — show actual signals, not a generic statement
-        theme = self._detect_theme(filtered)
+        # Theme — show tech events first, not TVL data
+        theme = self._detect_theme(signals)
         if theme:
             sections.extend(["🧠 Today's theme", theme, ""])
 
@@ -62,8 +52,16 @@ class DailyDigestFormatter:
                 sections.append(self._format_signal(s, show_reason=False))
                 sections.append("")
 
+        # Dev activity (tech events below notable threshold)
+        dev_activity = [s for s in signals if s.category == "TECH_EVENT" and s.priority_score < 6]
+        if dev_activity:
+            sections.append("🔧 Dev activity")
+            for s in sorted(dev_activity, key=lambda x: -x.priority_score)[:5]:
+                sections.append(self._format_signal(s, show_reason=True))
+                sections.append("")
+
         # No events
-        if not critical and not high and not notable:
+        if not critical and not high and not notable and not dev_activity:
             sections.append("— No high-priority events. Quiet day.")
 
         # Source Health
@@ -74,20 +72,8 @@ class DailyDigestFormatter:
 
     def should_send(self, signals: list[Signal]) -> bool:
         """Determine if digest should be sent (3+ events score ≥6)."""
-        filtered = [s for s in signals if not self._is_commit_noise(s)]
-        notable_count = sum(1 for s in filtered if s.priority_score >= 6)
+        notable_count = sum(1 for s in signals if s.priority_score >= 6)
         return notable_count >= 3
-
-    def _is_commit_noise(self, signal: Signal) -> bool:
-        """Check if signal is commit-tracking noise."""
-        # Check evidence for commit metrics
-        for activity in signal.activity:
-            evidence = activity.get("evidence", {})
-            if isinstance(evidence, dict):
-                metric = evidence.get("metric", "")
-                if metric in SKIP_SUBCATEGORIES:
-                    return True
-        return False
 
     def _format_signal(self, signal: Signal, show_reason: bool = False) -> str:
         """Format a single signal for the digest."""
@@ -110,56 +96,54 @@ class DailyDigestFormatter:
         return "\n".join(lines)
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
-        """Detect the day's dominant theme — list actual chains/signals."""
+        """Detect the day's dominant theme — show tech events first, then other categories."""
         if not signals:
             return None
+
+        # Priority: TECH_EVENT > RISK_ALERT > PARTNERSHIP > FINANCIAL > REGULATORY > VISIBILITY
+        # TVL/financial is data noise — tech events and partnerships are the real news
+        theme_priority = ["TECH_EVENT", "RISK_ALERT", "PARTNERSHIP", "REGULATORY", "VISIBILITY"]
 
         category_counts = {}
         for s in signals:
             category_counts[s.category] = category_counts.get(s.category, 0) + 1
 
-        if not category_counts:
-            return None
+        # Pick highest-priority category that has signals
+        dominant = None
+        for cat in theme_priority:
+            if cat in category_counts:
+                dominant = cat
+                break
 
-        dominant = max(category_counts, key=category_counts.get)
+        if not dominant:
+            # Fall back to most common if none of the priority categories
+            dominant = max(category_counts, key=category_counts.get)
 
-        # Get signals in the dominant category
         dominant_signals = [s for s in signals if s.category == dominant]
 
         if dominant == "TECH_EVENT":
-            # Show specific upgrades
-            upgrades = []
-            for s in dominant_signals[:5]:
-                chain = s.chain.capitalize()
-                # Extract what the upgrade is from description
-                desc = s.description.split("(")[0].strip()  # trim repo suffix
-                upgrades.append(f"{chain} ({desc.lower()})")
-            return "Protocol upgrades: " + ", ".join(upgrades)
-
-        elif dominant == "FINANCIAL":
-            # Show specific capital movements
-            movements = []
+            items = []
             for s in dominant_signals[:5]:
                 chain = s.chain.capitalize()
                 desc = s.description.split("(")[0].strip()
-                movements.append(f"{chain} — {desc.lower()}")
-            return "Capital flows: " + "; ".join(movements)
+                items.append(f"{chain} — {desc.lower()}")
+            return "Protocol activity: " + "; ".join(items)
 
         elif dominant == "RISK_ALERT":
             chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
             return f"Security incidents on {', '.join(chains)}. Check exposure."
 
-        elif dominant == "REGULATORY":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"Regulatory activity affecting {', '.join(chains)}. Watch closely."
-
         elif dominant == "PARTNERSHIP":
-            partnerships = []
+            items = []
             for s in dominant_signals[:5]:
                 chain = s.chain.capitalize()
                 desc = s.description.split("(")[0].strip()
-                partnerships.append(f"{chain} — {desc.lower()}")
-            return "Ecosystem expansion: " + "; ".join(partnerships)
+                items.append(f"{chain} — {desc.lower()}")
+            return "Ecosystem expansion: " + "; ".join(items)
+
+        elif dominant == "REGULATORY":
+            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
+            return f"Regulatory activity affecting {', '.join(chains)}. Watch closely."
 
         elif dominant == "VISIBILITY":
             chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))

@@ -112,6 +112,35 @@ class GitHubCollector(BaseCollector):
 
         return signals
 
+    def _fetch_recent_prs(self, repo: str, limit: int = 5) -> list[dict]:
+        """Fetch recently merged PRs with titles and labels for evidence."""
+        url = f"{self.api_base}/repos/{repo}/pulls"
+        params = {"state": "closed", "sort": "updated", "direction": "desc", "per_page": limit * 2}
+        data = self.fetch_with_retry(url, params=params)
+        if not data or not isinstance(data, list):
+            return []
+
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=7)
+        merged = []
+        for pr in data:
+            if not pr.get("merged_at"):
+                continue
+            try:
+                merged_dt = datetime.fromisoformat(pr["merged_at"].replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            if merged_dt < cutoff:
+                continue
+            merged.append({
+                "title": pr.get("title", ""),
+                "labels": [l["name"] for l in pr.get("labels", [])],
+                "merged_at": pr["merged_at"][:10],
+            })
+            if len(merged) >= limit:
+                break
+        return merged
+
     def _check_commit_activity(self, chain: str, repo: str, baseline: dict) -> list[dict]:
         """Compare commits in last 7 days vs prior 7 days for activity spike."""
         signals: list[dict] = []
@@ -143,8 +172,9 @@ class GitHubCollector(BaseCollector):
                 prior_commits += 1
 
         if prior_commits == 0:
-            # New repo or first activity — only flag if significant recent commits
             if recent_commits >= 20:
+                # Fetch PR titles for evidence
+                recent_prs = self._fetch_recent_prs(repo)
                 signals.append(self._make_signal(
                     chain=chain,
                     description=f"Burst of {recent_commits} commits in 7d ({repo})",
@@ -154,16 +184,19 @@ class GitHubCollector(BaseCollector):
                         "repo": repo,
                         "commits_7d": recent_commits,
                         "commits_prior_7d": prior_commits,
+                        "recent_prs": recent_prs,
                     },
                 ))
             return signals
 
         ratio = recent_commits / prior_commits
-        # Spike if 2x+ increase and at least 10 recent commits (avoid noise from small repos)
+        # Spike if 2x+ increase and at least 10 recent commits
         if ratio >= 2.0 and recent_commits >= 10:
+            # Fetch PR titles for evidence
+            recent_prs = self._fetch_recent_prs(repo)
             signals.append(self._make_signal(
                 chain=chain,
-                description=f"Commit activity spike: {recent_commits} commits in 7d vs {prior_commits} prior 7d ({repo})",
+                description=f"Dev activity spike: {recent_commits} commits/7d vs {prior_commits} prior ({repo})",
                 reliability=0.75,
                 evidence={
                     "metric": "commit_activity_spike",
@@ -171,6 +204,7 @@ class GitHubCollector(BaseCollector):
                     "commits_7d": recent_commits,
                     "commits_prior_7d": prior_commits,
                     "ratio": round(ratio, 2),
+                    "recent_prs": recent_prs,
                 },
             ))
 
