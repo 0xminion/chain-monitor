@@ -21,6 +21,7 @@ from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.narrative_tracker import NarrativeTracker
 from output.daily_digest import DailyDigestFormatter
+from output.weekly_digest import WeeklyDigestFormatter
 from output.telegram_sender import TelegramSender
 
 logging.basicConfig(
@@ -120,6 +121,15 @@ def main():
         logger.info(f"Daily digest sent: {success}")
     else:
         logger.info("No daily digest sent (< 3 events scored ≥6)")
+
+    # Weekly digest (Sundays)
+    now = datetime.now(timezone.utc)
+    if now.weekday() == 6:  # Sunday
+        weekly_formatter = WeeklyDigestFormatter()
+        weekly = weekly_formatter.format(signals, narrative_tracker=narrative_tracker, source_health=health)
+        sender = TelegramSender()
+        success = sender.send_sync(weekly)
+        logger.info(f"Weekly digest sent: {success}")
 
     # Cleanup
     cleanup_old_signals()

@@ -180,16 +180,13 @@ class EventCategorizer:
         return event
 
     def _detect_category(self, text: str) -> str:
-        """Detect primary category from text. Tech event checked first to avoid false partnership matches."""
-        # Check TECH_EVENT first — "live on mainnet" is tech, not partnership
-        tech_keywords = CATEGORY_KEYWORDS.get("TECH_EVENT", [])
-        for keyword in tech_keywords:
-            if keyword in text:
-                return "TECH_EVENT"
-        # Then check remaining categories
+        """Detect primary category from text."""
+        # Specific overrides: "live on mainnet/testnet" is tech, not partnership
+        if "live on mainnet" in text or "live on testnet" in text or "goes live on mainnet" in text:
+            return "TECH_EVENT"
+
+        # Standard order: RISK > REGULATORY > FINANCIAL > PARTNERSHIP > TECH > VISIBILITY
         for category, keywords in CATEGORY_KEYWORDS.items():
-            if category == "TECH_EVENT":
-                continue
             for keyword in keywords:
                 if keyword in text:
                     return category

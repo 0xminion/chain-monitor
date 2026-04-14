@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_url(signal: Signal) -> Optional[str]:
-    """Extract the best URL from signal evidence for inline linking."""
+    """Extract the best URL from signal evidence for linking."""
     if not signal.activity:
         return None
     evidence = signal.activity[0].get("evidence", {})
+    if not isinstance(evidence, dict):
+        return None
     for key in ("html_url", "pr_url", "link", "feed_url"):
         url = evidence.get(key)
         if url and url.startswith("http"):
