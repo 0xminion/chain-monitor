@@ -37,6 +37,27 @@ class NarrativeTracker:
         with open(path, "w") as f:
             json.dump(self.weekly_counts, f, indent=2)
 
+    def cleanup_old(self, retention_weeks: int = 13):
+        """Remove weekly history entries older than retention period.
+
+        Args:
+            retention_weeks: Number of weeks to keep. Default 13 (~90 days).
+        """
+        if not self.weekly_counts:
+            return
+
+        now = datetime.now(timezone.utc)
+        cutoff_iso = now - timedelta(weeks=retention_weeks)
+        cutoff_key = self._get_week_key(cutoff_iso)
+
+        to_remove = [wk for wk in self.weekly_counts if wk < cutoff_key]
+        for wk in to_remove:
+            del self.weekly_counts[wk]
+
+        if to_remove:
+            self._save_history()
+            logger.info(f"Cleaned up {len(to_remove)} narrative weeks older than {retention_weeks} weeks")
+
     def _get_week_key(self, dt: datetime = None) -> str:
         """Get ISO week key like '2026-W15'."""
         if dt is None:

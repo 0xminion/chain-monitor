@@ -1,8 +1,8 @@
-# Chain Monitor — Product Requirements Document v2.5
+# Chain Monitor — Product Requirements Document
 
-**Version:** 2.6
+**Version:** v0.1
 **Date:** 2026-04-14
-**Scope:** 30-chain monitoring system
+**Scope:** 27-chain monitoring system
 **Cadence:** Daily digest + weekly deep analysis
 **Confidence target:** 95%+ data verification
 **Purpose:** Strategic intelligence for traders/analysts — what chains are doing, where trends are converging, and where to look before the narrative hits mainstream
@@ -183,7 +183,7 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - CoinGecko ID: N/A (no native token yet)
 
 **X Layer** ⚠️ Has independent site at xlayer.xyz (not just OKX-dependent)
-- GitHub: `x-layer/x-layer` ⚠️ (may be limited)
+- GitHub: `okx/xlayer-reth` ✓, `okx/xlayer-docs` ✓
 - Website: `https://www.xlayer.xyz` ✓ (independent site)
 - Blog RSS: `https://www.xlayer.xyz/blog/rss.xml` ✓ (NEW — replaces scrape-only approach)
 - Docs: `https://docs.xlayer.xyz` ✓ (independent docs, not just OKX)
@@ -200,7 +200,7 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - CoinGecko ID: N/A (uses OKB)
 
 **Morph Network** ⚠️ DOMAIN MIGRATION: morphl2.io → morph.network
-- GitHub: `morph-l2/morph` ⚠️, `morph-l2/go-morph` ⚠️
+- GitHub: `morph-l2/morph` ✓, `morph-l2/go-ethereum` ✓
 - Website: `https://morph.network/` ✓ (morphl2.io redirects here)
 - Blog RSS: `https://blog.morph.network/feed` ✓ (NEW — replaces morphl2.io)
 - Substack RSS: `https://morph.substack.com/feed` ✓
@@ -232,7 +232,7 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - Staking Launchpad: `https://launchpad.ethereum.org` ✓ (NEW)
 - Burn Tracker: `https://ultrasound.money` ✓ (NEW)
 - YouTube: `@EthereumFoundation` ✓
-- Status: `https://ethstats.net/` ⚠️ (not a traditional status page)
+- Status: `https://ethstats.dev/` ✓
 - Governance: `ethereum-magicians.org` (EIPs) ✓, `eips.ethereum.org` ✓
 - DefiLlama slug: `ethereum`
 - CoinGecko ID: `ethereum`
@@ -370,7 +370,7 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - CoinGecko ID: `matic-network`
 
 **Gnosis**
-- GitHub: `gnosischain/specs` ⚠️, `gnosischain/beacon-chain` ⚠️
+- GitHub: `gnosischain/specs` ✓
 - Chain page: `https://www.gnosis.io/chain` ✓ (NEW)
 - Events: `https://www.gnosis.io/events` ✓ (NEW)
 - Press: `https://www.gnosis.io/press` ✓ (NEW)
@@ -428,7 +428,7 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - YouTube: `@SeiNetwork` ✓
 - Docs: `https://docs.sei.io/` ✓
 - Status: N/A
-- Governance: On-chain (Cosmos SDK). Public RPC: `https://rpc.sei.io` ⚠️ for `cosmos.gov.v1beta1` queries. Proposals viewer: `mintscan.io/sei/proposals` ✓
+- Governance: On-chain (Cosmos SDK). Public RPC: `https://rpc.sei-apis.com` ✓ for `cosmos.gov.v1beta1` queries. Proposals viewer: `mintscan.io/sei/proposals` ✓
 - Discord: `https://discord.com/invite/sei` ✓ (NEW)
 - Telegram: `https://t.me/seinetwork` ✓ (NEW), `https://t.me/+KZdhZ1eE-G01NmZk` ✓ (Builders, NEW)
 - DefiLlama slug: `sei`
@@ -1041,15 +1041,22 @@ For chains without governance forums (Ink, X Layer, Morph, Tempo, Plasma, Stable
 | Conference calendars (ethereum.org, ETHGlobal) | Scraped | None | Ethereum + ecosystem | ✓ Implemented (Camoufox for ETHGlobal) |
 | Hackathon outcomes (ETHGlobal, Solana, Devpost) | Scraped | Camoufox | Past events | ✓ Implemented |
 | YouTube (chain channels) | API | Free (quota-limited) | 20 chains | ⚠️ Planned (YouTube API key available) |
-| Podcast RSS feeds | RSS | None | Major chains | ⚠️ Planned (feeds not yet in sources.yaml) |
+| Podcast RSS feeds | RSS | None | 13 feeds | ✓ Implemented |
 
-**Podcast RSS URLs (to add to sources.yaml):**
-- Bankless: `https://feeds.transistor.fm/bankless-podcast`
-- Unchained: `https://unchainedcrypto.com/feed/podcast`
-- The Block: `https://www.theblock.co/rss.xml`
-- What Bitcoin Did: `https://feeds.transistor.fm/what-bitcoin-did`
-- Lightspeed (Solana-focused): `https://feeds.transistor.fm/lightspeed`
-- The Defiant: `https://thedefiant.io/feed/podcast`
+**Verified podcast feeds (in sources.yaml under `rss_feeds.podcasts`):**
+- Bankless: `https://feeds.simplecast.com/82FI35Px` ✓ (496 eps, general crypto)
+- Unchained: `https://unchained.libsyn.com/rss` ✓ (1121 eps, general crypto)
+- What Bitcoin Did: `https://whatbitcoindid.libsyn.com/rss` ✓ (1042 eps, bitcoin)
+- Lightspeed: `https://feeds.megaphone.fm/lightspeed` ✓ (277 eps, solana)
+- The Defiant: `https://thedefiant.io/api/feed` ✓ (100 eps, defi)
+- The Scoop: `https://feeds.megaphone.fm/the-scoop` ✓ (105 eps, general)
+- Empire: `https://feeds.megaphone.fm/empire` ✓ (634 eps, general)
+- 0xResearch: `https://feeds.megaphone.fm/0xresearch` ✓ (303 eps, research)
+- Bell Curve: `https://feeds.megaphone.fm/bellcurve` ✓ (341 eps, general)
+- Tales from the Crypt: `https://talesfromthecrypt.libsyn.com/rss` ✓ (100 eps, bitcoin)
+- Thinking Crypto: `https://www.thinkingcrypto.com/feed` ✓ (general)
+- Week in Ethereum: `https://weekinethereum.substack.com/feed` ✓ (ethereum)
+- The Breakdown: `https://feeds.megaphone.fm/the-breakdown` ✓ (general)
 
 **Design thinking:** Visibility events are weakest individually, strongest in aggregate. Conference + AMA + hiring cluster = momentum signal. Conference dates filtered to 2-week window (past events clutter the digest). Hackathon outcomes show where developer attention is going.
 
@@ -2078,10 +2085,10 @@ Bot: 📡 Monad — Latest Signals
 | PARTNERSHIP | RSS news (11 feeds), TradingView scraper | DefiLlama (indirect — TVL appearance = proof) | 27/27 | ✓ |
 | REGULATORY | CoinCenter RSS, DeFi Education Fund RSS, RSS news (filtered) | SEC EDGAR, HK SFC (planned) | Global | Partial |
 | RISK ALERT | DefiLlama TVL crash detection, RSS news (filtered) | Rekt News, Immunefi (planned) | 27/27 | Partial |
-| VISIBILITY | Conference calendars (ethereum.org, ETHGlobal), Hackathon outcomes, RSS news (filtered) | YouTube API, Podcast RSS (planned) | 25/27 | Partial |
+| VISIBILITY | Conference calendars (ethereum.org, ETHGlobal), Hackathon outcomes, RSS news (filtered), Podcast RSS (13 feeds) | YouTube API (planned) | 27/27 | ✓ |
 | FINANCIAL | DefiLlama (27 chains), CoinGecko (23 tokens) | CoinGecko CLI (installed) | 23/27 with token data | ✓ |
 
-**RSS Feeds Implemented (12 news + 21 chain blogs):**
+**RSS Feeds Implemented (82 total: 7 news + 2 regulatory + 4 partnership + 1 event + 55 chain blogs + 13 podcasts):**
 - News: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks
 - Regulatory: CoinCenter, DeFi Education Fund
 - Partnerships: CryptoSlate, CoinGape, Bitcoin.com News, AMBCrypto
@@ -2098,7 +2105,7 @@ Bot: 📡 Monad — Latest Signals
 
 **Collectors Implemented:** DefiLlama, CoinGecko, GitHub, RSS (all categories), Regulatory (CoinCenter + DeFi Education Fund), RiskAlert (TVL crash), TradingView (Playwright Chromium), Events (ethereum.org + ETHGlobal via Camoufox), HackathonOutcomes (ETHGlobal + Solana + Devpost)
 
-**Planned (not yet in sources.yaml):** SEC EDGAR EFTS, YouTube API, Podcast RSS feeds (Bankless, Unchained, What Bitcoin Did, Lightspeed, The Defiant), Rekt News, Immunefi, EU MiCA portal, FATF updates, HK SFC announcements
+**Planned (not yet in sources.yaml):** SEC EDGAR EFTS, YouTube API, Rekt News, Immunefi, EU MiCA portal, FATF updates, HK SFC announcements
 
 **Newly added to sources.yaml (Apr 2026):** TON newsroom RSS, TON ecosystem RSS, BSC Substack, Mantle Substack, Hyperliquid Substack, Morph blog RSS (migrated), Morph Substack, Tempo Substack, Plasma Substack, Sei blog RSS, Sei Substack, Ink blog RSS, Ink Substack, Ink press RSS, X Layer blog RSS, Polygon Substack, NEAR Substack, Optimism Substack, Aptos Substack, Monad Substack, Bitcoin Core releases RSS, EIPs RSS, Solana Foundation RSS (blog/news/grants)
 

@@ -89,7 +89,7 @@ def process_events(raw_events: list[dict]) -> tuple[list, NarrativeTracker]:
 def cleanup_old_signals():
     """Clean up signals older than retention period."""
     reinforcer = SignalReinforcer()
-    retention_days = int(get_env("DATA_RETENTION_DAYS", "180"))
+    retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
     reinforcer.cleanup_old(retention_days)
 
 
@@ -133,6 +133,7 @@ def main():
 
     # Cleanup
     cleanup_old_signals()
+    narrative_tracker.cleanup_old(retention_weeks=13)  # ~90 days
 
     # Save run log
     run_log = {

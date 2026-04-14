@@ -77,7 +77,7 @@ tests/          → Unit, integration, system tests
 | DefiLlama | TVL, fees, volume, protocol attribution | REST API | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | REST API | FINANCIAL |
 | GitHub | Version tags, high-signal PRs, EIP descriptions | REST API | TECH_EVENT |
-| RSS | 11 news feeds + 54 chain blog feeds | RSS/Atom | All categories |
+| RSS | 11 news feeds + 54 chain blog feeds + 13 podcast feeds | RSS/Atom | All categories |
 | Regulatory | SEC EDGAR filings, CoinCenter policy | RSS | REGULATORY |
 | Risk Alert | DeFiLlama hacks, TVL crashes, Immunefi | REST API | RISK_ALERT |
 | TradingView | News flow from 16+ providers | Playwright (Chromium) | All categories |
@@ -108,7 +108,8 @@ tests/          → Unit, integration, system tests
 
 ### News & Events
 - **RSS feeds**: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks, CryptoSlate, CoinGape, Bitcoin.com, AMBCrypto
-- **Chain blog feeds (54 total)**: Each chain may publish via blog, Medium, and/or Substack — all sources are checked independently (peer-level, no fallback hierarchy)
+- **Chain blog feeds (68 total)**: Each chain may publish via blog, Medium, Substack, or podcast — all sources are checked independently (peer-level, no fallback hierarchy)
+- **Podcast feeds (13 total)**: Bankless, Unchained, What Bitcoin Did, Lightspeed, The Defiant, The Scoop, Empire, 0xResearch, Bell Curve, Tales from the Crypt, Thinking Crypto, Week in Ethereum, The Breakdown
 - **TradingView**: Playwright scraper for crypto news flow (bypasses JS rendering)
 - **ethereum.org**: 38+ upcoming conferences with dates, locations, tags (Camoufox anti-detect)
 - **ETHGlobal**: Hackathons, meetups, conferences (Camoufox anti-detect)
@@ -155,9 +156,9 @@ Digests are sent via Telegram Bot API using **Markdown** parse mode with clickab
 
 ## Data Retention
 
-- Raw events: 180 days (6 months)
-- Aggregated metrics: 180 days
-- Weekly reports: indefinite
+- Raw events: 90 days
+- Aggregated metrics: 90 days
+- Weekly reports (narrative history): 90 days
 
 ## Testing
 

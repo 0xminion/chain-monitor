@@ -20,10 +20,12 @@ class RSSCollector(BaseCollector):
     Sources:
     - Per-chain blog_rss from chains.yaml
     - Global news feeds from sources.yaml rss_feeds
+    - Podcast feeds from sources.yaml rss_feeds.podcasts (VISIBILITY category)
 
     Categorization:
     - Matches post title + summary against narrative keywords
     - Falls back to "NEWS" category if no keyword match
+    - Podcasts always categorized as VISIBILITY
     - Maps matched narratives to descriptive categories
     """
 
@@ -162,6 +164,8 @@ class RSSCollector(BaseCollector):
         feed_url: str,
         source_name: str,
         default_chain: Optional[str] = None,
+        category_override: Optional[str] = None,
+        lookback_days: Optional[int] = None,
     ) -> list[dict]:
         """Parse a single RSS/Atom feed and return matching signals.
 
@@ -169,6 +173,8 @@ class RSSCollector(BaseCollector):
             feed_url: URL of the RSS/Atom feed.
             source_name: Human-readable name of the feed source.
             default_chain: If set, associate unattributed entries with this chain.
+            category_override: If set, force this category for all entries (e.g. VISIBILITY for podcasts).
+            lookback_days: Override the default lookback window (7d chain blogs, 48h news).
 
         Returns:
             List of signal dicts.
@@ -186,9 +192,11 @@ class RSSCollector(BaseCollector):
             logger.warning(f"[RSS] Feed parse error for {feed_url}: {feed.bozo_exception}")
             return signals
 
-        # Only process entries from the last 48 hours (7 days for chain blogs)
+        # Determine lookback window
         now = datetime.now(timezone.utc)
-        if default_chain:
+        if lookback_days is not None:
+            cutoff = now.timestamp() - (lookback_days * 86400)
+        elif default_chain:
             cutoff = now.timestamp() - (7 * 24 * 3600)  # 7 days for chain-specific blogs
         else:
             cutoff = now.timestamp() - (48 * 3600)  # 48h for news feeds
@@ -209,13 +217,18 @@ class RSSCollector(BaseCollector):
                 # Skip news items we can't attribute to a chain
                 continue
 
-            # Match narratives for categorization
-            matched_narratives = self._match_narratives(combined_text)
-            if matched_narratives:
-                primary = matched_narratives[0]
-                category = self.NARRATIVE_CATEGORY_MAP.get(primary, self.DEFAULT_CATEGORY)
+            # Determine category
+            if category_override:
+                category = category_override
+                matched_narratives = []
             else:
-                category = self.DEFAULT_CATEGORY
+                # Match narratives for categorization
+                matched_narratives = self._match_narratives(combined_text)
+                if matched_narratives:
+                    primary = matched_narratives[0]
+                    category = self.NARRATIVE_CATEGORY_MAP.get(primary, self.DEFAULT_CATEGORY)
+                else:
+                    category = self.DEFAULT_CATEGORY
 
             # Build description
             desc = title[:200] if title else "New post"
@@ -335,6 +348,9 @@ class RSSCollector(BaseCollector):
         for category, feeds in rss_feeds.items():
             if not isinstance(feeds, list):
                 continue
+            # Skip podcasts — handled separately below
+            if category == "podcasts":
+                continue
             for feed_cfg in feeds:
                 if not isinstance(feed_cfg, dict):
                     continue
@@ -348,6 +364,25 @@ class RSSCollector(BaseCollector):
                     feed_url=feed_url,
                     source_name=feed_name,
                     default_chain=default_chain,
+                ))
+
+        # 3. Podcast feeds — VISIBILITY category, chain attribution from config + keyword matching
+        podcasts = rss_feeds.get("podcasts", [])
+        if isinstance(podcasts, list):
+            for pod_cfg in podcasts:
+                if not isinstance(pod_cfg, dict):
+                    continue
+                feed_url = pod_cfg.get("url")
+                pod_name = pod_cfg.get("name", "Unknown Podcast")
+                pod_chain = pod_cfg.get("chain")  # None for general podcasts
+                if not feed_url:
+                    continue
+                signals.extend(self._process_feed(
+                    feed_url=feed_url,
+                    source_name=pod_name,
+                    default_chain=pod_chain,
+                    category_override="VISIBILITY",
+                    lookback_days=7,  # podcasts are episodic, 7d window
                 ))
 
         logger.info(f"[RSS] Collected {len(signals)} signals")

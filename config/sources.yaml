@@ -142,6 +142,59 @@ rss_feeds:
     url: https://plasma.dev/feed.xml
   - name: Sei SIPs
     url: https://github.com/sei-protocol/sips/commits/main.atom
+  podcasts:
+  - name: Bankless
+    url: https://feeds.simplecast.com/82FI35Px
+    chain: null
+    focus: general
+  - name: Unchained
+    url: https://unchained.libsyn.com/rss
+    chain: null
+    focus: general
+  - name: What Bitcoin Did
+    url: https://whatbitcoindid.libsyn.com/rss
+    chain: bitcoin
+    focus: bitcoin
+  - name: Lightspeed
+    url: https://feeds.megaphone.fm/lightspeed
+    chain: solana
+    focus: solana
+  - name: The Defiant
+    url: https://thedefiant.io/api/feed
+    chain: null
+    focus: defi
+  - name: The Scoop
+    url: https://feeds.megaphone.fm/the-scoop
+    chain: null
+    focus: general
+  - name: Empire
+    url: https://feeds.megaphone.fm/empire
+    chain: null
+    focus: general
+  - name: 0xResearch
+    url: https://feeds.megaphone.fm/0xresearch
+    chain: null
+    focus: research
+  - name: Bell Curve
+    url: https://feeds.megaphone.fm/bellcurve
+    chain: null
+    focus: general
+  - name: Tales from the Crypt
+    url: https://talesfromthecrypt.libsyn.com/rss
+    chain: bitcoin
+    focus: bitcoin
+  - name: Thinking Crypto
+    url: https://www.thinkingcrypto.com/feed
+    chain: null
+    focus: general
+  - name: Week in Ethereum
+    url: https://weekinethereum.substack.com/feed
+    chain: ethereum
+    focus: ethereum
+  - name: The Breakdown
+    url: https://feeds.megaphone.fm/the-breakdown
+    chain: null
+    focus: general
 tradingview:
   url: https://www.tradingview.com/news-flow/?market=crypto
   browser: chromium
