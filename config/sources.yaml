@@ -1,198 +1,177 @@
-# Chain Monitor — Data Source Configuration
-
-# RSS feeds (not chain-specific)
 rss_feeds:
   news:
-    - name: "CoinDesk"
-      url: "https://www.coindesk.com/arc/outboundfeeds/rss/"
-    - name: "The Block"
-      url: "https://www.theblock.co/rss.xml"
-    - name: "Cointelegraph"
-      url: "https://cointelegraph.com/rss"
-    - name: "NewsBTC"
-      url: "https://www.newsbtc.com/feed/"
-    - name: "99Bitcoins"
-      url: "https://99bitcoins.com/feed/"
-    - name: "Decrypt"
-      url: "https://decrypt.co/feed"
-    - name: "Blockworks"
-      url: "https://blockworks.co/feed"
-
+  - name: CoinDesk
+    url: https://www.coindesk.com/arc/outboundfeeds/rss/
+  - name: The Block
+    url: https://www.theblock.co/rss.xml
+  - name: Cointelegraph
+    url: https://cointelegraph.com/rss
+  - name: NewsBTC
+    url: https://www.newsbtc.com/feed/
+  - name: 99Bitcoins
+    url: https://99bitcoins.com/feed/
+  - name: Decrypt
+    url: https://decrypt.co/feed
+  - name: Blockworks
+    url: https://blockworks.co/feed
   regulatory:
-    - name: "CoinCenter"
-      url: "https://www.coincenter.org/feed/"
-    - name: "DeFi Education Fund"
-      url: "https://defieducationfund.org/feed/"
-
+  - name: CoinCenter
+    url: https://www.coincenter.org/feed/
+  - name: DeFi Education Fund
+    url: https://defieducationfund.org/feed/
   partnerships:
-    - name: "CryptoSlate"
-      url: "https://cryptoslate.com/feed/"
-    - name: "CoinGape"
-      url: "https://coingape.com/feed/"
-    - name: "Bitcoin.com News"
-      url: "https://news.bitcoin.com/feed/"
-    - name: "AMBCrypto"
-      url: "https://ambcrypto.com/feed/"
-
+  - name: CryptoSlate
+    url: https://cryptoslate.com/feed/
+  - name: CoinGape
+    url: https://coingape.com/feed/
+  - name: Bitcoin.com News
+    url: https://news.bitcoin.com/feed/
+  - name: AMBCrypto
+    url: https://ambcrypto.com/feed/
   events:
-    - name: "Coinpedia Events"
-      url: "https://events.coinpedia.org/feed/"
-
-  # Chain-specific event/blog feeds (verified working Apr 13, 2026)
+  - name: Coinpedia Events
+    url: https://events.coinpedia.org/feed/
   chain_events:
-    # L1s
-    - name: "Solana Blog"
-      url: "https://solana.com/news/rss.xml"
-    - name: "Sui Blog"
-      url: "https://blog.sui.io/feed"
-    - name: "Near Blog"
-      url: "https://medium.com/feed/@nearprotocol"
-    - name: "Aptos Blog"
-      url: "https://medium.com/feed/aptoslabs"
-    - name: "Monad Blog"
-      url: "https://medium.com/feed/@monad_xyz"
-    # L2s / Rollups
-    - name: "Arbitrum Blog"
-      url: "https://arbitrumfoundation.medium.com/feed"
-    - name: "Starknet Blog"
-      url: "https://medium.com/feed/@starkware"
-    - name: "Mantle Blog"
-      url: "https://www.mantle.xyz/blog/rss.xml"
-    - name: "Morph Blog"
-      url: "https://blog.morphl2.io/feed"
-    - name: "BNB Chain Blog"
-      url: "https://medium.com/feed/@bnbchain"
-    # Trading / DeFi
-    - name: "Hyperliquid"
-      url: "https://medium.com/feed/@hyperliquid"
-    - name: "Gnosis Blog"
-      url: "https://gnosischain.substack.com/feed"
-    - name: "Stablechain Blog"
-      url: "https://blog.stable.xyz/rss"
-    - name: "Virtuals"
-      url: "https://virtuals.substack.com/feed"
-    # New feeds (Apr 14, 2026)
-    - name: "Base Blog"
-      url: "https://base.substack.com/feed"
-    - name: "MegaETH Blog"
-      url: "https://megaethlabs.substack.com/feed"
-    - name: "Starknet Substack"
-      url: "https://starknet.substack.com/feed"
-    - name: "Bittensor"
-      url: "https://bittensor.substack.com/feed"
-    - name: "Polygon Blog"
-      url: "https://polygon.technology/blog"
-    - name: "OP Mainnet Blog"
-      url: "https://optimism.io/blog"
-    # New feeds (Apr 14, 2026 — deep search update)
-    - name: "BSC Substack"
-      url: "https://bnbchain.substack.com/feed"
-    - name: "Mantle Substack"
-      url: "https://mantle.substack.com/feed"
-    - name: "Hyperliquid Substack"
-      url: "https://hyperliquid.substack.com/feed"
-    - name: "Morph Network Blog"
-      url: "https://blog.morph.network/feed"
-    - name: "Morph Substack"
-      url: "https://morph.substack.com/feed"
-    - name: "Tempo Substack"
-      url: "https://tempo.substack.com/feed"
-    - name: "Plasma Substack"
-      url: "https://plasma.substack.com/feed"
-    - name: "Sei Blog"
-      url: "https://blog.sei.io/feed/"
-    - name: "Sei Substack"
-      url: "https://seinetwork.substack.com/feed"
-    - name: "Ink Blog"
-      url: "https://inkonchain.com/blog/rss.xml"
-    - name: "Ink Substack"
-      url: "https://ink.substack.com/feed"
-    - name: "Ink Press"
-      url: "https://inkonchain.com/press/rss"
-    - name: "X Layer Blog"
-      url: "https://www.xlayer.xyz/blog/rss.xml"
-    - name: "TON Newsroom"
-      url: "https://ton.org/en/newsroom/rss"
-    - name: "TON Ecosystem"
-      url: "https://ton.org/ecosystem/rss"
-    - name: "Polygon Substack"
-      url: "https://polygon.substack.com/feed"
-    - name: "NEAR Substack"
-      url: "https://near.substack.com/feed"
-    - name: "Optimism Substack"
-      url: "https://optimism.substack.com/feed"
-    - name: "Aptos Substack"
-      url: "https://aptos.substack.com/feed"
-    - name: "Monad Substack"
-      url: "https://monad.substack.com/feed"
-    - name: "Bitcoin Core Releases"
-      url: "https://bitcoincore.org/en/rss.xml"
-    - name: "EIPs RSS"
-      url: "https://eips.ethereum.org/rss/all.xml"
-    - name: "Bitcoin Magazine"
-      url: "https://bitcoinmagazine.com/feed"
-    - name: "Blockstream Blog"
-      url: "https://blockstream.com/blog/feed/"
-    - name: "Solana Foundation Blog"
-      url: "https://solanafoundation.org/blog/rss.xml"
-    - name: "Solana Foundation News"
-      url: "https://solanafoundation.org/news/rss.xml"
-  # Chains formerly with NO RSS (now resolved):
-  # TON — now has RSS (ton.org/en/newsroom/rss)
-  # X Layer — now has RSS (www.xlayer.xyz/blog/rss.xml)
-  # Ink — now has RSS (inkonchain.com/blog/rss.xml)
-  # Morph — now has RSS (blog.morph.network/feed, migrated from morphl2.io)
-  # Sei — now has RSS (blog.sei.io/feed/)
-
-# TradingView (Playwright scraper)
+  - name: Solana Blog
+    url: https://solana.com/news/rss.xml
+  - name: Sui Blog
+    url: https://blog.sui.io/feed
+  - name: Near Blog
+    url: https://medium.com/feed/@nearprotocol
+  - name: Aptos Blog
+    url: https://medium.com/feed/aptoslabs
+  - name: Monad Blog
+    url: https://medium.com/feed/@monad_xyz
+  - name: Arbitrum Blog
+    url: https://arbitrumfoundation.medium.com/feed
+  - name: Starknet Blog
+    url: https://medium.com/feed/@starkware
+  - name: Mantle Blog
+    url: https://www.mantle.xyz/blog/rss.xml
+  - name: Morph Blog
+    url: https://blog.morphl2.io/feed
+  - name: BNB Chain Blog
+    url: https://medium.com/feed/@bnbchain
+  - name: Hyperliquid
+    url: https://medium.com/feed/@hyperliquid
+  - name: Gnosis Blog
+    url: https://gnosischain.substack.com/feed
+  - name: Stablechain Blog
+    url: https://blog.stable.xyz/rss
+  - name: Virtuals
+    url: https://virtuals.substack.com/feed
+  - name: Base Blog
+    url: https://base.substack.com/feed
+  - name: MegaETH Blog
+    url: https://megaethlabs.substack.com/feed
+  - name: Starknet Substack
+    url: https://starknet.substack.com/feed
+  - name: Bittensor
+    url: https://bittensor.substack.com/feed
+  - name: Polygon Blog
+    url: https://polygon.technology/blog
+  - name: OP Mainnet Blog
+    url: https://optimism.io/blog
+  - name: BSC Substack
+    url: https://bnbchain.substack.com/feed
+  - name: Mantle Substack
+    url: https://mantle.substack.com/feed
+  - name: Hyperliquid Substack
+    url: https://hyperliquid.substack.com/feed
+  - name: Morph Network Blog
+    url: https://blog.morph.network/feed
+  - name: Morph Substack
+    url: https://morph.substack.com/feed
+  - name: Tempo Substack
+    url: https://tempo.substack.com/feed
+  - name: Plasma Substack
+    url: https://plasma.substack.com/feed
+  - name: Sei Blog
+    url: https://blog.sei.io/feed/
+  - name: Sei Substack
+    url: https://seinetwork.substack.com/feed
+  - name: Ink Blog
+    url: https://inkonchain.com/blog/rss.xml
+  - name: Ink Substack
+    url: https://ink.substack.com/feed
+  - name: Ink Press
+    url: https://inkonchain.com/press/rss
+  - name: X Layer Blog
+    url: https://www.xlayer.xyz/blog/rss.xml
+  - name: TON Newsroom
+    url: https://ton.org/en/newsroom/rss
+  - name: TON Ecosystem
+    url: https://ton.org/ecosystem/rss
+  - name: Polygon Substack
+    url: https://polygon.substack.com/feed
+  - name: NEAR Substack
+    url: https://near.substack.com/feed
+  - name: Optimism Substack
+    url: https://optimism.substack.com/feed
+  - name: Aptos Substack
+    url: https://aptos.substack.com/feed
+  - name: Monad Substack
+    url: https://monad.substack.com/feed
+  - name: Bitcoin Core Releases
+    url: https://bitcoincore.org/en/rss.xml
+  - name: EIPs RSS
+    url: https://eips.ethereum.org/rss/all.xml
+  - name: Bitcoin Magazine
+    url: https://bitcoinmagazine.com/feed
+  - name: Blockstream Blog
+    url: https://blockstream.com/blog/feed/
+  - name: Solana Foundation Blog
+    url: https://solanafoundation.org/blog/rss.xml
+  - name: Solana Foundation News
+    url: https://solanafoundation.org/news/rss.xml
+  - name: Arbitrum Substack
+    url: https://arbitrum.substack.com/feed
+  - name: Basechain Substack
+    url: https://basechain.substack.com/feed
+  - name: Gnosis Substack
+    url: https://gnosis.substack.com/feed
+  - name: GnosisDAO Substack
+    url: https://gnosisdao.substack.com/feed
+  - name: Bitcoin BIPs
+    url: https://github.com/bitcoin/bips/commits/master.atom
+  - name: Gnosis Specs
+    url: https://github.com/gnosischain/specs/commits/master.atom
+  - name: Polygon Governance Forum
+    url: https://forum.polygon.technology/latest.rss
+  - name: Plasma Blog
+    url: https://plasma.dev/feed.xml
 tradingview:
-  url: "https://www.tradingview.com/news-flow/?market=crypto"
-  browser: "chromium"  # chromium or camoufox
+  url: https://www.tradingview.com/news-flow/?market=crypto
+  browser: chromium
   timeout_seconds: 30
   scroll_passes: 3
-
-# Events calendar
 events:
-  cryptorank_url: "https://api.cryptorank.io/v1/events"
-  ethglobal_url: "https://ethglobal.com/events"
-  coinpedia_events_url: "https://events.coinpedia.org/feed/"
-
-# DefiLlama
+  cryptorank_url: https://api.cryptorank.io/v1/events
+  ethglobal_url: https://ethglobal.com/events
+  coinpedia_events_url: https://events.coinpedia.org/feed/
 defillama:
-  chains_endpoint: "https://api.llama.fi/chains"
-  tvl_endpoint: "https://api.llama.fi/v2/historicalChainTvl"
-  protocols_endpoint: "https://api.llama.fi/protocols"
-  fees_endpoint: "https://api.llama.fi/overview/fees"
-  stablecoins_endpoint: "https://stablecoins.llama.fi/stablecoins"
-  hacks_endpoint: "https://api.llama.fi/hacks"
-
-# CoinGecko
+  chains_endpoint: https://api.llama.fi/chains
+  tvl_endpoint: https://api.llama.fi/v2/historicalChainTvl
+  protocols_endpoint: https://api.llama.fi/protocols
+  fees_endpoint: https://api.llama.fi/overview/fees
+  stablecoins_endpoint: https://stablecoins.llama.fi/stablecoins
+  hacks_endpoint: https://api.llama.fi/hacks
 coingecko:
-  base_url: "https://api.coingecko.com/api/v3"
+  base_url: https://api.coingecko.com/api/v3
   rate_limit_per_min: 30
-
-# CryptoRank
 cryptorank:
-  base_url: "https://api.cryptorank.io/v1"
+  base_url: https://api.cryptorank.io/v1
   rate_limit_per_min: 10
-
-# GitHub
 github:
-  api_base: "https://api.github.com"
+  api_base: https://api.github.com
   rate_limit_per_hour: 5000
-
-# YouTube
 youtube:
-  api_base: "https://www.googleapis.com/youtube/v3"
+  api_base: https://www.googleapis.com/youtube/v3
   daily_quota: 10000
-
-# Telegram
 telegram:
-  parse_mode: "Markdown"
+  parse_mode: Markdown
   max_message_length: 4096
   split_on_overflow: true
-
-# Source health
 health:
   max_retries: 3
   backoff_base_seconds: 2

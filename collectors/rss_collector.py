@@ -320,6 +320,15 @@ class RSSCollector(BaseCollector):
             "Bitcoin Magazine": "bitcoin",
             "Blockstream Blog": "bitcoin",
             "EIPs RSS": "ethereum",
+            # New sources (Apr 14, 2026)
+            "Arbitrum Substack": "arbitrum",
+            "Basechain Substack": "base",
+            "Gnosis Substack": "gnosis",
+            "GnosisDAO Substack": "gnosis",
+            "Bitcoin BIPs": "bitcoin",
+            "Gnosis Specs": "gnosis",
+            "Polygon Governance Forum": "polygon",
+            "Plasma Blog": "plasma",
         }
         
         for category, feeds in rss_feeds.items():
