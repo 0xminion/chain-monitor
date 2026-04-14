@@ -1,7 +1,6 @@
 """Daily digest formatter — generates the daily Telegram digest."""
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -9,68 +8,6 @@ from config.loader import get_chains
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_url(signal: Signal) -> Optional[str]:
-    """Extract the best URL from signal evidence for inline linking."""
-    if not signal.activity:
-        return None
-    evidence = signal.activity[0].get("evidence", {})
-    # Priority: pr_url > html_url > link > feed_url
-    for key in ("pr_url", "html_url", "link", "feed_url"):
-        url = evidence.get(key)
-        if url and url.startswith("http"):
-            return url
-    return None
-
-
-def _extract_source_names(signal: Signal) -> str:
-    """Extract clean, deduplicated source names for display."""
-    if not signal.activity:
-        return ""
-    names = set()
-    for a in signal.activity:
-        evidence = a.get("evidence", {})
-        source_name = evidence.get("source_name", "")
-        if source_name:
-            # Normalize: title case, strip duplicates like "morph blog" vs "Morph Blog"
-            names.add(source_name.strip())
-        else:
-            names.add(a.get("source", "unknown"))
-    # Sort and deduplicate case-insensitively
-    seen_lower = set()
-    unique = []
-    for name in sorted(names):
-        lower = name.lower()
-        if lower not in seen_lower:
-            seen_lower.add(lower)
-            unique.append(name)
-    return ", ".join(unique)
-
-
-def _clean_description(desc: str) -> str:
-    """Strip [Source Name] prefix from RSS descriptions."""
-    # [Source Name] actual title
-    if desc.startswith("["):
-        idx = desc.find("]")
-        if idx >= 0:
-            return desc[idx + 1:].strip()
-    return desc.strip()
-
-
-def _linked_title(desc: str, url: Optional[str]) -> str:
-    """Create an HTML-linked title if URL is available."""
-    clean = _clean_description(desc)
-    if url and url.startswith("http"):
-        return f'<a href="{url}">{clean}</a>'
-    return clean
-
-
-def _format_reinforcement(signal: Signal) -> str:
-    """Format source count reinforcement indicator."""
-    if signal.source_count > 1:
-        return f" — {signal.source_count}x"
-    return ""
 
 
 def _is_noise(signal: Signal) -> bool:
@@ -81,6 +18,9 @@ def _is_noise(signal: Signal) -> bool:
         return True
     # Generic RSS "New post" with no real title
     if desc.startswith("[") and "New post" in desc:
+        return True
+    # Price/financial noise — user doesn't want price content
+    if signal.category in ("FINANCIAL", "PRICE_NOISE"):
         return True
     return False
 
@@ -135,42 +75,19 @@ class DailyDigestFormatter:
         dev_activity = [s for s in signals if s.category == "TECH_EVENT" and s.priority_score < 6]
         if dev_activity:
             sections.append("🔧 Dev activity")
-            for s in sorted(dev_activity, key=lambda x: -x.priority_score)[:3]:
-                sections.append(self._format_signal(s, show_reason=False))
+            for s in sorted(dev_activity, key=lambda x: -x.priority_score)[:5]:
+                sections.append(self._format_signal(s, show_reason=True))
                 sections.append("")
 
-        # Trim high section if total is too long (>3800 chars for Telegram safety)
-        result = "\n".join(sections)
-        if len(result) > 3800:
-            # Rebuild with fewer high-priority items
-            sections = [f"📊 Chain Monitor — {now}", ""]
-            if theme:
-                sections.extend(["🧠 Today's theme", theme, ""])
-            if critical:
-                sections.append("🔴 Critical (Score ≥10)")
-                for s in sorted(critical, key=lambda x: -x.priority_score):
-                    sections.append(self._format_signal(s, show_reason=True))
-                    sections.append("")
-            if high:
-                sections.append("🟠 High (Score 8-9)")
-                budget = max(3, len(high) // 2)
-                for s in sorted(high, key=lambda x: -x.priority_score)[:budget]:
-                    sections.append(self._format_signal(s, show_reason=True))
-                    sections.append("")
-                remaining = len(high) - budget
-                if remaining > 0:
-                    sections.append(f"  ... +{remaining} more events")
-                    sections.append("")
-            if notable:
-                sections.append("🟡 Notable (Score 6-7)")
-                for s in sorted(notable, key=lambda x: -x.priority_score)[:5]:
-                    sections.append(self._format_signal(s, show_reason=False))
-                    sections.append("")
-            if source_health:
-                sections.extend(self._format_health(source_health))
-            result = "\n".join(sections)
+        # No events
+        if not critical and not high and not notable and not dev_activity:
+            sections.append("— No high-priority events. Quiet day.")
 
-        return result
+        # Source Health
+        if source_health:
+            sections.extend(self._format_health(source_health))
+
+        return "\n".join(sections)
 
     def should_send(self, signals: list[Signal]) -> bool:
         """Determine if digest should be sent (3+ events score ≥6)."""
@@ -178,15 +95,16 @@ class DailyDigestFormatter:
         return notable_count >= 3
 
     def _format_signal(self, signal: Signal, show_reason: bool = False) -> str:
-        """Format a single signal for the digest with inline HTML links."""
+        """Format a single signal for the digest."""
+        sources_str = ", ".join(set(a["source"] for a in signal.activity))
+        rein_str = f" — {signal.source_count}x" if signal.source_count > 1 else ""
+
         chain = signal.chain.capitalize()
-        url = _extract_url(signal)
-        desc = _linked_title(signal.description, url)
-        sources = _extract_source_names(signal)
-        rein = _format_reinforcement(signal)
+        desc = signal.description
+        sources = sources_str
 
         lines = [
-            f"• {chain}: {desc} [{sources}{rein}]",
+            f"• {chain}: {desc} [{sources}{rein_str}]",
         ]
 
         # Show "Why?" for high/critical signals
@@ -210,7 +128,7 @@ class DailyDigestFormatter:
             tech = [s for s in signals if s.category == "TECH_EVENT"]
             if tech:
                 top_tech = sorted(tech, key=lambda x: -x.priority_score)[0]
-                desc = _clean_description(top_tech.description).split("(")[0].strip()
+                desc = top_tech.description.split("(")[0].strip()
                 return f"{top_tech.chain.capitalize()}: {desc.lower()}"
             return None
 
@@ -231,23 +149,16 @@ class DailyDigestFormatter:
         if dominant_cat == "PARTNERSHIP":
             items = []
             for s in dominant_signals[:3]:
-                desc = _clean_description(s.description).split("(")[0].strip()
+                desc = s.description.split("(")[0].strip()
                 items.append(f"{s.chain.capitalize()} — {desc.lower()}")
             return "🤝 " + "; ".join(items)
 
         if dominant_cat == "TECH_EVENT":
             items = []
             for s in dominant_signals[:3]:
-                desc = _clean_description(s.description).split("(")[0].strip()
+                desc = s.description.split("(")[0].strip()
                 items.append(f"{s.chain.capitalize()} — {desc.lower()}")
             return "🔧 " + "; ".join(items)
-
-        if dominant_cat == "FINANCIAL":
-            items = []
-            for s in dominant_signals[:3]:
-                desc = _clean_description(s.description).split("(")[0].strip()
-                items.append(f"{s.chain.capitalize()} — {desc.lower()}")
-            return "💰 " + "; ".join(items)
 
         return None
 
