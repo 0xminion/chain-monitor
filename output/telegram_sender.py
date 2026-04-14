@@ -24,7 +24,7 @@ class TelegramSender:
         self.max_length = 4096
         self._session = None
 
-    async def send(self, text: str, parse_mode: str = "HTML") -> bool:
+    async def send(self, text: str, parse_mode: str = "Markdown") -> bool:
         """Send message, auto-splitting if needed."""
         if not self.bot_token or not self.chat_id:
             logger.error("Telegram credentials not configured")
@@ -78,7 +78,7 @@ class TelegramSender:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def _send_single(self, text: str, parse_mode: str = "HTML") -> bool:
+    async def _send_single(self, text: str, parse_mode: str = "Markdown") -> bool:
         """Send a single message."""
         url = f"{self.base_url}/sendMessage"
         payload = {
@@ -118,6 +118,6 @@ class TelegramSender:
 
         return chunks
 
-    def send_sync(self, text: str, parse_mode: str = "HTML") -> bool:
+    def send_sync(self, text: str, parse_mode: str = "Markdown") -> bool:
         """Synchronous wrapper for send()."""
         return asyncio.run(self.send(text, parse_mode))

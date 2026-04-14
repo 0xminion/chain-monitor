@@ -147,17 +147,20 @@ class DailyDigestFormatter:
         return notable_count >= 3
 
     def _format_signal(self, signal: Signal) -> str:
-        """Format a single signal with URL on next line."""
+        """Format a single signal with clickable link embedded in title."""
         chain = signal.chain.capitalize()
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
         rein_str = f" — {signal.source_count}x" if signal.source_count > 1 else ""
 
-        line = f"• {chain}: {desc_clean} [{sources_str}{rein_str}]"
         if url:
-            line += f"\n  {url}"
-        return line
+            # Markdown link: [Title](URL) — Telegram renders as clickable
+            title = f"[{desc_clean}]({url})"
+        else:
+            title = desc_clean
+
+        return f"• {chain}: {title} [{sources_str}{rein_str}]"
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""

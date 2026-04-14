@@ -188,7 +188,7 @@ youtube:
 
 # Telegram
 telegram:
-  parse_mode: "HTML"
+  parse_mode: "Markdown"
   max_message_length: 4096
   split_on_overflow: true
 
