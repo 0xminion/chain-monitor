@@ -14,14 +14,23 @@ NOISE_KEYWORDS = [
     "chore", "deps", "bump", "fix flaky", "test:", "ci:", "typo",
     "merge pull request", "update readme", "formatting", "lint",
     "codeowners", "workflow", "changelog", "version bump",
+    "refactor", "style:", "perf:",
+    # Routine code patterns (exact prefix matching in _check_high_signal_prs)
 ]
 
-# PR titles/labels matching these are high-signal
+# Exact title prefixes that are routine PR noise (checked separately)
+ROUTINE_PREFIXES = [
+    "fix:", "fix(", "feat:", "feat(", "build:", "build(",
+    "core/vm:", "core/eth:", "core/p2p:", "core/state:",
+    "core/types:", "core/sync:",
+    "backport ", "update release-drafter",
+]
+
+# PR titles/labels matching these are high-signal — EIP/fork/security/audit only
 SIGNAL_KEYWORDS = [
-    "feat", "implement", "add support", "mainnet", "upgrade", "release",
-    "eip", "bip", "simd", "fork", "audit", "breaking", "security",
-    "deprecat", "migrat", "consensus", "finality", "hard fork",
-    "soft fork", "governance", "proposal", "spec",
+    "eip", "bip", "simd", "fork", "audit", "breaking",
+    "security", "hard fork", "soft fork", "consensus",
+    "finality", "governance", "proposal", "mainnet",
 ]
 
 
@@ -188,8 +197,12 @@ class GitHubCollector(BaseCollector):
             labels = [l["name"].lower() for l in pr.get("labels", [])]
             labels_str = " ".join(labels)
 
-            # Skip noise
+            # Skip noise (substring match)
             if any(n in title_lower for n in NOISE_KEYWORDS):
+                continue
+
+            # Skip routine PR prefixes (prefix match only — "fix:" not "fix migrations")
+            if any(title_lower.startswith(p) for p in ROUTINE_PREFIXES):
                 continue
 
             # Check for signal
