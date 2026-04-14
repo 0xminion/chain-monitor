@@ -61,8 +61,8 @@ def run_collectors() -> list[dict]:
     return events, health
 
 
-def process_events(raw_events: list[dict]) -> list:
-    """Process raw events through categorizer, scorer, reinforcer."""
+def process_events(raw_events: list[dict]) -> tuple[list, NarrativeTracker]:
+    """Process raw events through categorizer, scorer, reinforcer. Returns (signals, narrative_tracker)."""
     categorizer = EventCategorizer()
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
@@ -83,7 +83,7 @@ def process_events(raw_events: list[dict]) -> list:
         elif action == "reinforced":
             logger.info(f"  REINFORCED ({processed_signal.source_count}x): [{processed_signal.chain}] {processed_signal.description[:60]}")
 
-    return signals
+    return signals, narrative_tracker
 
 
 def cleanup_old_signals():
@@ -106,7 +106,7 @@ def main():
     logger.info(f"Total raw events: {len(raw_events)}")
 
     # Process
-    signals = process_events(raw_events)
+    signals, narrative_tracker = process_events(raw_events)
     high_priority = [s for s in signals if s.priority_score >= 8]
     logger.info(f"Total signals: {len(signals)}, High priority: {len(high_priority)}")
 

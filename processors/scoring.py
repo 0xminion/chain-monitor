@@ -232,7 +232,7 @@ class SignalScorer:
         if not template:
             return ""
 
-        if category == "FINANCIAL" and evidence and isinstance(evidence, dict):
+        if category == "FINANCIAL" and isinstance(evidence, dict) and evidence:
             pct_change = evidence.get("pct_change", 0)
             current_tvl = evidence.get("current_tvl", 0) or 0
             current_tvl_b = current_tvl / 1e9 if current_tvl else 0
@@ -270,11 +270,17 @@ class SignalScorer:
 
             return result
 
-        # Non-financial templates
+        # Non-financial templates — provide safe defaults for any placeholder
         baseline_val = baseline.get("tvl_absolute_milestone", "N/A")
+        baseline_str = f"${baseline_val:,.0f}" if isinstance(baseline_val, (int, float)) else str(baseline_val)
 
-        return template.format(
-            chain=chain.capitalize(),
-            detail=description[:80],
-            baseline=f"${baseline_val:,.0f}" if isinstance(baseline_val, (int, float)) else str(baseline_val),
-        )
+        try:
+            return template.format(
+                chain=chain.capitalize(),
+                detail=description[:80],
+                baseline=baseline_str,
+                pct_change=0,
+                current_tvl=0,
+            )
+        except (KeyError, IndexError):
+            return f"{chain.capitalize()}: {description[:80]}"
