@@ -1,7 +1,7 @@
 # Chain Monitor — Product Requirements Document v2.5
 
-**Version:** 2.5
-**Date:** 2026-04-13
+**Version:** 2.5.1
+**Date:** 2026-04-14
 **Scope:** 30-chain monitoring system
 **Cadence:** Daily digest + weekly deep analysis
 **Confidence target:** 95%+ data verification
@@ -21,6 +21,8 @@
 **Already available:** GitHub token (you have `gh` CLI @0xminion). CoinGecko CLI (installed + logged in). DefiLlama, SEC EDGAR, governance forums = no auth needed.
 
 **Note on Messari:** Messari API is now enterprise-only (no free tier). Replaced with CryptoRank free tier + DefiLlama + CoinGecko for equivalent coverage. If you have or can get Messari enterprise access, it would improve partnership/event signal quality.
+
+**Note on CryptoRank Events API:** The CryptoRank Events endpoint (`/v1/events`) is dead (404 as of Apr 2026). CryptoRank is used for project data and rankings only. Events are sourced from Coinpedia Events RSS + RSS news feeds + TradingView scraper instead.
 
 ---
 
@@ -109,7 +111,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **BSC**
 - GitHub: `bnb-chain/bsc` ✓, `bnb-chain/BEPs` (governance) ✓
-- Blog RSS: `https://www.bnbchain.org/en/blog/rss.xml` ⚠️
+- Blog RSS: `https://medium.com/feed/@bnbchain` ✓ (bnbchain.org/blog is dead, Medium feed works)
 - YouTube: `@BNBChain` ✓
 - Status: N/A (use bscscan.com for on-chain monitoring)
 - Governance: GitHub BEPs only
@@ -127,7 +129,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Hyperliquid**
 - GitHub: `hyperliquid-dex/hyperliquid-rust-sdk` ⚠️ (limited public repos)
-- Blog RSS: N/A (announcements at `https://app.hyperliquid.xyz/announcements` — scrape, no RSS)
+- Blog RSS: `https://medium.com/feed/@hyperliquid` ✓ (Hyperliquid has no official blog RSS — Medium feed used instead)
 - YouTube: `@HyperliquidX` ✓
 - Status: `https://hyperliquid.statuspage.io/` ⚠️
 - Governance: `hyperliquid.gitbook.io` (docs-based HIPs)
@@ -154,7 +156,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Morph Network**
 - GitHub: `morph-l2/morph` ⚠️, `morph-l2/go-morph` ⚠️
-- Blog RSS: `https://www.morphl2.io/blog/rss.xml` ⚠️
+- Blog RSS: `https://blog.morphl2.io/feed` ✓
 - YouTube: N/A
 - Status: N/A
 - Governance: N/A (too early)
@@ -192,7 +194,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Arbitrum**
 - GitHub: `OffchainLabs/nitro` ✓, `OffchainLabs/arbitrum-sdk` ✓
-- Blog RSS: `https://medium.com/feed/@arbitrum` ⚠️ (Medium RSS)
+- Blog RSS: `https://arbitrumfoundation.medium.com/feed` ✓ (arbitrum.io/blog is dead, Foundation Medium feed works)
 - YouTube: `@Arbitrum` ⚠️
 - Status: `https://status.arbitrum.io/` ⚠️
 - Governance: `forum.arbitrum.foundation` (Discourse) ⚠️
@@ -201,7 +203,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Starknet**
 - GitHub: `starkware-libs/starknet` ✓, `starkware-libs/cairo` ✓
-- Blog RSS: `https://www.starknet.io/en/blog/rss.xml` ⚠️
+- Blog RSS: `https://medium.com/feed/@starkware` ✓ (starknet.io/blog is dead, Starkware Medium feed works)
 - YouTube: `@StarknetFndn` ⚠️
 - Status: `https://status.starknet.io/` ⚠️
 - Governance: `community.starknet.io` (Discourse, SNIPs) ✓
@@ -249,7 +251,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Gnosis**
 - GitHub: `gnosischain/specs` ⚠️, `gnosischain/beacon-chain` ⚠️
-- Blog RSS: `https://www.gnosis.io/blog/rss.xml` ⚠️
+- Blog RSS: `https://gnosischain.substack.com/feed` ✓ (gnosis.io/blog is dead, Gnosis Chain Substack works)
 - YouTube: `@GnosisChain` ⚠️
 - Status: `https://status.gnosischain.com/` ⚠️
 - Governance: `forum.gnosis.io` (Discourse, GIPs) ⚠️
@@ -269,7 +271,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Monad**
 - GitHub: `monadxyz` ⚠️ (org, check for most-active repo)
-- Blog RSS: `https://www.monad.xyz/blog/rss.xml` ⚠️
+- Blog RSS: `https://medium.com/feed/@monad_xyz` ✓ (monad.xyz/blog is dead, Medium feed works)
 - YouTube: `@monad_xyz` ⚠️
 - Status: N/A
 - Governance: `forum.monad.xyz` (Discourse, MIPs) ⚠️
@@ -296,7 +298,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Aptos**
 - GitHub: `aptos-labs/aptos-core` ✓
-- Blog RSS: `https://aptosfoundation.org/news/rss.xml` ⚠️
+- Blog RSS: `https://medium.com/feed/aptoslabs` ✓ (aptosfoundation.org/news is dead, Medium feed works)
 - YouTube: `@AptosLabs` ⚠️
 - Status: `https://status.aptoslabs.com/` ⚠️
 - Governance: `github.com/aptos-foundation/AIPs` (AIPs) ✓
@@ -345,7 +347,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **NEAR**
 - GitHub: `near/nearcore` ✓
-- Blog RSS: `https://near.org/blog/rss.xml` ⚠️
+- Blog RSS: `https://medium.com/feed/@nearprotocol` ✓ (near.org/blog is dead, Medium feed works)
 - YouTube: `@NEARProtocol` ⚠️
 - Status: `https://status.near.org/` ⚠️
 - Governance: `gov.near.org` (Discourse, NEPs) ⚠️
@@ -357,16 +359,14 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 | Dimension | Chains with source | Chains without |
 |-----------|-------------------|----------------|
 | GitHub repos | 30/30 | None (all resolved) |
-| Blog RSS / announcements | 26/30 | Bitcoin (no central blog), Hyperliquid (scrape announcements page), X Layer (scrape OKX announcements), Morph (verify RSS exists) |
-| YouTube channel | 20/30 | Bitcoin, X Layer (use OKX), Ink, MegaETH, Virtuals, Morph (verify), Stablechain + 3 TBD |
+| Blog RSS / announcements | 28/30 | Bitcoin (no central blog), X Layer (OKX — no RSS, monitor via DefiLlama + TradingView) |
+| YouTube channel | 20/30 | Bitcoin, X Layer (use OKX), Ink, MegaETH, Virtuals, Morph, Stablechain + 3 TBD |
 | Status page | 14/30 | Bitcoin, Mantle, X Layer, Morph, Tempo, Plasma, Stablechain, MegaETH, Monad, Virtuals + 6 TBD |
 | Governance forum | 19/30 | 11 enterprise/early (see section 2) |
 
 **Chains with NO blog RSS (need scraping workaround):**
 1. **Bitcoin** — no official blog. Monitor bitcoin.org/news + GitHub releases
-2. **Hyperliquid** — scrape `https://app.hyperliquid.xyz/announcements` (no RSS)
-3. **X Layer** — scrape OKX announcements page, filter for "X Layer" keywords
-4. **Morph** — blog exists at morphl2.io but RSS endpoint unverified
+2. **X Layer** — OKX doesn't expose RSS for X Layer. Monitor via DefiLlama TVL + TradingView
 
 **Chains with NO YouTube channel:**
 1. Bitcoin
@@ -705,14 +705,17 @@ near:
 
 ### 4.1 TECH EVENT (including Governance)
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| GitHub API (repos + releases) | Structured API | Free token (5000 req/hr) | All chains |
-| Chain-specific blogs (RSS) | Semi-structured | None | Most chains |
-| CryptoRank Events Calendar | Structured API | Free tier (Core) | Major chains |
-| Artemis Developer Activity | Structured API | Free (contact for access) | ~20 chains |
-| **Governance forums** | RSS/scraper | None | 18 chains (see table above) |
-| **GitHub proposal repos** | Structured API | Free token | 7 chains (BIPs, SIMDs, BEPs, etc.) |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| GitHub API (repos + releases) | Structured API | Free token (5000 req/hr) | All chains | ✓ Implemented |
+| Chain-specific blogs (RSS) | Semi-structured | None | 28 chains (see Section 2.1) | ✓ Implemented |
+| Coinpedia Events RSS | Semi-structured | None | General events | ✓ In sources.yaml |
+| TradingView (Playwright scraper) | Scraped | None | All crypto news | ✓ Implemented (Chromium) |
+| **Governance forums** | RSS/scraper | None | 18 chains (see table above) | Partially implemented |
+| **GitHub proposal repos** | Structured API | Free token | 7 chains (BIPs, SIMDs, BEPs, etc.) | Partially implemented |
+| CryptoRank | Structured API | Free tier (Core) | Major chains | ✓ For project data only (Events API dead) |
+
+**Note:** CryptoRank Events API (`/v1/events`) returns 404 — dead as of Apr 2026. CryptoRank used for project data/rankings only. Events sourced from Coinpedia RSS + news feeds + TradingView scraper.
 
 **Governance monitoring strategy:**
 
@@ -737,31 +740,35 @@ For chains without governance forums (Ink, X Layer, Morph, Tempo, Plasma, Stable
 
 ### 4.2 PARTNERSHIP
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| CryptoRank Events/News | Structured API | Free tier (Core) | Major chains |
-| Official X/Twitter accounts | Playwright backup | None | All chains |
-| CoinDesk / The Block RSS | Semi-structured | None | Major chains |
-| Mirror.xyz / Substack (chain blogs) | Semi-structured | None | Emerging chains |
-| DefiLlama Protocol pages | Structured API | None | All DeFi chains |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| RSS News feeds | Semi-structured | None | All chains | ✓ Implemented (7 feeds: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks) |
+| CryptoSlate RSS | Semi-structured | None | All chains | ✓ In sources.yaml |
+| CoinGape RSS | Semi-structured | None | All chains | ✓ In sources.yaml |
+| Bitcoin.com News RSS | Semi-structured | None | All chains | ✓ In sources.yaml |
+| AMBCrypto RSS | Semi-structured | None | All chains | ✓ In sources.yaml |
+| DefiLlama Protocol pages | Structured API | None | All DeFi chains | ✓ Implemented |
+| TradingView (Playwright scraper) | Scraped | None | All crypto news | ✓ Implemented (Chromium) |
+| CryptoRank | Structured API | Free tier (Core) | Major chains | ✓ For project data (Events API dead) |
 
-**Design thinking:** CryptoRank provides structured events data. RSS feeds for speed. DefiLlama is the "proof of life" — when TVL appears on a new chain, the partnership is real. X/Twitter via Playwright only as backup (fragile).
+**Design thinking:** News RSS feeds catch partnership announcements. DefiLlama is the "proof of life" — when TVL appears on a new chain, the partnership is real. TradingView scraper catches additional stories not in RSS feeds. CryptoRank Events API is dead — don't use it.
 
 ---
 
 ### 4.3 REGULATORY
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| SEC EDGAR RSS | Structured | None | US-focused |
-| CoinCenter Tracker | Curated | None | US + global |
-| DeFi Education Fund | Curated | None | US-focused |
-| EU MiCA Portal | Structured | None | EU-focused |
-| FATF Updates | Structured | None | Global |
-| Lexology / Mondaq RSS | Semi-structured | None | Global |
-| HK SFC Announcements | Structured | None | X Layer (OKX is HK-based) |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| CoinCenter RSS | Curated | None | US + global | ✓ In sources.yaml |
+| DeFi Education Fund RSS | Curated | None | US-focused | ✓ In sources.yaml |
+| SEC EDGAR EFTS | Structured | None | US-focused | ⚠️ Planned (not yet in sources.yaml) |
+| EU MiCA Portal | Structured | None | EU-focused | ⚠️ Planned |
+| FATF Updates | Structured | None | Global | ⚠️ Planned |
+| Lexology / Mondaq RSS | Semi-structured | None | Global | ⚠️ Planned |
+| HK SFC Announcements | Structured | None | X Layer (OKX is HK-based) | ⚠️ Planned |
+| RSS News feeds (filtered) | Semi-structured | None | All chains | ✓ Implemented (categorizer classifies regulatory items) |
 
-**Design thinking:** Regulatory is binary — either there's an active enforcement action or there isn't. SEC RSS + CoinCenter + 2-3 legal blogs covers 90%. Country-specific additions: HK SFC for X Layer/OKX.
+**Design thinking:** Regulatory is binary — either there's an active enforcement action or there isn't. CoinCenter + DeFi Education Fund RSS covers policy blog posts. News feeds catch breaking regulatory stories via categorizer keyword matching.
 
 **SEC EDGAR crypto-specific monitoring:**
 - General RSS: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=&dateb=&owner=include&count=40&action=getcompany` (keyword filter required)
@@ -773,49 +780,52 @@ For chains without governance forums (Ink, X Layer, Morph, Tempo, Plasma, Stable
 
 ### 4.4 RISK ALERT
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| DeFiLlama Hacks page | Structured API | None | All DeFi |
-| Rekt News | Semi-structured | None | All chains |
-| Immunefi Bug Bounty Dashboard | Structured | None | Chains with bounties |
-| Chain status pages | Structured | Varies | Major chains |
-| Security researcher X (backup) | Playwright | None | All chains |
-| GitHub Issues (critical) | Structured API | Free token | All chains |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| DefiLlama protocols (TVL crash detection) | Structured API | None | All DeFi | ✓ Implemented (>50% TVL drop on $1M+ protocols) |
+| RSS News feeds (filtered) | Semi-structured | None | All chains | ✓ Implemented (categorizer classifies risk items) |
+| Rekt News | Semi-structured | None | All chains | ⚠️ Planned |
+| Immunefi Bug Bounty Dashboard | Structured | None | Chains with bounties | ⚠️ Planned |
+| Chain status pages | Structured | Varies | Major chains | ⚠️ Planned |
+| GitHub Issues (critical) | Structured API | Free token | All chains | ⚠️ Planned |
+| DeFiLlama Hacks endpoint | Structured API | Paid (402) | All DeFi | ✗ Paid endpoint — use TVL crash detection instead |
 
-**Design thinking:** Speed matters. X security researchers for speed (Playwright backup only), DeFiLlama for verification ($ amounts), Rekt for post-mortems. Chain status pages are hit-or-miss.
+**Design thinking:** DefiLlama `/hacks` endpoint requires paid plan (402). Alternative: detect >50% TVL drops on $1M+ protocols from free `/protocols` endpoint. News feeds catch security incidents via categorizer keyword matching.
 
 ---
 
 ### 4.5 VISIBILITY EVENT
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| Conference calendars | Manual + scraping | None | Major chains |
-| YouTube (chain channels) | API | Free (quota-limited) | All chains |
-| Podcast feeds (Bankless, Unchained, The Block, What Bitcoin Did) | RSS | None | Major chains |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| RSS News feeds (filtered) | Semi-structured | None | All chains | ✓ Implemented (categorizer classifies visibility items) |
+| CryptoRank | Structured API | Free tier (Core) | Major chains | ✓ For team/org data (Events API dead) |
+| Conference calendars (ethereum.org, ETHGlobal) | Scraped | None | Ethereum + ecosystem | ✓ Implemented (Camoufox for ETHGlobal) |
+| Hackathon outcomes (ETHGlobal, Solana, Devpost) | Scraped | Camoufox | Past events | ✓ Implemented |
+| YouTube (chain channels) | API | Free (quota-limited) | 20 chains | ⚠️ Planned (YouTube API key available) |
+| Podcast RSS feeds | RSS | None | Major chains | ⚠️ Planned (feeds not yet in sources.yaml) |
 
-**Podcast RSS URLs:**
-- Bankless: `https://feeds.transistor.fm/bankless-podcast` ⚠️
-- Unchained: `https://unchainedcrypto.com/feed/podcast` ⚠️
-- The Block: `https://www.theblock.co/rss.xml` ⚠️
-- What Bitcoin Did: `https://feeds.transistor.fm/what-bitcoin-did` ⚠️
-- Lightspeed (Solana-focused): `https://feeds.transistor.fm/lightspeed` ⚠️
-- The Defiant: `https://thedefiant.io/feed/podcast` ⚠️
-| Official X accounts (backup) | Playwright | None | All chains |
-| CryptoRank Events (team changes) | Structured API | Free tier (Core) | Major chains |
+**Podcast RSS URLs (to add to sources.yaml):**
+- Bankless: `https://feeds.transistor.fm/bankless-podcast`
+- Unchained: `https://unchainedcrypto.com/feed/podcast`
+- The Block: `https://www.theblock.co/rss.xml`
+- What Bitcoin Did: `https://feeds.transistor.fm/what-bitcoin-did`
+- Lightspeed (Solana-focused): `https://feeds.transistor.fm/lightspeed`
+- The Defiant: `https://thedefiant.io/feed/podcast`
 
-**Design thinking:** Visibility events are weakest individually, strongest in aggregate. Pattern detection > individual tracking. Conference + AMA + hiring cluster = momentum signal.
+**Design thinking:** Visibility events are weakest individually, strongest in aggregate. Conference + AMA + hiring cluster = momentum signal. Conference dates filtered to 2-week window (past events clutter the digest). Hackathon outcomes show where developer attention is going.
 
 ---
 
 ### 4.6 FINANCIAL
 
-| Source | Type | Auth | Coverage |
-|--------|------|------|----------|
-| DefiLlama (TVL, fees, revenue, volume) | Structured API | None | 200+ chains |
-| CoinGecko (market cap, price, volume) | Structured API | Free tier | All tokens |
-| DefiLlama Stablecoins | Structured API | None | All chains |
-| DefiLlama Unlocks | Structured API | None | Token-specific |
+| Source | Type | Auth | Coverage | Status |
+|--------|------|------|----------|--------|
+| DefiLlama (TVL, fees, revenue, volume) | Structured API | None | 200+ chains | ✓ Implemented |
+| CoinGecko (market cap, price, volume) | Structured API | Free tier (30 req/min) | All tokens | ✓ Implemented |
+| DefiLlama Stablecoins | Structured API | None | All chains | ✓ Implemented |
+| DefiLlama Unlocks | Structured API | None | Token-specific | ⚠️ Planned |
+| CoinGecko CLI | CLI | Free (installed) | One-off queries | ✓ Available |
 
 **Note:** Messari Asset Metrics removed (enterprise-only). DefiLlama + CoinGecko provide equivalent coverage for financial data.
 
@@ -1067,22 +1077,21 @@ Monthly tier review. 3+ notable events in a month → promote. 30 days quiet →
 
 ## 8. Source Reliability Ratings
 
-| Source | Reliability |
-|--------|-------------|
-| GitHub API | 0.95 |
-| DefiLlama API | 0.95 |
-| SEC EDGAR | 0.95 |
-| Chain status pages | 0.90 |
-| CoinGecko | 0.90 |
-| Messari (research + intel) | 0.85 | Human-curated but can lag. No longer free (enterprise-only). |
-| CryptoRank | 0.80 | Good coverage, free tier available. |
-| Official governance forums | 0.85 |
-| CoinDesk / The Block | 0.80 |
-| Rekt News | 0.80 |
-| Official X accounts | 0.75 |
-| Security researcher X | 0.70 |
-| Podcast appearances | 0.65 |
-| Community forums | 0.50 |
+| Source | Reliability | Notes |
+|--------|-------------|-------|
+| GitHub API | 0.95 | |
+| DefiLlama API | 0.95 | |
+| SEC EDGAR | 0.95 | |
+| Chain status pages | 0.90 | |
+| CoinGecko | 0.90 | |
+| CryptoRank | 0.80 | Good coverage, free tier. Events API dead — use for project data only. |
+| Official governance forums | 0.85 | |
+| CoinDesk / The Block | 0.80 | |
+| Rekt News | 0.80 | |
+| RSS News feeds (general) | 0.75 | Categorizer re-classifies into specific categories |
+| TradingView scraper | 0.75 | JS-rendered, requires Playwright |
+| Coinpedia Events | 0.65 | |
+| Community forums | 0.50 | |
 
 **Composite confidence** = max(source reliabilities) × multiplier:
 - 1 source: ×1.0
@@ -1099,15 +1108,25 @@ Monthly tier review. 3+ notable events in a month → promote. 30 days quiet →
 ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
 │  COLLECTORS  │────▶│  PROCESSORS  │────▶│   OUTPUT     │
 │              │     │              │     │              │
-│ • GitHub     │     │ • Classify   │     │ • Telegram   │
-│ • DefiLlama  │     │ • Score      │     │   alerts +   │
-│ • Messari    │     │ • Reinforce  │     │   daily +    │
-│ • RSS feeds  │     │ • Enrich     │     │   bot v2     │
-│ • Gov forums │     │              │     │ • Markdown   │
-│ • SEC EDGAR  │     │              │     │   (weekly)   │
-│ • CoinGecko  │     │              │     │ • JSON       │
-│ • Playwright │     │              │     │   (archive)  │
-│   (X backup) │     │              │     │              │
+│ • DefiLlama  │     │ • Classify   │     │ • Telegram   │
+│ • CoinGecko  │     │ • Score      │     │   daily +    │
+│ • GitHub     │     │ • Reinforce  │     │   weekly     │
+│ • RSS (12    │     │ • Enrich     │     │ • Markdown   │
+│   feeds +    │     │              │     │   (weekly)   │
+│   15 chain   │     │              │     │ • JSON       │
+│   blogs)     │     │              │     │   (archive)  │
+│ • Regulatory │     │              │     │              │
+│ • RiskAlert  │     │              │     │              │
+│ • TradingView│     │              │     │              │
+│   (Playwright│     │              │     │              │
+│   Chromium)  │     │              │     │              │
+│ • Events     │     │              │     │              │
+│   (ETHGlobal,│     │              │     │              │
+│   ethereum.  │     │              │     │              │
+│   org, Devpost│    │              │     │              │
+│   via Camoufox│    │              │     │              │
+│ • Hackathon  │     │              │     │              │
+│   Outcomes   │     │              │     │              │
 └─────────────┘     └──────────────┘     └──────────────┘
        │                    │                    │
        ▼                    ▼                    ▼
@@ -1181,7 +1200,7 @@ Each transition is logged as a signal event:
 
 ### 9.4 Scraping Strategy (for chains without RSS)
 
-4 chains require scraping: Bitcoin, Hyperliquid, X Layer, Morph.
+Only 2 chains require scraping: Bitcoin and X Layer. Hyperliquid and Morph now have working RSS feeds (Hyperliquid via Medium, Morph via blog.morphl2.io).
 
 **Anti-bot protection handling:**
 - Cloudflare-protected sites: Use Camoufox (anti-detect browser)
@@ -1196,9 +1215,9 @@ Bitcoin:
 - No blog. GitHub is the real source.
 
 Hyperliquid:
-- Scrape: `https://app.hyperliquid.xyz/announcements`
+- RSS: `https://medium.com/feed/@hyperliquid` ✓ (in sources.yaml — no scraping needed)
+- Scrape fallback: `https://app.hyperliquid.xyz/announcements` (only if RSS fails)
 - Check for hidden JSON endpoint: `https://api.hyperliquid.xyz/info` (may expose announcements)
-- Camoufox if Cloudflare-protected
 
 X Layer:
 - Scrape: `https://www.okx.com/help/section/announcements-latest-announcements`
@@ -1206,9 +1225,7 @@ X Layer:
 - Cloudflare-protected → Camoufox required
 
 Morph:
-- Scrape: `https://www.morphl2.io/blog`
-- Check common RSS paths: `/feed`, `/rss.xml`, `/feed.xml`, `/blog/rss`
-- If RSS found, switch to RSS mode
+- RSS: `https://blog.morphl2.io/feed` ✓ (in sources.yaml — no scraping needed)
 
 **Scraping fallback chain:**
 ```
@@ -1792,14 +1809,25 @@ Bot: 📡 Monad — Latest Signals
 
 ## 14. Source Summary — Quick Reference
 
-| Category | Primary Sources | Backup Sources | Chains Covered |
-|----------|----------------|----------------|----------------|
-| TECH EVENT | GitHub API (30 chains), RSS blogs (26 chains), Governance forums (18 chains), CryptoRank | Artemis | 30/30 (scrape for chains without RSS) |
-| PARTNERSHIP | CryptoRank Events/News, RSS (CoinDesk, The Block) | DefiLlama (indirect), X via Playwright | 30/30 |
-| REGULATORY | SEC EDGAR, CoinCenter, legal blog RSS | HK SFC, MiCA portal, FATF | Global coverage |
-| RISK ALERT | DeFiLlama hacks, Rekt News, GitHub issues | Immunefi, chain status pages (14 chains), X via Playwright | 30/30 |
-| VISIBILITY | YouTube API (20 chains), podcast RSS, conference calendars | CryptoRank Events, X via Playwright | 28/30 (Bitcoin, Virtuals have no YouTube) |
-| FINANCIAL | DefiLlama (30 chains), CoinGecko (26 tokens) | CoinGecko CLI (installed) | 26/30 with token data |
+| Category | Primary Sources | Backup Sources | Chains Covered | Status |
+|----------|----------------|----------------|----------------|--------|
+| TECH EVENT | GitHub API (30 chains), RSS blogs (28 chains), TradingView scraper, Coinpedia Events | CryptoRank (project data) | 30/30 (scrape for Bitcoin/XLayer) | ✓ |
+| PARTNERSHIP | RSS news (11 feeds), TradingView scraper | DefiLlama (indirect — TVL appearance = proof) | 30/30 | ✓ |
+| REGULATORY | CoinCenter RSS, DeFi Education Fund RSS, RSS news (filtered) | SEC EDGAR, HK SFC (planned) | Global | Partial |
+| RISK ALERT | DefiLlama TVL crash detection, RSS news (filtered) | Rekt News, Immunefi (planned) | 30/30 | Partial |
+| VISIBILITY | Conference calendars (ethereum.org, ETHGlobal), Hackathon outcomes, RSS news (filtered) | YouTube API, Podcast RSS (planned) | 28/30 | Partial |
+| FINANCIAL | DefiLlama (30 chains), CoinGecko (26 tokens) | CoinGecko CLI (installed) | 26/30 with token data | ✓ |
+
+**RSS Feeds Implemented (12 news + 15 chain blogs):**
+- News: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks
+- Regulatory: CoinCenter, DeFi Education Fund
+- Partnerships: CryptoSlate, CoinGape, Bitcoin.com News, AMBCrypto
+- Events: Coinpedia Events
+- Chain blogs: Solana, Avalanche, Sui, Near, Aptos, Monad, Arbitrum, Starknet, Mantle, Morph, BNB Chain, Hyperliquid, Gnosis, Stablechain, Virtuals
+
+**Collectors Implemented:** DefiLlama, CoinGecko, GitHub, RSS (all categories), Regulatory (CoinCenter + DeFi Education Fund), RiskAlert (TVL crash), TradingView (Playwright Chromium), Events (ethereum.org + ETHGlobal via Camoufox), HackathonOutcomes (ETHGlobal + Solana + Devpost)
+
+**Planned (not yet in sources.yaml):** SEC EDGAR, YouTube API, Podcast RSS feeds, Rekt News, Immunefi, EU MiCA portal, FATF, HK SFC
 
 **Per-chain source config:** See Section 2.1 for complete GitHub repos, RSS URLs, YouTube channels, and status pages for all 30 chains.
 
