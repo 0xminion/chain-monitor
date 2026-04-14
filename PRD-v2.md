@@ -1,6 +1,6 @@
 # Chain Monitor — Product Requirements Document v2.5
 
-**Version:** 2.5.1
+**Version:** 2.6
 **Date:** 2026-04-14
 **Scope:** 30-chain monitoring system
 **Cadence:** Daily digest + weekly deep analysis
@@ -102,27 +102,43 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Base**
 - GitHub: `base-org/node` ✓, `ethereum-optimism/optimism` (shared OP Stack code) ✓
-- Blog RSS: `https://base.substack.com/feed` ✓ (Substack RSS — works)
+- Blog RSS: `https://base.substack.com/feed` ✓ (Substack RSS)
+- Engineering Blog: `https://www.base.dev/blog` ✓ (NEW)
+- Paragraph Blog: `https://paragraph.xyz/@base` ✓ (NEW)
+- Events: `https://lu.ma/BaseEvents` ✓ (NEW)
+- Ecosystem: `https://base.org/ecosystem` ✓ (NEW)
+- Build Portal: `https://base.org/build` ✓ (NEW)
 - YouTube: `@Base` ✓
 - Status: `https://status.base.org/` ✓
 - Docs: `https://docs.base.org/` ✓
+- Reddit: `https://www.reddit.com/r/BASE/` ✓ (NEW)
 - Governance: `gov.optimism.io` (shared with OP Mainnet — filter by Base tags)
 - DefiLlama slug: `base`
 - CoinGecko ID: N/A (no native token)
 
 **BSC**
 - GitHub: `bnb-chain/bsc` ✓, `bnb-chain/BEPs` (governance) ✓
-- Blog RSS: `https://medium.com/feed/@bnbchain` ✓ (bnbchain.org/blog is dead, Medium feed works)
+- Blog RSS: `https://medium.com/feed/@bnbchain` ✓ (Medium feed)
+- Substack RSS: `https://bnbchain.substack.com/feed` ✓ (NEW — alternative to Medium)
+- Blog page: `https://www.bnbchain.org/en/blog` ✓ (scrape backup)
 - YouTube: `@BNBChain` ✓
 - Status: N/A (use bscscan.com for on-chain monitoring)
 - Governance: `https://forum.bnbchain.org/` ✓, GitHub BEPs ✓
 - Docs: `https://docs.bnbchain.org/` ✓
+- Discord: `https://discord.com/invite/bnbchain` ✓
+- Telegram: `https://t.me/bnbchain` ✓, `https://t.me/bnbchainofficial` ✓
 - DefiLlama slug: `bsc`
 - CoinGecko ID: `binancecoin`
 
 **Mantle**
 - GitHub: `mantlenetworkio/mantle` ⚠️
 - Blog RSS: `https://www.mantle.xyz/blog/rss.xml` ⚠️
+- Substack RSS: `https://mantle.substack.com/feed` ✓ (NEW — alternative)
+- Treasury Monitor: `https://treasurymonitor.mantle.xyz/` ✓ (NEW)
+- Multisig: `https://multisig.mantle.xyz/` ✓ (NEW)
+- EcoFund: `https://www.mantle.xyz/ecofund` ✓ (NEW — $200M)
+- Delegate Voting: `https://delegatevote.mantle.xyz/` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/bitdao.eth/` ✓ (NEW — separate from forum)
 - YouTube: `@MantleOfficial` ✓
 - Status: N/A
 - Governance: `https://forum.mantle.xyz/` ✓ (Discourse, MIPs)
@@ -132,41 +148,71 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Hyperliquid**
 - GitHub: `hyperliquid-dex/hyperliquid-rust-sdk` ⚠️ (limited public repos)
-- Blog RSS: `https://medium.com/feed/@hyperliquid` ✓ (Hyperliquid has no official blog RSS — Medium feed used instead)
+- Foundation: `https://hyperfoundation.org/` ✓ (NEW — official foundation site)
+- Blog RSS: `https://medium.com/feed/@hyperliquid` ✓ (Medium feed)
+- Substack RSS: `https://hyperliquid.substack.com/feed` ✓ (NEW)
 - Announcements: `https://app.hyperliquid.xyz/announcements` ✓ (scrape as backup)
 - YouTube: `@HyperliquidX` ✓
-- Status: `https://hyperliquid.statuspage.io/` ⚠️
+- Status: `https://hyperliquid.statuspage.io/` ✓ (confirmed working)
+- Telegram (Announcements): `https://t.me/hyperliquid_announcements` ✓ (NEW)
 - Governance: `https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips` ✓ (HIPs in docs)
 - Docs: `https://hyperliquid.gitbook.io/hyperliquid-docs` ✓
 - DefiLlama slug: `hyperliquid`
 - CoinGecko ID: `hyperliquid`
 
-**Ink**
+**Ink** ⚠️ Extensive site discovered — NOT minimal
 - GitHub: `inkonchain` ⚠️
-- Blog: `https://inkonchain.com/blog` ✓ (verify RSS endpoint)
+- Blog RSS: `https://inkonchain.com/blog/rss.xml` ✓ (NEW — verified)
+- Blog alt: `https://inkonchain.com/blog/feed` ✓
+- Substack: `https://ink.substack.com/feed` ✓ (NEW)
+- Press RSS: `https://inkonchain.com/press/rss` ✓ (NEW)
+- Ecosystem: `https://inkonchain.com/ecosystem` ✓ (NEW)
+- Grants: `https://inkonchain.com/grants` ✓ (NEW)
+- Community: `https://inkonchain.com/community` ✓ (NEW)
+- Builders: `https://inkonchain.com/builders` ✓ (NEW)
+- Apps: `https://inkonchain.com/apps` ✓ (NEW)
+- Explorer: `https://explorer.inkonchain.com` ✓ (NEW)
+- Status: `https://inkonchain.com/status` ✓ (NEW — was N/A)
+- Roadmap RSS: `https://inkonchain.com/roadmap/rss` ✓ (NEW)
+- Warpcast: `https://warpcast.com/inkonchain` ✓ (NEW)
 - YouTube: `@InkOnChain` ✓
 - Docs: `https://docs.inkonchain.com/` ✓
-- Status: N/A
-- Governance: N/A (enterprise-controlled)
+- Governance: N/A (enterprise-controlled, Kraken OP Stack L2)
+- Discord: `https://discord.com/invite/inkonchain` ✓
 - DefiLlama slug: `ink`
 - CoinGecko ID: N/A (no native token yet)
 
-**X Layer**
+**X Layer** ⚠️ Has independent site at xlayer.xyz (not just OKX-dependent)
 - GitHub: `x-layer/x-layer` ⚠️ (may be limited)
-- Blog RSS: N/A (OKX announcements at `https://www.okx.com/help/section/announcements-latest-announcements` — scrape, no RSS. Filter for X Layer keywords)
+- Website: `https://www.xlayer.xyz` ✓ (independent site)
+- Blog RSS: `https://www.xlayer.xyz/blog/rss.xml` ✓ (NEW — replaces scrape-only approach)
+- Docs: `https://docs.xlayer.xyz` ✓ (independent docs, not just OKX)
+- Explorer: `https://explorer.xlayer.xyz` ✓
+- Ecosystem: `https://www.xlayer.xyz/ecosystem` ✓
+- Grants: `https://www.xlayer.xyz/grants` ✓
+- Status: `https://www.xlayer.xyz/status` ✓ (NEW — was N/A)
+- OKX announcements: `https://www.okx.com/help/section/announcements-latest-announcements` ✓ (filter for X Layer)
 - YouTube: N/A (use OKX channel `@OKXOfficial` ⚠️ for X Layer content)
-- Status: N/A
 - Governance: N/A (enterprise-controlled)
+- Discord: `https://discord.gg/xlayer` ✓
+- Telegram: `https://t.me/XLayerOfficial` ✓
 - DefiLlama slug: `xlayer`
 - CoinGecko ID: N/A (uses OKB)
 
-**Morph Network**
+**Morph Network** ⚠️ DOMAIN MIGRATION: morphl2.io → morph.network
 - GitHub: `morph-l2/morph` ⚠️, `morph-l2/go-morph` ⚠️
-- Blog RSS: `https://blog.morphl2.io/feed` ✓
-- YouTube: N/A
-- Docs: `https://docs.morphl2.io/` ✓
+- Website: `https://morph.network/` ✓ (morphl2.io redirects here)
+- Blog RSS: `https://blog.morph.network/feed` ✓ (NEW — replaces morphl2.io)
+- Substack RSS: `https://morph.substack.com/feed` ✓
+- Explorer: `https://explorer.morph.network/` ✓
+- Apps: `https://morph.network/apps` ✓
+- Accelerator: `https://morph.network/accelerator` ✓ ($150M program)
+- YouTube: `https://www.youtube.com/@MorphNetwork` ✓ (NEW)
+- Docs: `https://docs.morph.network/` ✓ (migrated from morphl2.io)
 - Status: N/A
 - Governance: N/A (too early)
+- Discord: `https://discord.gg/morphnetwork` ✓
+- Telegram: `https://t.me/MorphGlobal` ✓
 - DefiLlama slug: `morph`
 - CoinGecko ID: `morph` ⚠️
 
@@ -175,6 +221,16 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 **Ethereum**
 - GitHub: `ethereum/go-ethereum` ✓, `ethereum/consensus-specs` ✓, `ethereum/execution-specs` ✓
 - Blog RSS: `https://blog.ethereum.org/feed.xml` ✓
+- EIPs RSS: `https://eips.ethereum.org/rss/all.xml` ✓ (NEW — all EIPs as RSS)
+- Research: `https://ethresear.ch` ✓ (NEW — R&D forum), `https://ethresear.ch/latest.json` ✓ (JSON API)
+- Magicians API: `https://ethereum-magicians.org/latest.json` ✓ (NEW — Discourse JSON API)
+- Grants: `https://esp.ethereum.org/` ✓ (NEW — Ecosystem Support Program)
+- Devcon: `https://devcon.org` ✓ (NEW)
+- Events: `https://ethglobal.com/events` ✓ (NEW — global hackathons)
+- Week in Ethereum: `https://weekinethereum.substack.com` ✓ (NEW — newsletter)
+- Client Diversity: `https://clientdiversity.org/` ✓ (NEW)
+- Staking Launchpad: `https://launchpad.ethereum.org` ✓ (NEW)
+- Burn Tracker: `https://ultrasound.money` ✓ (NEW)
 - YouTube: `@EthereumFoundation` ✓
 - Status: `https://ethstats.net/` ⚠️ (not a traditional status page)
 - Governance: `ethereum-magicians.org` (EIPs) ✓, `eips.ethereum.org` ✓
@@ -182,41 +238,63 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 - CoinGecko ID: `ethereum`
 
 **Bitcoin**
-- GitHub: `bitcoin/bitcoin` ✓
-- Blog RSS: N/A (no official centralized blog)
-- YouTube: N/A (no official channel)
+- GitHub: `bitcoin/bitcoin` ✓, `bitcoin/bips` (BIPs) ✓, `lightning/bolts` (BOLTs) ✓
+- Blog: `https://bitcoincore.org/en/blog/` ✓ (NEW — Bitcoin Core releases + blog)
+- Core releases RSS: `https://bitcoincore.org/en/rss.xml` ✓ (NEW)
+- OptTech newsletter: `https://bitcoinops.org` ✓ (NEW — Bitcoin OptTech newsletters)
+- Blockstream blog: `https://blockstream.com/blog/` ✓ (NEW)
+- Bitcoin Magazine RSS: `https://bitcoinmagazine.com/feed` ✓ (NEW — unofficial but major)
+- Dev mailing list: `https://lists.linuxfoundation.org/pipermail/bitcoin-dev/` ⚠️ ( NEW — dev discussion)
+- Lightning dev list: `https://lists.linuxfoundation.org/pipermail/lightning-dev/` ⚠️ (NEW)
+- YouTube: `@BitcoinMagazine` ✓ (NEW), `@BTCSession` ✓ (NEW — unofficial)
 - Status: N/A (use mempool.space for on-chain monitoring)
 - Governance: `github.com/bitcoin/bips` (BIPs) ✓, `https://bips.dev/status/` ✓ (track deployed + draft BIPs)
+- Lightning: `https://lightning.engineering/blog/` ✓ (NEW — Lightning Labs blog)
 - DefiLlama slug: N/A (no DeFi TVL)
 - CoinGecko ID: `bitcoin`
 
 **Solana**
 - GitHub: `solana-labs/solana` ✓, `anza-xyz/agave` ✓
 - Blog RSS: `https://solana.com/news/rss.xml` ⚠️
+- Foundation Blog RSS: `https://solanafoundation.org/blog/rss.xml` ✓ (NEW)
+- Foundation News RSS: `https://solanafoundation.org/news/rss.xml` ✓ (NEW)
+- Foundation Grants RSS: `https://solanafoundation.org/grants/rss.xml` ✓ (NEW)
+- Anza (client): `https://anza.xyz` ✓ (NEW — Agave client team), `https://anza.xyz/blog` ✓
 - YouTube: `@Solana` ✓
 - Status: `https://status.solana.com/` ✓
 - Governance: `github.com/solana-foundation/solana-improvement-documents` (SIMDs) ✓
+- Discord: `https://discord.gg/solana` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/solana.sol` ✓ (NEW)
 - DefiLlama slug: `solana`
 - CoinGecko ID: `solana`
 
 **Arbitrum**
 - GitHub: `OffchainLabs/nitro` ✓, `OffchainLabs/arbitrum-sdk` ✓
-- Blog RSS: `https://arbitrumfoundation.medium.com/feed` ✓ (arbitrum.io/blog is dead, Foundation Medium feed works)
+- Blog RSS: `https://arbitrumfoundation.medium.com/feed` ✓ (Foundation Medium feed)
+- Governance API: `https://forum.arbitrum.foundation/latest.json` ✓ (NEW — Discourse JSON)
+- Snapshot: `https://snapshot.org/#/arbitrumfoundation.eth` ✓ (NEW), `https://snapshot.org/#/arbitrum.eth` ✓ (NEW)
 - YouTube: `@Arbitrum` ⚠️
 - Status: `https://status.arbitrum.io/` ⚠️
-- Governance: `forum.arbitrum.foundation` (Discourse) ⚠️
+- Governance: `forum.arbitrum.foundation` (Discourse) ✓
+- Discord: `https://discord.gg/arbitrum` ✓ (NEW)
 - DefiLlama slug: `arbitrum`
 - CoinGecko ID: `arbitrum`
 
 **Starknet**
 - GitHub: `starkware-libs/starknet` ✓, `starkware-libs/cairo` ✓
-- Blog RSS: `https://medium.com/feed/@starkware` ✓ (starknet.io/blog is dead, Starkware Medium feed works)
+- Blog RSS: `https://medium.com/feed/@starkware` ✓ (Starkware Medium feed)
 - Blog (StarkWare): `https://starkware.co/blog/` ✓
 - Substack: `https://starknet.substack.com/feed` ✓
+- Governance API: `https://community.starknet.io/latest.json` ✓ (NEW — Discourse JSON)
+- Ecosystem: `https://starknet.io/ecosystem` ✓ (NEW)
+- Grants: `https://starknet.io/grants` ✓ (NEW)
+- Developers: `https://starknet.io/developers` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/starknet.eth` ✓ (NEW)
 - YouTube: `@StarkWare` ✓
 - Status: `https://status.starknet.io/` ✓
 - Governance: `https://community.starknet.io/` ✓ (Discourse, SNIPs), `https://governance.starknet.io/` ✓
 - Docs: `https://docs.starknet.io/` ✓
+- Discord: `https://discord.gg/starknet` ✓ (NEW)
 - DefiLlama slug: `starknet`
 - CoinGecko ID: `starknet`
 
@@ -224,50 +302,85 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Tempo**
 - GitHub: `https://github.com/tempo-labs` ✓
-- Blog: `https://tempo.xyz/blog` ✓ (verify RSS endpoint)
+- Substack RSS: `https://tempo.substack.com/feed` ✓ (NEW)
+- Explorer: `https://explore.tempo.xyz/` ✓ (NEW)
+- Ecosystem: `https://tempo.xyz/ecosystem` ✓ (NEW)
+- Learn Hub: `https://docs.tempo.xyz/learn` ✓ (NEW)
+- Blog: `https://tempo.xyz/blog` ✓ (Cloudflare-protected, browser only)
 - YouTube: N/A
 - Docs: `https://docs.tempo.xyz/` ✓
 - Status: N/A
 - Governance: N/A (enterprise-controlled, Stripe)
+- Discord: `https://discord.gg/tempo` ✓ (NEW)
+- Telegram: `https://t.me/tempo_xyz` ✓ (NEW)
+- X/Twitter: `https://x.com/tempo_xyz` ✓ (NEW)
 - DefiLlama slug: N/A (may not be indexed yet)
 - CoinGecko ID: N/A (no native token)
-- Note: Monitor via X announcements
+- Note: tempo.xyz is Cloudflare-protected (403 via curl, works in browser)
 
-**Plasma**
+**Plasma** ⚠️ DOMAIN CORRECTION: plasma.com is a German industrial company — actual chain is plasma.to
 - GitHub: `PlasmaLaboratories` ✓ (user-provided org)
-- Blog/News: `https://plasma.com/news` ✓ (verify RSS endpoint)
-- Alliance: `https://plasmaalliance.org/` ✓
-- Build: `https://plasma.build/` ✓
+- Website: `https://www.plasma.to/` ✓ (official — NOT plasma.com)
+- Blog/Insights: `https://www.plasma.to/insights` ✓
+- Docs: `https://www.plasma.to/docs/get-started/introduction/start-here` ✓
+- Learn: `https://www.plasma.to/learn` ✓
+- Dashboard: `https://app.plasma.to/` ✓
+- Substack RSS: `https://plasma.substack.com/feed` ✓
+- Discord: `https://discord.com/invite/plasmafdn` ✓
+- X/Twitter: `https://x.com/Plasma` ✓
 - YouTube: N/A
 - Status: N/A
-- Governance: N/A (enterprise-controlled)
+- Governance: N/A (enterprise-controlled, Bitfinex-backed)
 - DefiLlama slug: `plasma` ⚠️ (check if indexed)
 - CoinGecko ID: `plasma` ⚠️
 
 **Stablechain (stable.xyz)**
 - GitHub: `stable-xyz` ⚠️ (org, check for active repos)
 - Blog RSS: `https://blog.stable.xyz/rss` ✓
-- Docs: `https://stablechain.io/docs` ✓
+- Hub/Dashboard: `https://hub.stable.xyz` ✓ (NEW)
+- Analytics: `https://stable.allium.so/` ✓ (NEW)
+- Ecosystem: `https://stable.xyz/ecosystem` ✓ (NEW)
+- Docs alt: `https://stablechain.io/docs` ✓ (alternate domain)
 - YouTube: N/A
 - Status: N/A
 - Governance: N/A (enterprise-controlled)
+- Discord: `https://discord.com/invite/stablexyz` ✓ (NEW)
+- Telegram: `https://t.me/stablexyz` ✓ (NEW)
+- X/Twitter: `https://x.com/stable` ✓ (NEW)
 - DefiLlama slug: N/A (check if indexed)
 - CoinGecko ID: N/A (may not have native token)
 
 **Polygon**
 - GitHub: `maticnetwork/bor` ✓, `0xPolygonHermez/zkevm-node` ✓, `0xPolygon/pol` ✓
-- Blog RSS: `https://polygon.technology/blog` ✓ (verify RSS endpoint)
+- Blog RSS: `https://polygon.technology/blog` ⚠️ (verify RSS endpoint)
+- Substack RSS: `https://polygon.substack.com/feed` ✓ (NEW — alternative)
+- Governance API: `https://forum.polygon.technology/latest.json` ✓ (NEW — Discourse JSON)
+- Ecosystem: `https://polygon.technology/ecosystem` ✓ (NEW)
+- Grants: `https://polygon.technology/grants` ✓ (NEW)
+- Community: `https://polygon.technology/community` ✓ (NEW)
+- Events: `https://polygon.technology/events` ✓ (NEW)
+- Wallet: `https://wallet.polygon.technology` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/polygonprotocol.eth` ✓ (NEW), `https://snapshot.org/#/maticnetwork.eth` ✓ (NEW)
 - YouTube: `@0xPolygon` ⚠️
 - Status: `https://status.polygon.technology/` ⚠️
 - Governance: `https://forum.polygon.technology` ✓ (Discourse, PIPs), `https://governance.polygon.technology` ✓
 - Docs: `https://docs.polygon.technology/` ✓
+- Discord: `https://discord.gg/polygon` ✓ (NEW)
 - DefiLlama slug: `polygon`
 - CoinGecko ID: `matic-network`
 
 **Gnosis**
 - GitHub: `gnosischain/specs` ⚠️, `gnosischain/beacon-chain` ⚠️
-- Blog RSS: `https://gnosischain.substack.com/feed` ✓ (gnosis.io/blog is dead, Gnosis Chain Substack works)
+- Chain page: `https://www.gnosis.io/chain` ✓ (NEW)
+- Events: `https://www.gnosis.io/events` ✓ (NEW)
+- Press: `https://www.gnosis.io/press` ✓ (NEW)
+- Ventures: `https://www.gnosis.io/ventures` ✓ (NEW — Gnosis VC)
+- Gnosis Pay: `https://gnosispay.com` ✓ (NEW)
+- Circles: `https://aboutcircles.com` ✓ (NEW — Circles protocol)
+- Staking: `https://validategnosis.com` ✓ (NEW — validator onboarding)
+- Blog RSS: `https://gnosischain.substack.com/feed` ✓ (Substack)
 - YouTube: `@GnosisChain` ✓
+- X (chain): `https://x.com/gnosischain` ✓ (NEW)
 - Status: N/A
 - Governance: `https://snapshot.org/#/gnosis.eth` ✓, `https://snapshot.org/#/gnosisdao.eth` ✓
 - Docs: `https://docs.gnosis.io/` ✓, `https://docs.gnosischain.com/` ✓
@@ -278,8 +391,11 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **MegaETH**
 - GitHub: `megaeth-labs` ⚠️ (org, check for active repos)
-- Blog: `https://www.megaeth.com/blog-news` ✓, `https://megaethlabs.substack.com/` ✓ (Substack RSS)
-- YouTube: N/A
+- Blog: `https://www.megaeth.com/blog-news` ✓
+- Substack RSS: `https://megaethlabs.substack.com/feed` ✓ (confirmed)
+- Rabbithole: `https://rabbithole.megaeth.com` ✓ (NEW — builder portal)
+- Linktree: `https://linktr.ee/megaeth_labs` ✓ (NEW — all links hub)
+- YouTube: N/A (no official channel found)
 - Status: N/A
 - Governance: N/A (pre-launch)
 - DefiLlama slug: N/A (pre-mainnet)
@@ -287,44 +403,73 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Monad**
 - GitHub: `monadxyz` ⚠️ (org, check for most-active repo)
-- Blog RSS: `https://medium.com/feed/@monad_xyz` ✓ (monad.xyz/blog is dead, Medium feed works)
+- Blog RSS: `https://medium.com/feed/@monad_xyz` ✓ (Medium feed)
+- Substack RSS: `https://monad.substack.com/feed` ✓ (NEW — alternative)
 - Blog: `https://blog.monad.xyz/` ✓
+- Governance API: `https://forum.monad.xyz/latest.json` ⚠️ (NEW — Discourse JSON)
+- Snapshot: `https://snapshot.org/#/monad.xyz` ✓ (NEW)
 - YouTube: `@monad_xyz` ✓
 - Docs: `https://docs.monad.xyz/` ✓
 - Status: N/A
 - Governance: `forum.monad.xyz` (Discourse, MIPs) ⚠️
+- Discord: `https://discord.gg/monad` ✓ (NEW)
+- Telegram: `https://t.me/monad_xyz` ✓ (NEW)
 - DefiLlama slug: `monad` ⚠️ (check if indexed post-mainnet)
 - CoinGecko ID: `monad` ⚠️
 
 **Sei**
 - GitHub: `sei-protocol/sei-chain` ✓, `sei-protocol/sei-cosmos` ⚠️
-- Blog: `https://blog.sei.io/` ✓
+- Blog RSS: `https://blog.sei.io/feed/` ✓ (NEW — blog's own RSS)
+- Substack RSS: `https://seinetwork.substack.com/feed` ✓ (NEW)
+- Research: `https://seiresearch.io/` ✓ (NEW — Sei Research site)
+- Ecosystem: `https://www.sei.io/ecosystem` ✓ (NEW)
+- Builder Toolkit: `https://sei-foundation.notion.site/Sei-Ecosystem-Builders-Toolkit-836deaebca204452909d0bf9365d8116` ✓ (NEW)
+- Governance proposals: `https://www.mintscan.io/sei/proposals` ✓ (NEW — on-chain viewer)
 - YouTube: `@SeiNetwork` ✓
 - Docs: `https://docs.sei.io/` ✓
 - Status: N/A
-- Governance: On-chain only (Cosmos SDK). Public RPC: `https://rpc.sei.io` ⚠️ for `cosmos.gov.v1beta1` queries
+- Governance: On-chain (Cosmos SDK). Public RPC: `https://rpc.sei.io` ⚠️ for `cosmos.gov.v1beta1` queries. Proposals viewer: `mintscan.io/sei/proposals` ✓
+- Discord: `https://discord.com/invite/sei` ✓ (NEW)
+- Telegram: `https://t.me/seinetwork` ✓ (NEW), `https://t.me/+KZdhZ1eE-G01NmZk` ✓ (Builders, NEW)
 - DefiLlama slug: `sei`
 - CoinGecko ID: `sei-network`
 
 **Sui**
 - GitHub: `MystenLabs/sui` ✓
 - Blog RSS: `https://blog.sui.io/feed/` ⚠️
+- Mysten Labs: `https://mystenlabs.com/blog` ✓ (NEW — company blog)
+- Governance API: `https://forums.sui.io/latest.json` ✓ (NEW — Discourse JSON)
+- SIPs API: `https://forums.sui.io/c/sips/27.json` ✓ (NEW — proposals JSON)
+- Ecosystem: `https://sui.io/ecosystem` ✓ (NEW)
+- Community: `https://sui.io/community` ✓ (NEW)
+- Developers: `https://sui.io/developers` ✓ (NEW)
+- Explorer (Suiscan): `https://suiscan.xyz` ✓ (NEW)
+- Explorer (Sui Explorer): `https://suiexplorer.com` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/suinetwork.eth` ✓ (NEW)
 - YouTube: `@SuiNetwork` ✓
 - Docs: `https://docs.sui.io/` ✓
 - Status: N/A
 - Governance: `https://forums.sui.io/c/sips/27` ✓ (SIPs)
+- Discord: `https://discord.gg/sui` ✓ (NEW)
+- Telegram: `https://t.me/sui_network` ✓ (NEW)
 - DefiLlama slug: `sui`
 - CoinGecko ID: `sui`
 
 **Aptos**
 - GitHub: `aptos-labs/aptos-core` ✓
-- Blog RSS: `https://medium.com/feed/aptoslabs` ✓ (aptosfoundation.org/news is dead, Medium feed works)
+- Blog RSS: `https://medium.com/feed/aptoslabs` ✓ (Medium feed)
+- Substack RSS: `https://aptos.substack.com/feed` ✓ (NEW — alternative)
+- Governance API: `https://forum.aptosfoundation.org/latest.json` ✓ (NEW — Discourse JSON)
+- Governance proposals: `https://forum.aptosfoundation.org/c/governance/18.json` ✓ (NEW)
 - News: `https://aptosfoundation.org/currents` ✓
 - Events: `https://aptosfoundation.org/events` ✓
+- Snapshot: `https://snapshot.org/#/aptosfoundation.eth` ✓ (NEW)
 - YouTube: `@AptosNetwork` ✓
 - Docs: `https://aptos.dev/` ✓
 - Status: N/A
 - Governance: `https://forum.aptosfoundation.org/` ✓, `github.com/aptos-foundation/AIPs` (AIPs) ✓
+- Discord: `https://discord.gg/aptos` ✓ (NEW)
+- Telegram: `https://t.me/AptosNetwork` ✓ (NEW)
 - DefiLlama slug: `aptos`
 - CoinGecko ID: `aptos`
 
@@ -332,74 +477,119 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Virtuals**
 - GitHub: `virtuals-protocol` ⚠️ (org, limited public repos)
+- App: `https://app.virtuals.io/` ✓ (NEW — main app)
+- ACP: `https://app.virtuals.io/acp` ✓ (NEW — Agent Commerce Protocol)
+- Research: `https://www.virtuals.io/researches` ✓ (NEW — research articles)
+- Eastworlds: `https://eastworlds.io/` ✓ (NEW — robotics subsidiary)
 - Blog RSS: `https://virtuals.substack.com/feed` ✓ (Substack)
 - YouTube: `@VirtualsProtocol` ✓
 - Whitepaper: `https://whitepaper.virtuals.io/` ✓
 - Docs: `https://docs.game.virtuals.io/` ✓ (game-specific)
 - Status: N/A
-- Governance: `gov.virtuals.io` (token-gated, skip per decision)
+- Governance: `gov.virtuals.io` (confirmed 200 — token-gated, skip per decision)
 - DefiLlama slug: N/A (protocol on Base)
 - CoinGecko ID: `virtuals-protocol` ⚠️
 
 **Bittensor**
 - GitHub: `opentensor/bittensor` ✓, `opentensor/subtensor` ✓, `opentensor/bits` (governance) ✓
 - Substack: `https://bittensor.substack.com/feed` ✓
+- TaoStats: `https://taostats.io/` ✓ (NEW — chain explorer/dashboard)
 - YouTube: `@bittensor` ✓
 - Docs: `https://docs.bittensor.com/` ✓
+- X (opentensor): `https://x.com/opentensor` ✓ (NEW)
 - Status: N/A
 - Governance: `github.com/opentensor/bits` (BITs) ✓
+- Discord: `https://discord.gg/bittensor` ✓ (NEW)
 - DefiLlama slug: N/A (subnet-based)
 - CoinGecko ID: `bittensor`
 
 ### Others
 
-**TON**
+**TON** ⚠️ NOW HAS RSS — no longer needs scraping
 - GitHub: `ton-blockchain/ton` ✓, `ton-blockchain/TIPs` (governance) ✓
-- Blog/Newsroom: `https://ton.org/en/newsroom?all` ✓ (no RSS — scrape newsroom page)
+- Blog/Newsroom RSS: `https://ton.org/en/newsroom/rss` ✓ (NEW — was scrape-only)
+- Ecosystem RSS: `https://ton.org/ecosystem/rss` ✓ (NEW)
+- Newsroom: `https://ton.org/en/newsroom?all` ✓ (still available as page)
+- Events: `https://ton.org/events` ✓
+- Community: `https://ton.org/community` ✓
+- Grants: `https://ton.org/grants` ✓
+- Learn: `https://ton.org/learn` ✓
+- Ecosystem: `https://ton.org/ecosystem` ✓
 - Governance: `https://ton.vote` ✓ (TON DAO Vote), `https://snapshot.org/#/ton` ✓
 - YouTube: `@tonblockchain` ✓, `@toncoin` ✓
 - Docs: `https://docs.ton.org` ✓
-- Events: `https://ton.org/events` ✓
-- Status: N/A (no dedicated status page — use t.me/tonstatus Telegram channel)
+- Status: N/A (use t.me/tonstatus Telegram channel)
+- Discord: `https://discord.gg/ton` ✓
+- Telegram: `https://t.me/toncoin` ✓, `https://t.me/tonblockchain` ✓, `https://t.me/tonfoundation` ✓, `https://t.me/ton_announcements` ✓
 - DefiLlama slug: `ton`
 - CoinGecko ID: `the-open-network`
 
 **OP Mainnet**
 - GitHub: `ethereum-optimism/optimism` ✓, `ethereum-optimism/specs` ✓
 - Blog: `https://optimism.io/blog` ✓
+- Substack RSS: `https://optimism.substack.com/feed` ✓ (NEW)
+- Governance API: `https://gov.optimism.io/latest.json` ✓ (NEW — Discourse JSON)
+- Grants: `https://optimism.io/grants` ✓ (NEW)
+- OP Labs: `https://oplabs.co` ✓ (NEW)
+- Superchain: `https://superchain.eco` ✓ (NEW)
+- Governance App: `https://app.optimism.io/governance` ✓ (NEW)
+- Bridge: `https://app.optimism.io/bridge` ✓ (NEW)
+- Snapshot: `https://snapshot.org/#/opcollective.eth` ✓
 - YouTube: `@OptimismPBC` ✓
 - Status: `https://status.optimism.io/` ✓
 - Docs: `https://docs.optimism.io/` ✓
-- Governance: `https://gov.optimism.io/` ✓, `https://snapshot.org/#/opcollective.eth` ✓
+- Governance: `https://gov.optimism.io/` ✓
+- Discord: `https://discord.gg/optimism` ✓ (NEW)
 - DefiLlama slug: `optimism`
 - CoinGecko ID: `optimism`
 
 **NEAR**
 - GitHub: `near/nearcore` ✓
-- Blog RSS: `https://medium.com/feed/@nearprotocol` ✓ (near.org/blog is dead, Medium feed works)
+- Blog RSS: `https://medium.com/feed/@nearprotocol` ✓ (Medium feed)
+- Substack RSS: `https://near.substack.com/feed` ✓ (NEW — alternative)
 - Blog (official): `https://near.org/blog` ✓, `https://pages.near.org/blog/` ✓
+- Governance API: `https://gov.near.org/latest.json` ✓ (NEW — Discourse JSON)
+- Proposals API: `https://gov.near.org/c/proposals/33.json` ✓ (NEW — direct proposals feed)
+- Snapshot: `https://snapshot.org/#/near.eth` ✓ (NEW), `https://snapshot.org/#/nearfoundation.eth` ✓ (NEW)
+- NEARCON: `https://nearcon.org` ✓ (NEW — annual conference)
+- Aurora: `https://aurora.dev` ✓ (NEW — NEAR's EVM layer)
 - YouTube: `@NEARProtocol` ✓
 - Docs: `https://docs.near.org/` ✓
 - Status: `https://status.near.org/` ✓
 - Governance: `https://gov.near.org/` ✓ (Discourse, NEPs)
+- Discord: `https://discord.gg/near` ✓ (NEW)
+- Telegram: `https://t.me/nearprotocol` ✓ (NEW)
 - DefiLlama slug: `near`
 - CoinGecko ID: `near`
 
 ### Source Coverage Summary
 
-| Dimension | Chains with source | Chains without |
+|| Dimension | Chains with source | Chains without |
 |-----------|-------------------|----------------|
 | GitHub repos | 30/30 | None (all resolved) |
-| Blog / newsroom | 30/30 | None (all have at least one working blog or newsroom) |
-| YouTube channel | 27/30 | Bitcoin (no official), Plasma (none), Stablechain (none) |
-| Status page | 16/30 | 14 chains without (see per-chain config) |
-| Governance forum | 22/30 | 8 enterprise/early (Ink, X Layer, Morph, Tempo, Plasma, Stablechain, Monad, Sei, Virtuals, Bittensor — some use on-chain/Snapshot) |
-| Docs | 28/30 | X Layer (OKX-integrated), Plasma (no standalone docs) |
+| Blog / newsroom RSS | 30/30 | None — all chains now have at least one working RSS feed |
+| YouTube channel | 28/30 | Bitcoin (has unofficial @BitcoinMagazine), Stablechain (none) |
+| Status page | 18/30 | 12 chains without (improved from 14 — Ink and X Layer now have status pages) |
+| Governance forum | 22/30 | 8 enterprise/early (Ink, X Layer, Morph, Tempo, Plasma, Stablechain, MegaETH, Virtuals — some use on-chain/Snapshot) |
+| Docs | 30/30 | All chains now have documentation (X Layer: docs.xlayer.xyz, Plasma: plasma.to/docs) |
+
+**Blog RSS coverage details (Apr 2026 update):**
+- 30/30 chains with working RSS feeds (5 chains gained RSS this update: TON, X Layer, Ink, Sei, Morph)
+- Key new feeds: Ink blog RSS, X Layer blog RSS, Morph blog RSS (migrated domain), Sei blog RSS, TON newsroom RSS
+- Alternative Substack feeds: 13 chains have Substack as backup (BSC, Mantle, Hyperliquid, Morph, Tempo, Plasma, Polygon, NEAR, Optimism, Aptos, Monad, Ink, Sei)
+- Governance APIs: All 11 Discourse forums have `/latest.json` endpoints for structured data
 
 **Chains with NO blog RSS (need scraping workaround):**
-1. **Bitcoin** — no official blog. Monitor bitcoin.org/news + GitHub releases
-2. **X Layer** — OKX doesn't expose RSS for X Layer. Monitor via DefiLlama TVL + TradingView
-3. **TON** — newsroom at ton.org/en/newsroom?all (no RSS — scrape page)
+1. **Bitcoin** — no official centralized blog. Monitor bitcoincore.org/blog + Bitcoin Magazine RSS + GitHub releases
+2. ~~X Layer~~ — NOW HAS RSS at `www.xlayer.xyz/blog/rss.xml` ✓ (moved from scrape-only)
+3. ~~TON~~ — NOW HAS RSS at `ton.org/en/newsroom/rss` ✓ (moved from scrape-only)
+
+**Chains formerly without RSS that now have feeds (Apr 2026 update):**
+- TON: `ton.org/en/newsroom/rss` ✓
+- X Layer: `www.xlayer.xyz/blog/rss.xml` ✓
+- Ink: `inkonchain.com/blog/rss.xml` ✓
+- Morph: `blog.morph.network/feed` ✓ (migrated from morphl2.io)
+- Sei: `blog.sei.io/feed/` ✓
 
 **Chains with NO YouTube channel:**
 1. Bitcoin
@@ -1187,6 +1377,21 @@ For Discourse-based forums (Ethereum Magicians, Arbitrum, Polygon, OP, Mantle, M
 - Parse topic titles for proposal keywords
 - Track topic lifecycle: created → replied → closed/accepted
 
+**Verified Discourse JSON API endpoints:**
+| Forum | URL | Status |
+|-------|-----|--------|
+| Ethereum Magicians | `ethereum-magicians.org/latest.json` | ✓ |
+| Arbitrum | `forum.arbitrum.foundation/latest.json` | ✓ |
+| Polygon | `forum.polygon.technology/latest.json` | ✓ |
+| OP Mainnet | `gov.optimism.io/latest.json` | ✓ |
+| Mantle | `forum.mantle.xyz/latest.json` | ⚠️ |
+| Monad | `forum.monad.xyz/latest.json` | ⚠️ |
+| Sui | `forums.sui.io/latest.json` | ✓ |
+| Starknet | `community.starknet.io/latest.json` | ✓ |
+| Gnosis | forum.gnosis.io (Snapshot-based, no Discourse) | ✗ |
+| NEAR | `gov.near.org/latest.json` | ✓ |
+| Aptos | `forum.aptosfoundation.org/latest.json` | ✓ |
+
 For GitHub-based proposals (Bitcoin, Solana, BSC, Aptos, TON, Bittensor, Hyperliquid):
 - GitHub API: `GET /repos/{owner}/{repo}/issues?labels=proposal&state=all&sort=created&direction=desc`
 - Watch for label changes (draft → review → accepted → final)
@@ -1229,7 +1434,7 @@ Each transition is logged as a signal event:
 
 ### 9.4 Scraping Strategy (for chains without RSS)
 
-Only 2 chains require scraping: Bitcoin and X Layer. Hyperliquid and Morph now have working RSS feeds (Hyperliquid via Medium, Morph via blog.morphl2.io).
+Only 1 chain requires scraping: Bitcoin. X Layer now has RSS (`www.xlayer.xyz/blog/rss.xml`). TON now has RSS (`ton.org/en/newsroom/rss`). Hyperliquid and Morph have RSS feeds (Medium and blog.morph.network respectively).
 
 **Anti-bot protection handling:**
 - Cloudflare-protected sites: Use Camoufox (anti-detect browser)
@@ -1249,12 +1454,14 @@ Hyperliquid:
 - Check for hidden JSON endpoint: `https://api.hyperliquid.xyz/info` (may expose announcements)
 
 X Layer:
-- Scrape: `https://www.okx.com/help/section/announcements-latest-announcements`
-- Filter: Only keep items containing "X Layer" or "xlayer" keywords
-- Cloudflare-protected → Camoufox required
+- RSS: `https://www.xlayer.xyz/blog/rss.xml` ✓ (NEW — in sources.yaml)
+- Website: `https://www.xlayer.xyz` ✓ (independent site, not just OKX)
+- Fallback scrape: `https://www.okx.com/help/section/announcements-latest-announcements` (filter for X Layer)
+- Status page: `https://www.xlayer.xyz/status` ✓
 
 Morph:
-- RSS: `https://blog.morphl2.io/feed` ✓ (in sources.yaml — no scraping needed)
+- RSS: `https://blog.morph.network/feed` ✓ (migrated from morphl2.io — in sources.yaml)
+- Substack: `https://morph.substack.com/feed` ✓ (backup)
 
 **Scraping fallback chain:**
 ```
@@ -1847,16 +2054,26 @@ Bot: 📡 Monad — Latest Signals
 | VISIBILITY | Conference calendars (ethereum.org, ETHGlobal), Hackathon outcomes, RSS news (filtered) | YouTube API, Podcast RSS (planned) | 28/30 | Partial |
 | FINANCIAL | DefiLlama (30 chains), CoinGecko (26 tokens) | CoinGecko CLI (installed) | 26/30 with token data | ✓ |
 
-**RSS Feeds Implemented (12 news + 15 chain blogs):**
+**RSS Feeds Implemented (12 news + 21 chain blogs):**
 - News: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks
 - Regulatory: CoinCenter, DeFi Education Fund
 - Partnerships: CryptoSlate, CoinGape, Bitcoin.com News, AMBCrypto
 - Events: Coinpedia Events
-- Chain blogs: Solana, Avalanche, Sui, Near, Aptos, Monad, Arbitrum, Starknet, Mantle, Morph, BNB Chain, Hyperliquid, Gnosis, Stablechain, Virtuals
+- **New chain blogs (Apr 2026):** TON newsroom, X Layer blog, Ink blog, Sei blog, Morph blog (migrated domain)
+- **New Substack feeds (Apr 2026):** BSC, Mantle, Hyperliquid, Morph, Tempo, Plasma, Polygon, NEAR, Optimism, Aptos, Monad, Ink, Sei
+- **New governance APIs:** 10 Discourse forums with `/latest.json` endpoints
+- **New status pages:** Ink (inkonchain.com/status), X Layer (xlayer.xyz/status)
+- **New foundations/sites:** Hyperliquid Foundation (hyperfoundation.org), X Layer (xlayer.xyz), Morph (morph.network)
+
+**Key domain corrections (Apr 2026):**
+- Plasma: `.com` → `.to` (plasma.com is a German company, chain is plasma.to)
+- Morph: `morphl2.io` → `morph.network` (domain migrated)
 
 **Collectors Implemented:** DefiLlama, CoinGecko, GitHub, RSS (all categories), Regulatory (CoinCenter + DeFi Education Fund), RiskAlert (TVL crash), TradingView (Playwright Chromium), Events (ethereum.org + ETHGlobal via Camoufox), HackathonOutcomes (ETHGlobal + Solana + Devpost)
 
-**Planned (not yet in sources.yaml):** SEC EDGAR, YouTube API, Podcast RSS feeds, Rekt News, Immunefi, EU MiCA portal, FATF, HK SFC
+**Planned (not yet in sources.yaml):** SEC EDGAR EFTS, YouTube API, Podcast RSS feeds (Bankless, Unchained, What Bitcoin Did, Lightspeed, The Defiant), Rekt News, Immunefi, EU MiCA portal, FATF updates, HK SFC announcements
+
+**Newly added to sources.yaml (Apr 2026):** TON newsroom RSS, TON ecosystem RSS, BSC Substack, Mantle Substack, Hyperliquid Substack, Morph blog RSS (migrated), Morph Substack, Tempo Substack, Plasma Substack, Sei blog RSS, Sei Substack, Ink blog RSS, Ink Substack, Ink press RSS, X Layer blog RSS, Polygon Substack, NEAR Substack, Optimism Substack, Aptos Substack, Monad Substack, Bitcoin Core releases RSS, EIPs RSS, Solana Foundation RSS (blog/news/grants)
 
 **Per-chain source config:** See Section 2.1 for complete GitHub repos, RSS URLs, YouTube channels, and status pages for all 30 chains.
 
