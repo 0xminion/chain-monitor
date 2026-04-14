@@ -591,6 +591,22 @@ Tracking 27 chains manually is impossible. Information is fragmented across GitH
 - Morph: `blog.morph.network/feed` ✓ (migrated from morphl2.io)
 - Sei: `blog.sei.io/feed/` ✓
 
+**New sources added (Apr 14, 2026):**
+- Arbitrum: Substack (arbitrum.substack.com/feed)
+- Base: Basechain Substack (basechain.substack.com/feed)
+- Gnosis: Substack + GnosisDAO Substack (fills biggest gap — had no blog RSS)
+- Gnosis: GitHub specs atom feed (github.com/gnosischain/specs/commits/master.atom)
+- Bitcoin: BIPs atom feed (github.com/bitcoin/bips/commits/master.atom) — tracks new/deployed/draft BIPs
+- Polygon: Governance forum Discourse RSS (forum.polygon.technology/latest.rss)
+- Plasma: Blog feed (plasma.dev/feed.xml)
+
+Total chain_event feeds: 54
+
+**Categorizer fix (Apr 14, 2026):**
+- TECH_EVENT checked before PARTNERSHIP — "live on mainnet" no longer misclassified as partnership
+- Fixed: Sei v6.4 mainnet launch correctly classified as Tech event (was Partnership)
+
+### 3.3 Feed Verification Health
 **Chains with NO YouTube channel:**
 1. Bitcoin
 2. Plasma
@@ -897,20 +913,20 @@ near:
 ┌─────────────────────────────────────────────────────────┐
 │                    EVENT TAXONOMY                        │
 ├──────────────┬──────────────────────────────────────────┤
-│ TECH EVENT   │ Mainnet launches, upgrades, audits,      │
+│ Tech event   │ Mainnet launches, upgrades, audits,      │
 │              │ infrastructure changes, governance       │
 │              │ proposals (EIPs, BIPs, SIMDs, etc.)      │
 ├──────────────┼──────────────────────────────────────────┤
-│ PARTNERSHIP  │ Integrations, collaborations, co-launches│
+│ Partnership  │ Integrations, collaborations, co-launches│
 ├──────────────┼──────────────────────────────────────────┤
-│ REGULATORY   │ Licenses, approvals, bans, enforcement   │
+│ Regulatory   │ Licenses, approvals, bans, enforcement   │
 ├──────────────┼──────────────────────────────────────────┤
-│ RISK ALERT   │ Hacks, exploits, outages, critical bugs  │
+│ Risk alert   │ Hacks, exploits, outages, critical bugs  │
 ├──────────────┼──────────────────────────────────────────┤
-│ VISIBILITY   │ Conferences, hackathons, AMAs, hires,    │
+│ Visibility   │ Conferences, hackathons, AMAs, hires,    │
 │              │ departures                               │
 ├──────────────┼──────────────────────────────────────────┤
-│ FINANCIAL    │ TVL/volume/fees milestones, TGEs,        │
+│ Financial    │ TVL/volume/fees milestones, TGEs,        │
 │              │ funding rounds, grants, incentive        │
 │              │ programs                                 │
 ├──────────────┼──────────────────────────────────────────┤
@@ -1220,19 +1236,19 @@ Bitcoin:
 
 | Score | Label | Criteria |
 |-------|-------|----------|
-| 5 | CRITICAL | Fundamentals change. Protocol survival at stake. Major hack (>$10M), SEC enforcement, mainnet outage >2h, hard fork failure |
-| 4 | HIGH | Significant capability or market position change. Major upgrade, Tier-1 partnership, TVL milestone, regulatory approval, governance proposal passed |
-| 3 | NOTABLE | Meaningful but not transformative. New protocol deployment, conference keynote, funding round <$50M, audit completion, governance proposal in draft |
-| 2 | MODERATE | Incremental progress. Minor upgrade, small partnership, AMA, grant program |
-| 1 | LOW | Background activity. Routine commits, minor blog post |
+| 5 | Critical | Fundamentals change. Protocol survival at stake. Major hack (>$10M), SEC enforcement, mainnet outage >2h, hard fork failure |
+| 4 | High | Significant capability or market position change. Major upgrade, Tier-1 partnership, TVL milestone, regulatory approval, governance proposal passed |
+| 3 | Notable | Meaningful but not transformative. New protocol deployment, conference keynote, funding round <$50M, audit completion, governance proposal in draft |
+| 2 | Moderate | Incremental progress. Minor upgrade, small partnership, AMA, grant program |
+| 1 | Low | Background activity. Routine commits, minor blog post |
 
 ### 6.2 Urgency Score (1-3)
 
 | Score | Label | Criteria | Response Time |
 |-------|-------|----------|---------------|
-| 3 | IMMEDIATE | Active incident, market-moving, time-sensitive | <1 hour |
-| 2 | SAME-DAY | Important but not breaking | <24 hours |
-| 1 | WEEKLY | Background context, trend data | Weekly digest |
+| 3 | Immediate | Active incident, market-moving, time-sensitive | <1 hour |
+| 2 | Same-day | Important but not breaking | <24 hours |
+| 1 | Weekly | Background context, trend data | Weekly digest |
 
 ### 6.3 Final Priority = Impact × Urgency
 
@@ -1801,26 +1817,26 @@ Actions:
 ```
 📊 Chain Monitor — Apr 13, 2026
 
-🧠 TODAY'S THEME
+🧠 Today's theme
 AI/Agents convergence: 3 chains entered AI this week (Monad, Base, Virtuals).
 Attention is shifting from L2 infrastructure to application-specific chains.
 
-🔴 CRITICAL (Score ≥10)
+🔴 Critical (Score ≥10)
 [none today]
 
-🟠 HIGH (Score 8-9)
+🟠 High (Score 8-9)
 • Ethereum: Pectra upgrade date confirmed for May 7 [ethereum.org, Messari, CoinDesk — 3x]
-  Category: TECH EVENT | Impact: 4 | Urgency: 2
+  Category: Tech event | Impact: 4 | Urgency: 2
 
 • X Layer: TVL crosses $500M, up 34% this week [DefiLlama]
-  Category: FINANCIAL | Impact: 4 | Urgency: 2
+  Category: Financial | Impact: 4 | Urgency: 2
 
-🟡 NOTABLE (Score 6-7)
+🟡 Notable (Score 6-7)
 • Monad: announces 12 new ecosystem partners at Token2049 [X, Messari — 2x]
-  Category: PARTNERSHIP | Impact: 3 | Urgency: 2
+  Category: Partnership | Impact: 3 | Urgency: 2
 
 • Arbitrum: AIP-112 "Treasury diversification" enters voting [forum.arbitrum.foundation]
-  Category: TECH EVENT | Impact: 3 | Urgency: 2
+  Category: Tech event | Impact: 3 | Urgency: 2
 
 📈 Financial Snapshot
   TVL ↑: X Layer (+34%), Base (+12%), Monad (+8%)
@@ -1844,6 +1860,14 @@ Attention is shifting from L2 infrastructure to application-specific chains.
   Healthy: 16/18 | Degraded: 1 | Down: 1
   [Details: forum.arbitrum degraded (2 failures), hyperliquid_scrape down (8 failures)]
 ```
+
+**Digest formatting rules:**
+- Telegram delivery: Markdown parse_mode with [Title](URL) links embedded on signal titles
+- Never HTML <a> tags (Telegram doesn't render them)
+- No "Why" lines in digest output (low value)
+- No price/financial content in digests
+- Partnerships shown as separate section
+- Only major releases with release notes in tech events (filter fix/feat/build PRs)
 
 ### 10.2 Weekly Report (Markdown)
 
@@ -1979,12 +2003,12 @@ User: /watch monad
 
 Bot: 📡 Monad — Latest Signals
 
-🟠 HIGH
+🟠 High
 • MIP-3 "Validator incentive restructuring" passed vote
   Sources: forum.monad.xyz (3x reinforced)
   Detected: Apr 12 | Confidence: 0.95
 
-🟡 NOTABLE
+🟡 Notable
 • 12 new ecosystem partners announced at Token2049
   Sources: X, Messari (2x reinforced)
   Detected: Apr 11 | Confidence: 0.88

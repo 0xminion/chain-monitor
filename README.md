@@ -77,7 +77,7 @@ tests/          → Unit, integration, system tests
 | DefiLlama | TVL, fees, volume, protocol attribution | REST API | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | REST API | FINANCIAL |
 | GitHub | Version tags, high-signal PRs, EIP descriptions | REST API | TECH_EVENT |
-| RSS | 11 news feeds + 47 chain blog feeds | RSS/Atom | All categories |
+| RSS | 11 news feeds + 54 chain blog feeds | RSS/Atom | All categories |
 | Regulatory | SEC EDGAR filings, CoinCenter policy | RSS | REGULATORY |
 | Risk Alert | DeFiLlama hacks, TVL crashes, Immunefi | REST API | RISK_ALERT |
 | TradingView | News flow from 16+ providers | Playwright (Chromium) | All categories |
@@ -87,14 +87,14 @@ tests/          → Unit, integration, system tests
 
 | Category | What It Captures | Sources |
 |----------|-----------------|---------|
-| TECH_EVENT | Mainnet launches, upgrades, releases, EIPs, audits | GitHub, RSS, TradingView |
-| PARTNERSHIP | Integrations, collaborations, deployments, co-launches | RSS keyword matching, TradingView |
-| REGULATORY | SEC filings, licenses, approvals, bans, enforcement | SEC EDGAR, CoinCenter, RSS, TradingView |
-| RISK_ALERT | Hacks, exploits, outages, critical bugs | DeFiLlama, RSS, TradingView |
-| VISIBILITY | Conferences, hackathons, AMAs, hires, departures | ethereum.org, ETHGlobal, RSS, TradingView |
-| FINANCIAL | TVL milestones, volume spikes, funding, airdrops, TGEs | DefiLlama, CoinGecko, RSS, TradingView |
-| NEWS | General crypto news without specific chain attribution | RSS keyword matching |
-| AI_NARRATIVE | AI agent activity, LLM integrations | RSS keyword matching |
+| Tech event | Mainnet launches, upgrades, releases, EIPs, audits | GitHub, RSS, TradingView |
+| Partnership | Integrations, collaborations, deployments, co-launches | RSS keyword matching, TradingView |
+| Regulatory | SEC filings, licenses, approvals, bans, enforcement | SEC EDGAR, CoinCenter, RSS, TradingView |
+| Risk alert | Hacks, exploits, outages, critical bugs | DeFiLlama, RSS, TradingView |
+| Visibility | Conferences, hackathons, AMAs, hires, departures | ethereum.org, ETHGlobal, RSS, TradingView |
+| Financial | TVL milestones, volume spikes, funding, airdrops, TGEs | DefiLlama, CoinGecko, RSS, TradingView |
+| News | General crypto news without specific chain attribution | RSS keyword matching |
+| AI narrative | AI agent activity, LLM integrations | RSS keyword matching |
 
 ## Data Sources Detail
 
@@ -108,7 +108,7 @@ tests/          → Unit, integration, system tests
 
 ### News & Events
 - **RSS feeds**: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks, CryptoSlate, CoinGape, Bitcoin.com, AMBCrypto
-- **Chain blog feeds (47 total)**: Each chain may publish via blog, Medium, and/or Substack — all sources are checked independently (peer-level, no fallback hierarchy)
+- **Chain blog feeds (54 total)**: Each chain may publish via blog, Medium, and/or Substack — all sources are checked independently (peer-level, no fallback hierarchy)
 - **TradingView**: Playwright scraper for crypto news flow (bypasses JS rendering)
 - **ethereum.org**: 38+ upcoming conferences with dates, locations, tags (Camoufox anti-detect)
 - **ETHGlobal**: Hackathons, meetups, conferences (Camoufox anti-detect)
@@ -143,6 +143,15 @@ The categorizer uses expanded keyword sets to catch announcements from RSS/Tradi
 **Partnership keywords**: partnership, partners with, integration, deployed on, live on, launches on, available on, adds support for, expands to, migrates to, built on, powered by, alliance, consortium, strategic, ecosystem partner
 
 **Visibility keywords**: conference, hackathon, ama, keynote, speaker, podcast, live stream, community call, new ceo/cto, hired, appointed, resigned, stepped down
+
+## Telegram Delivery
+
+Digests are sent via Telegram Bot API using **Markdown** parse mode with clickable `[Title](URL)` links embedded on signal titles.
+
+- Links must be Markdown format: `[Title](URL)` — never HTML `<a>` tags (Telegram doesn't render them)
+- No price/financial content in digests
+- Partnerships shown as separate section
+- Only major releases with release notes in tech events
 
 ## Data Retention
 
