@@ -147,15 +147,17 @@ class DailyDigestFormatter:
         return notable_count >= 3
 
     def _format_signal(self, signal: Signal) -> str:
-        """Format a single signal with HTML-linked title."""
+        """Format a single signal with URL on next line."""
         chain = signal.chain.capitalize()
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
-        linked = _html_link(desc_clean, url)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
         rein_str = f" — {signal.source_count}x" if signal.source_count > 1 else ""
 
-        return f"• {chain}: {linked} [{sources_str}{rein_str}]"
+        line = f"• {chain}: {desc_clean} [{sources_str}{rein_str}]"
+        if url:
+            line += f"\n  {url}"
+        return line
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""
