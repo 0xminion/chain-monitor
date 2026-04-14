@@ -140,6 +140,8 @@ rss_feeds:
     url: https://forum.polygon.technology/latest.rss
   - name: Plasma Blog
     url: https://plasma.dev/feed.xml
+  - name: Sei SIPs
+    url: https://github.com/sei-protocol/sips/commits/main.atom
 tradingview:
   url: https://www.tradingview.com/news-flow/?market=crypto
   browser: chromium

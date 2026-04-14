@@ -310,6 +310,7 @@ class RSSCollector(BaseCollector):
             "Plasma Substack": "plasma",
             "Sei Blog": "sei",
             "Sei Substack": "sei",
+            "Sei SIPs": "sei",
             "Ink Blog": "ink",
             "Ink Substack": "ink",
             "Ink Press": "ink",
