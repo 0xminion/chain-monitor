@@ -73,8 +73,21 @@ rss_feeds:
       url: "https://blog.stable.xyz/rss"
     - name: "Virtuals"
       url: "https://virtuals.substack.com/feed"
-  # Chains with NO working RSS (monitor via DefiLlama TVL + TradingView + GitHub):
-  # TON, XLayer (OKX)
+    # New feeds (Apr 14, 2026)
+    - name: "Base Blog"
+      url: "https://base.substack.com/feed"
+    - name: "MegaETH Blog"
+      url: "https://megaethlabs.substack.com/feed"
+    - name: "Starknet Substack"
+      url: "https://starknet.substack.com/feed"
+    - name: "Bittensor"
+      url: "https://bittensor.substack.com/feed"
+    - name: "Polygon Blog"
+      url: "https://polygon.technology/blog"
+    - name: "OP Mainnet Blog"
+      url: "https://optimism.io/blog"
+  # Chains with NO working RSS (scrape newsroom page):
+  # TON (ton.org/en/newsroom?all), XLayer (OKX)
 
 # TradingView (Playwright scraper)
 tradingview:

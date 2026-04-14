@@ -102,9 +102,10 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Base**
 - GitHub: `base-org/node` ✓, `ethereum-optimism/optimism` (shared OP Stack code) ✓
-- Blog RSS: `https://base.mirror.xyz/feed/atom` ⚠️ (Mirror.xyz, Atom format)
+- Blog RSS: `https://base.substack.com/feed` ✓ (Substack RSS — works)
 - YouTube: `@Base` ✓
-- Status: `https://status.base.org/` ⚠️
+- Status: `https://status.base.org/` ✓
+- Docs: `https://docs.base.org/` ✓
 - Governance: `gov.optimism.io` (shared with OP Mainnet — filter by Base tags)
 - DefiLlama slug: `base`
 - CoinGecko ID: N/A (no native token)
@@ -114,32 +115,37 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 - Blog RSS: `https://medium.com/feed/@bnbchain` ✓ (bnbchain.org/blog is dead, Medium feed works)
 - YouTube: `@BNBChain` ✓
 - Status: N/A (use bscscan.com for on-chain monitoring)
-- Governance: GitHub BEPs only
+- Governance: `https://forum.bnbchain.org/` ✓, GitHub BEPs ✓
+- Docs: `https://docs.bnbchain.org/` ✓
 - DefiLlama slug: `bsc`
 - CoinGecko ID: `binancecoin`
 
 **Mantle**
 - GitHub: `mantlenetworkio/mantle` ⚠️
 - Blog RSS: `https://www.mantle.xyz/blog/rss.xml` ⚠️
-- YouTube: `@Mantle` ⚠️
+- YouTube: `@MantleOfficial` ✓
 - Status: N/A
-- Governance: `forum.mantle.xyz` (Discourse) ⚠️
+- Governance: `https://forum.mantle.xyz/` ✓ (Discourse, MIPs)
+- Docs: `https://docs.mantle.xyz/` ✓
 - DefiLlama slug: `mantle`
 - CoinGecko ID: `mantle`
 
 **Hyperliquid**
 - GitHub: `hyperliquid-dex/hyperliquid-rust-sdk` ⚠️ (limited public repos)
 - Blog RSS: `https://medium.com/feed/@hyperliquid` ✓ (Hyperliquid has no official blog RSS — Medium feed used instead)
+- Announcements: `https://app.hyperliquid.xyz/announcements` ✓ (scrape as backup)
 - YouTube: `@HyperliquidX` ✓
 - Status: `https://hyperliquid.statuspage.io/` ⚠️
-- Governance: `hyperliquid.gitbook.io` (docs-based HIPs)
+- Governance: `https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips` ✓ (HIPs in docs)
+- Docs: `https://hyperliquid.gitbook.io/hyperliquid-docs` ✓
 - DefiLlama slug: `hyperliquid`
 - CoinGecko ID: `hyperliquid`
 
 **Ink**
-- GitHub: `inkonchain/node` ⚠️, `inkonchain/docs` ⚠️
-- Blog RSS: `https://inkonchain.com/blog/rss.xml` ⚠️
-- YouTube: N/A
+- GitHub: `inkonchain` ⚠️
+- Blog: `https://inkonchain.com/blog` ✓ (verify RSS endpoint)
+- YouTube: `@InkOnChain` ✓
+- Docs: `https://docs.inkonchain.com/` ✓
 - Status: N/A
 - Governance: N/A (enterprise-controlled)
 - DefiLlama slug: `ink`
@@ -158,6 +164,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 - GitHub: `morph-l2/morph` ⚠️, `morph-l2/go-morph` ⚠️
 - Blog RSS: `https://blog.morphl2.io/feed` ✓
 - YouTube: N/A
+- Docs: `https://docs.morphl2.io/` ✓
 - Status: N/A
 - Governance: N/A (too early)
 - DefiLlama slug: `morph`
@@ -179,7 +186,7 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 - Blog RSS: N/A (no official centralized blog)
 - YouTube: N/A (no official channel)
 - Status: N/A (use mempool.space for on-chain monitoring)
-- Governance: `github.com/bitcoin/bips` (BIPs) ✓
+- Governance: `github.com/bitcoin/bips` (BIPs) ✓, `https://bips.dev/status/` ✓ (track deployed + draft BIPs)
 - DefiLlama slug: N/A (no DeFi TVL)
 - CoinGecko ID: `bitcoin`
 
@@ -204,18 +211,22 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 **Starknet**
 - GitHub: `starkware-libs/starknet` ✓, `starkware-libs/cairo` ✓
 - Blog RSS: `https://medium.com/feed/@starkware` ✓ (starknet.io/blog is dead, Starkware Medium feed works)
-- YouTube: `@StarknetFndn` ⚠️
-- Status: `https://status.starknet.io/` ⚠️
-- Governance: `community.starknet.io` (Discourse, SNIPs) ✓
+- Blog (StarkWare): `https://starkware.co/blog/` ✓
+- Substack: `https://starknet.substack.com/feed` ✓
+- YouTube: `@StarkWare` ✓
+- Status: `https://status.starknet.io/` ✓
+- Governance: `https://community.starknet.io/` ✓ (Discourse, SNIPs), `https://governance.starknet.io/` ✓
+- Docs: `https://docs.starknet.io/` ✓
 - DefiLlama slug: `starknet`
 - CoinGecko ID: `starknet`
 
 ### Payment
 
 **Tempo**
-- GitHub: `tempoxyz` ✓ (user-provided org)
-- Blog RSS: `https://tempo.xyz/blog/` ✓ (user-provided, verify RSS endpoint)
+- GitHub: `https://github.com/tempo-labs` ✓
+- Blog: `https://tempo.xyz/blog` ✓ (verify RSS endpoint)
 - YouTube: N/A
+- Docs: `https://docs.tempo.xyz/` ✓
 - Status: N/A
 - Governance: N/A (enterprise-controlled, Stripe)
 - DefiLlama slug: N/A (may not be indexed yet)
@@ -224,7 +235,9 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Plasma**
 - GitHub: `PlasmaLaboratories` ✓ (user-provided org)
-- Blog RSS: `https://www.plasma.to/insights` ✓ (user-provided, verify RSS endpoint)
+- Blog/News: `https://plasma.com/news` ✓ (verify RSS endpoint)
+- Alliance: `https://plasmaalliance.org/` ✓
+- Build: `https://plasma.build/` ✓
 - YouTube: N/A
 - Status: N/A
 - Governance: N/A (enterprise-controlled)
@@ -233,7 +246,8 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Stablechain (stable.xyz)**
 - GitHub: `stable-xyz` ⚠️ (org, check for active repos)
-- Blog RSS: `https://blog.stable.xyz/` ✓ (verify RSS endpoint)
+- Blog RSS: `https://blog.stable.xyz/rss` ✓
+- Docs: `https://stablechain.io/docs` ✓
 - YouTube: N/A
 - Status: N/A
 - Governance: N/A (enterprise-controlled)
@@ -242,27 +256,29 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Polygon**
 - GitHub: `maticnetwork/bor` ✓, `0xPolygonHermez/zkevm-node` ✓, `0xPolygon/pol` ✓
-- Blog RSS: `https://polygon.technology/blog/feed/` ⚠️
+- Blog RSS: `https://polygon.technology/blog` ✓ (verify RSS endpoint)
 - YouTube: `@0xPolygon` ⚠️
 - Status: `https://status.polygon.technology/` ⚠️
-- Governance: `forum.polygon.technology` (Discourse, PIPs) ⚠️
+- Governance: `https://forum.polygon.technology` ✓ (Discourse, PIPs), `https://governance.polygon.technology` ✓
+- Docs: `https://docs.polygon.technology/` ✓
 - DefiLlama slug: `polygon`
 - CoinGecko ID: `matic-network`
 
 **Gnosis**
 - GitHub: `gnosischain/specs` ⚠️, `gnosischain/beacon-chain` ⚠️
 - Blog RSS: `https://gnosischain.substack.com/feed` ✓ (gnosis.io/blog is dead, Gnosis Chain Substack works)
-- YouTube: `@GnosisChain` ⚠️
-- Status: `https://status.gnosischain.com/` ⚠️
-- Governance: `forum.gnosis.io` (Discourse, GIPs) ⚠️
-- DefiLlama slug: `xdai`
+- YouTube: `@GnosisChain` ✓
+- Status: N/A
+- Governance: `https://snapshot.org/#/gnosis.eth` ✓, `https://snapshot.org/#/gnosisdao.eth` ✓
+- Docs: `https://docs.gnosis.io/` ✓, `https://docs.gnosischain.com/` ✓
+- DefiLlama slug: `gnosis`
 - CoinGecko ID: `gnosis`
 
 ### High TPS Chains
 
 **MegaETH**
 - GitHub: `megaeth-labs` ⚠️ (org, check for active repos)
-- Blog RSS: `https://megaeth.com/blog/rss.xml` ⚠️
+- Blog: `https://www.megaeth.com/blog-news` ✓, `https://megaethlabs.substack.com/` ✓ (Substack RSS)
 - YouTube: N/A
 - Status: N/A
 - Governance: N/A (pre-launch)
@@ -272,7 +288,9 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 **Monad**
 - GitHub: `monadxyz` ⚠️ (org, check for most-active repo)
 - Blog RSS: `https://medium.com/feed/@monad_xyz` ✓ (monad.xyz/blog is dead, Medium feed works)
-- YouTube: `@monad_xyz` ⚠️
+- Blog: `https://blog.monad.xyz/` ✓
+- YouTube: `@monad_xyz` ✓
+- Docs: `https://docs.monad.xyz/` ✓
 - Status: N/A
 - Governance: `forum.monad.xyz` (Discourse, MIPs) ⚠️
 - DefiLlama slug: `monad` ⚠️ (check if indexed post-mainnet)
@@ -280,9 +298,10 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Sei**
 - GitHub: `sei-protocol/sei-chain` ✓, `sei-protocol/sei-cosmos` ⚠️
-- Blog RSS: `https://blog.sei.io/rss.xml` ⚠️
-- YouTube: `@SeiNetwork` ⚠️
-- Status: `https://status.sei.io/` ⚠️
+- Blog: `https://blog.sei.io/` ✓
+- YouTube: `@SeiNetwork` ✓
+- Docs: `https://docs.sei.io/` ✓
+- Status: N/A
 - Governance: On-chain only (Cosmos SDK). Public RPC: `https://rpc.sei.io` ⚠️ for `cosmos.gov.v1beta1` queries
 - DefiLlama slug: `sei`
 - CoinGecko ID: `sei-network`
@@ -290,18 +309,22 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 **Sui**
 - GitHub: `MystenLabs/sui` ✓
 - Blog RSS: `https://blog.sui.io/feed/` ⚠️
-- YouTube: `@SuiNetwork` ⚠️
-- Status: `https://status.sui.io/` ⚠️
-- Governance: `forums.sui.io/c/sips/27` (SIPs) ⚠️
+- YouTube: `@SuiNetwork` ✓
+- Docs: `https://docs.sui.io/` ✓
+- Status: N/A
+- Governance: `https://forums.sui.io/c/sips/27` ✓ (SIPs)
 - DefiLlama slug: `sui`
 - CoinGecko ID: `sui`
 
 **Aptos**
 - GitHub: `aptos-labs/aptos-core` ✓
 - Blog RSS: `https://medium.com/feed/aptoslabs` ✓ (aptosfoundation.org/news is dead, Medium feed works)
-- YouTube: `@AptosLabs` ⚠️
-- Status: `https://status.aptoslabs.com/` ⚠️
-- Governance: `github.com/aptos-foundation/AIPs` (AIPs) ✓
+- News: `https://aptosfoundation.org/currents` ✓
+- Events: `https://aptosfoundation.org/events` ✓
+- YouTube: `@AptosNetwork` ✓
+- Docs: `https://aptos.dev/` ✓
+- Status: N/A
+- Governance: `https://forum.aptosfoundation.org/` ✓, `github.com/aptos-foundation/AIPs` (AIPs) ✓
 - DefiLlama slug: `aptos`
 - CoinGecko ID: `aptos`
 
@@ -309,8 +332,10 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Virtuals**
 - GitHub: `virtuals-protocol` ⚠️ (org, limited public repos)
-- Blog RSS: `https://virtuals.substack.com/` ✓ (user-provided, Substack → `/feed` endpoint)
-- YouTube: N/A
+- Blog RSS: `https://virtuals.substack.com/feed` ✓ (Substack)
+- YouTube: `@VirtualsProtocol` ✓
+- Whitepaper: `https://whitepaper.virtuals.io/` ✓
+- Docs: `https://docs.game.virtuals.io/` ✓ (game-specific)
 - Status: N/A
 - Governance: `gov.virtuals.io` (token-gated, skip per decision)
 - DefiLlama slug: N/A (protocol on Base)
@@ -318,9 +343,10 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **Bittensor**
 - GitHub: `opentensor/bittensor` ✓, `opentensor/subtensor` ✓, `opentensor/bits` (governance) ✓
-- Blog RSS: `https://bittensor.com/blog/rss.xml` ⚠️
-- YouTube: `@bittensor` ⚠️
-- Status: `https://status.bittensor.com/` ⚠️
+- Substack: `https://bittensor.substack.com/feed` ✓
+- YouTube: `@bittensor` ✓
+- Docs: `https://docs.bittensor.com/` ✓
+- Status: N/A
 - Governance: `github.com/opentensor/bits` (BITs) ✓
 - DefiLlama slug: N/A (subnet-based)
 - CoinGecko ID: `bittensor`
@@ -329,28 +355,33 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 
 **TON**
 - GitHub: `ton-blockchain/ton` ✓, `ton-blockchain/TIPs` (governance) ✓
-- Blog RSS: `https://ton.org/blog/rss.xml` ⚠️
-- YouTube: `@tonblockchain` ⚠️
-- Status: `https://status.ton.org/` ⚠️
-- Governance: GitHub TIPs ✓
+- Blog/Newsroom: `https://ton.org/en/newsroom?all` ✓ (no RSS — scrape newsroom page)
+- Governance: `https://ton.vote` ✓ (TON DAO Vote), `https://snapshot.org/#/ton` ✓
+- YouTube: `@tonblockchain` ✓, `@toncoin` ✓
+- Docs: `https://docs.ton.org` ✓
+- Events: `https://ton.org/events` ✓
+- Status: N/A (no dedicated status page — use t.me/tonstatus Telegram channel)
 - DefiLlama slug: `ton`
 - CoinGecko ID: `the-open-network`
 
 **OP Mainnet**
 - GitHub: `ethereum-optimism/optimism` ✓, `ethereum-optimism/specs` ✓
-- Blog RSS: `https://optimism.mirror.xyz/feed/atom` ⚠️ (Mirror.xyz, Atom format)
-- YouTube: `@OptimismCollective` ⚠️
-- Status: `https://status.optimism.io/` ⚠️
-- Governance: `gov.optimism.io` ✓ (shared with Base — filter by OP tags)
+- Blog: `https://optimism.io/blog` ✓
+- YouTube: `@OptimismPBC` ✓
+- Status: `https://status.optimism.io/` ✓
+- Docs: `https://docs.optimism.io/` ✓
+- Governance: `https://gov.optimism.io/` ✓, `https://snapshot.org/#/opcollective.eth` ✓
 - DefiLlama slug: `optimism`
 - CoinGecko ID: `optimism`
 
 **NEAR**
 - GitHub: `near/nearcore` ✓
 - Blog RSS: `https://medium.com/feed/@nearprotocol` ✓ (near.org/blog is dead, Medium feed works)
-- YouTube: `@NEARProtocol` ⚠️
-- Status: `https://status.near.org/` ⚠️
-- Governance: `gov.near.org` (Discourse, NEPs) ⚠️
+- Blog (official): `https://near.org/blog` ✓, `https://pages.near.org/blog/` ✓
+- YouTube: `@NEARProtocol` ✓
+- Docs: `https://docs.near.org/` ✓
+- Status: `https://status.near.org/` ✓
+- Governance: `https://gov.near.org/` ✓ (Discourse, NEPs)
 - DefiLlama slug: `near`
 - CoinGecko ID: `near`
 
@@ -359,23 +390,21 @@ Tracking 30 chains manually is impossible. Information is fragmented across GitH
 | Dimension | Chains with source | Chains without |
 |-----------|-------------------|----------------|
 | GitHub repos | 30/30 | None (all resolved) |
-| Blog RSS / announcements | 28/30 | Bitcoin (no central blog), X Layer (OKX — no RSS, monitor via DefiLlama + TradingView) |
-| YouTube channel | 20/30 | Bitcoin, X Layer (use OKX), Ink, MegaETH, Virtuals, Morph, Stablechain + 3 TBD |
-| Status page | 14/30 | Bitcoin, Mantle, X Layer, Morph, Tempo, Plasma, Stablechain, MegaETH, Monad, Virtuals + 6 TBD |
-| Governance forum | 19/30 | 11 enterprise/early (see section 2) |
+| Blog / newsroom | 30/30 | None (all have at least one working blog or newsroom) |
+| YouTube channel | 27/30 | Bitcoin (no official), Plasma (none), Stablechain (none) |
+| Status page | 16/30 | 14 chains without (see per-chain config) |
+| Governance forum | 22/30 | 8 enterprise/early (Ink, X Layer, Morph, Tempo, Plasma, Stablechain, Monad, Sei, Virtuals, Bittensor — some use on-chain/Snapshot) |
+| Docs | 28/30 | X Layer (OKX-integrated), Plasma (no standalone docs) |
 
 **Chains with NO blog RSS (need scraping workaround):**
 1. **Bitcoin** — no official blog. Monitor bitcoin.org/news + GitHub releases
 2. **X Layer** — OKX doesn't expose RSS for X Layer. Monitor via DefiLlama TVL + TradingView
+3. **TON** — newsroom at ton.org/en/newsroom?all (no RSS — scrape page)
 
 **Chains with NO YouTube channel:**
 1. Bitcoin
-2. X Layer (use OKX channel as proxy)
-3. Ink (Kraken channel as proxy)
-4. MegaETH
-5. Virtuals
-6. Stablechain
-7. Morph (need to verify if "Morph Network" channel is the right project)
+2. Plasma
+3. Stablechain
 
 ### Verification Required Before Implementation
 
