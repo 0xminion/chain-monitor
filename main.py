@@ -85,12 +85,6 @@ def process_events(raw_events: list[dict]) -> list:
     return signals
 
 
-def generate_daily_digest(signals: list, health: dict) -> str:
-    """Generate daily digest text."""
-    formatter = DailyDigestFormatter()
-    return formatter.format(signals, source_health=health)
-
-
 def cleanup_old_signals():
     """Clean up signals older than retention period."""
     reinforcer = SignalReinforcer()
@@ -116,8 +110,8 @@ def main():
     logger.info(f"Total signals: {len(signals)}, High priority: {len(high_priority)}")
 
     # Generate digest
-    digest = generate_daily_digest(signals, health)
     formatter = DailyDigestFormatter()
+    digest = formatter.format(signals, source_health=health)
 
     # Send if worth sending
     if formatter.should_send(signals):

@@ -97,7 +97,7 @@ morph:
   defillama_slug: "morph"
   github_repos:
     - "morph-l2/morph"
-  blog_rss: "https://www.morphl2.io/blog/rss.xml"
+  blog_rss: "https://blog.morph.network/feed"
   youtube_channel: null
   status_page: null
   governance_forum: null  # too early

@@ -1,6 +1,6 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 30 blockchain chains across 7 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
+Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 7 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ All configuration is YAML-based. No code changes needed to add/remove chains or 
 
 | File | Purpose |
 |------|---------|
-| `config/chains.yaml` | 30 chain definitions, data sources, GitHub repos |
+| `config/chains.yaml` | 27 chain definitions, data sources, GitHub repos |
 | `config/baselines.yaml` | Per-chain scoring thresholds |
 | `config/narratives.yaml` | Narrative categories and keywords |
 | `config/sources.yaml` | RSS feeds, API endpoints, TradingView config |
@@ -77,7 +77,7 @@ tests/          → Unit, integration, system tests
 | DefiLlama | TVL, fees, volume, protocol attribution | REST API | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | REST API | FINANCIAL |
 | GitHub | Version tags, high-signal PRs, EIP descriptions | REST API | TECH_EVENT |
-| RSS | 11 news feeds + chain blogs | RSS/Atom | All categories |
+| RSS | 11 news feeds + 47 chain blog feeds | RSS/Atom | All categories |
 | Regulatory | SEC EDGAR filings, CoinCenter policy | RSS | REGULATORY |
 | Risk Alert | DeFiLlama hacks, TVL crashes, Immunefi | REST API | RISK_ALERT |
 | TradingView | News flow from 16+ providers | Playwright (Chromium) | All categories |
@@ -93,6 +93,7 @@ tests/          → Unit, integration, system tests
 | RISK_ALERT | Hacks, exploits, outages, critical bugs | DeFiLlama, RSS, TradingView |
 | VISIBILITY | Conferences, hackathons, AMAs, hires, departures | ethereum.org, ETHGlobal, RSS, TradingView |
 | FINANCIAL | TVL milestones, volume spikes, funding, airdrops, TGEs | DefiLlama, CoinGecko, RSS, TradingView |
+| NEWS | General crypto news without specific chain attribution | RSS keyword matching |
 | AI_NARRATIVE | AI agent activity, LLM integrations | RSS keyword matching |
 
 ## Data Sources Detail
@@ -107,6 +108,7 @@ tests/          → Unit, integration, system tests
 
 ### News & Events
 - **RSS feeds**: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks, CryptoSlate, CoinGape, Bitcoin.com, AMBCrypto
+- **Chain blog feeds (47 total)**: Each chain may publish via blog, Medium, and/or Substack — all sources are checked independently (peer-level, no fallback hierarchy)
 - **TradingView**: Playwright scraper for crypto news flow (bypasses JS rendering)
 - **ethereum.org**: 38+ upcoming conferences with dates, locations, tags (Camoufox anti-detect)
 - **ETHGlobal**: Hackathons, meetups, conferences (Camoufox anti-detect)

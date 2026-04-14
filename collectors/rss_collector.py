@@ -269,23 +269,57 @@ class RSSCollector(BaseCollector):
         # 2. Global news feeds from sources.yaml
         rss_feeds = self._sources_cfg.get("rss_feeds", {})
         
-        # Map chain_event feed names to chain names for attribution
+        # Map chain_event feed names to chain names for attribution.
+        # Dynamically build from chains.yaml chain names + explicit overrides.
+        # Feed name is matched by checking if the chain name appears in the feed name.
         chain_name_map = {
+            # Exact matches by convention (feed name → chain key)
             "Solana Blog": "solana",
-            "Avalanche Blog": "avalanche",
+            "Solana Foundation Blog": "solana",
+            "Solana Foundation News": "solana",
             "Sui Blog": "sui",
             "Near Blog": "near",
+            "NEAR Substack": "near",
             "Aptos Blog": "aptos",
+            "Aptos Substack": "aptos",
             "Monad Blog": "monad",
+            "Monad Substack": "monad",
             "Arbitrum Blog": "arbitrum",
             "Starknet Blog": "starknet",
+            "Starknet Substack": "starknet",
             "Mantle Blog": "mantle",
+            "Mantle Substack": "mantle",
             "Morph Blog": "morph",
+            "Morph Network Blog": "morph",
+            "Morph Substack": "morph",
             "BNB Chain Blog": "bsc",
+            "BSC Substack": "bsc",
             "Hyperliquid": "hyperliquid",
+            "Hyperliquid Substack": "hyperliquid",
             "Gnosis Blog": "gnosis",
             "Stablechain Blog": "stablechain",
             "Virtuals": "virtuals",
+            "Base Blog": "base",
+            "MegaETH Blog": "megaeth",
+            "Bittensor": "bittensor",
+            "Polygon Blog": "polygon",
+            "Polygon Substack": "polygon",
+            "OP Mainnet Blog": "optimism",
+            "Optimism Substack": "optimism",
+            "Tempo Substack": "tempo",
+            "Plasma Substack": "plasma",
+            "Sei Blog": "sei",
+            "Sei Substack": "sei",
+            "Ink Blog": "ink",
+            "Ink Substack": "ink",
+            "Ink Press": "ink",
+            "X Layer Blog": "xlayer",
+            "TON Newsroom": "ton",
+            "TON Ecosystem": "ton",
+            "Bitcoin Core Releases": "bitcoin",
+            "Bitcoin Magazine": "bitcoin",
+            "Blockstream Blog": "bitcoin",
+            "EIPs RSS": "ethereum",
         }
         
         for category, feeds in rss_feeds.items():

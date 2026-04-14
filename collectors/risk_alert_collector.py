@@ -20,7 +20,6 @@ CHAIN_KEYWORDS = {
     "polygon": ["polygon", "matic"],
     "arbitrum": ["arbitrum", "arb"],
     "optimism": ["optimism", "op mainnet"],
-    "avalanche": ["avalanche", "avax"],
     "sei": ["sei"],
     "sui": ["sui"],
     "aptos": ["aptos"],
@@ -87,10 +86,10 @@ class RiskAlertCollector(BaseCollector):
                 chain = chains[0].lower() if chains else "unknown"
 
                 if amount_lost >= 1_000_000:  # $1M+ loss
-                    if amount_lost >= 1e6:
-                        amount_str = f"${amount_lost/1e6:.1f}M"
+                    if amount_lost >= 1e9:
+                        amount_str = f"${amount_lost/1e9:.1f}B"
                     else:
-                        amount_str = f"${amount_lost/1e3:.0f}K"
+                        amount_str = f"${amount_lost/1e6:.1f}M"
 
                     signals.append(self._make_signal(
                         chain=chain,

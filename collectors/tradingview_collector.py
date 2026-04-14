@@ -33,7 +33,6 @@ def _init_chain_keywords():
             "arbitrum": ["arbitrum", "arb ", "arb,", "arbitrum one"],
             "optimism": ["optimism", "op stack", "superchain"],
             "polygon": ["polygon", "matic", "pol ", "polygon "],
-            "avalanche": ["avalanche", "avax"],
             "bsc": ["bnb chain", "bsc", "binance smart chain", "bnb "],
             "xlayer": ["xlayer", "x layer", "okx chain"],
             "monad": ["monad"],
