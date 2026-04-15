@@ -181,9 +181,16 @@ class EventCategorizer:
 
     def _detect_category(self, text: str) -> str:
         """Detect primary category from text."""
-        # Specific overrides: "live on mainnet/testnet" is tech, not partnership
-        if "live on mainnet" in text or "live on testnet" in text or "goes live on mainnet" in text:
-            return "TECH_EVENT"
+        # Specific overrides: tech phrases that PARTNERSHIP's "live on" would falsely match
+        tech_overrides = [
+            "live on mainnet", "live on testnet", "goes live on mainnet",
+            "is live on mainnet", "is live on testnet",
+            "upgrade is live", "upgrade went live", "upgrade live",
+            "hard fork", "soft fork", "mainnet launch",
+        ]
+        for phrase in tech_overrides:
+            if phrase in text:
+                return "TECH_EVENT"
 
         # Standard order: RISK > REGULATORY > FINANCIAL > PARTNERSHIP > TECH > VISIBILITY
         for category, keywords in CATEGORY_KEYWORDS.items():

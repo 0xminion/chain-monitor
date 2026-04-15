@@ -113,12 +113,11 @@ class RiskAlertCollector(BaseCollector):
         import feedparser
         signals = []
         now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(days=7)
+        cutoff = now - timedelta(days=2)  # Only recent posts for daily relevance
 
         # Security-focused feeds
         feeds = [
             ("https://medium.com/feed/@immunefi", "Immunefi"),
-            ("https://blog.soliditylang.org/feed.xml", "Solidity Blog"),
         ]
 
         for feed_url, source_name in feeds:
@@ -127,10 +126,24 @@ class RiskAlertCollector(BaseCollector):
                 if not raw:
                     continue
                 feed = feedparser.parse(raw)
-                for entry in feed.entries[:5]:
+                for entry in feed.entries[:10]:
                     title = getattr(entry, "title", "")
                     summary = getattr(entry, "summary", "")
                     link = getattr(entry, "link", "")
+
+                    # Date filter — skip old posts
+                    pub_date = None
+                    for field in ("published_parsed", "updated_parsed"):
+                        ts = getattr(entry, field, None)
+                        if ts:
+                            try:
+                                from time import mktime
+                                pub_date = datetime.fromtimestamp(mktime(ts), tz=timezone.utc)
+                                break
+                            except (OverflowError, ValueError):
+                                pass
+                    if pub_date and pub_date < cutoff:
+                        continue
 
                     # Check if security-related
                     combined = f"{title} {summary}".lower()

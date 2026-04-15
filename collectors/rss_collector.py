@@ -47,6 +47,7 @@ class RSSCollector(BaseCollector):
 
         self._chains_cfg = get_chains()
         self._baselines_cfg = get_baselines()
+        self._feed_health: dict[str, dict] = {}  # feed_name -> {status, last_error}
 
         try:
             self._narratives_cfg = get_narratives()
@@ -185,12 +186,17 @@ class RSSCollector(BaseCollector):
         raw = self.fetch_text_with_retry(feed_url)
         if not raw:
             logger.warning(f"[RSS] Failed to fetch feed: {feed_url}")
+            self._feed_health[source_name] = {"status": "down", "last_error": f"fetch failed: {feed_url}"}
             return signals
 
         feed = feedparser.parse(raw)
         if feed.bozo and not feed.entries:
             logger.warning(f"[RSS] Feed parse error for {feed_url}: {feed.bozo_exception}")
+            self._feed_health[source_name] = {"status": "down", "last_error": f"parse error: {str(feed.bozo_exception)[:80]}"}
             return signals
+
+        # Feed is healthy
+        self._feed_health[source_name] = {"status": "healthy", "last_error": None}
 
         # Determine lookback window
         now = datetime.now(timezone.utc)
@@ -315,32 +321,20 @@ class RSSCollector(BaseCollector):
             "Base Blog": "base",
             "MegaETH Blog": "megaeth",
             "Bittensor": "bittensor",
-            "Polygon Blog": "polygon",
             "Polygon Substack": "polygon",
-            "OP Mainnet Blog": "optimism",
             "Optimism Substack": "optimism",
             "Tempo Substack": "tempo",
             "Plasma Substack": "plasma",
-            "Sei Blog": "sei",
             "Sei Substack": "sei",
-            "Sei SIPs": "sei",
-            "Ink Blog": "ink",
             "Ink Substack": "ink",
-            "Ink Press": "ink",
-            "X Layer Blog": "xlayer",
-            "TON Newsroom": "ton",
-            "TON Ecosystem": "ton",
             "Bitcoin Core Releases": "bitcoin",
             "Bitcoin Magazine": "bitcoin",
-            "Blockstream Blog": "bitcoin",
             "EIPs RSS": "ethereum",
-            # New sources (Apr 14, 2026)
+            # New sources
             "Arbitrum Substack": "arbitrum",
             "Basechain Substack": "base",
             "Gnosis Substack": "gnosis",
             "GnosisDAO Substack": "gnosis",
-            "Bitcoin BIPs": "bitcoin",
-            "Gnosis Specs": "gnosis",
             "Polygon Governance Forum": "polygon",
             "Plasma Blog": "plasma",
         }
@@ -387,3 +381,7 @@ class RSSCollector(BaseCollector):
 
         logger.info(f"[RSS] Collected {len(signals)} signals")
         return signals
+
+    def get_feed_health(self) -> dict:
+        """Return per-feed health status."""
+        return self._feed_health

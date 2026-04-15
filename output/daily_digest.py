@@ -22,6 +22,14 @@ def _extract_url(signal: Signal) -> Optional[str]:
         url = evidence.get(key)
         if url and url.startswith("http"):
             return url
+    # Fallback: check all activities for a URL
+    for act in signal.activity:
+        ev = act.get("evidence", {})
+        if isinstance(ev, dict):
+            for key in ("html_url", "pr_url", "link", "feed_url"):
+                url = ev.get(key)
+                if url and url.startswith("http"):
+                    return url
     return None
 
 
@@ -46,6 +54,12 @@ def _is_noise(signal: Signal) -> bool:
     # Price/financial noise — user doesn't want price content
     if signal.category in ("FINANCIAL", "PRICE_NOISE"):
         return True
+    # Raw Devpost/hackathon text dumps — not formatted for digest
+    if "FEATURED\n" in desc or "No hackathons found" in desc:
+        return True
+    # Old hackathon outcome reports (Solana/ETHGlobal results from months ago)
+    if signal.category == "VISIBILITY" and any(kw in desc.lower() for kw in ["winners of", "results of", "announce the result"]):
+        return True
     # Routine GitHub fixes/feats that aren't major releases
     if signal.category == "TECH_EVENT" and signal.activity:
         source = signal.activity[0].get("source", "")
@@ -64,6 +78,35 @@ def _is_noise(signal: Signal) -> bool:
     return False
 
 
+def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
+    """Check if signal is recent enough for the daily digest.
+    
+    Filters based on the actual event age (from evidence), not detection time.
+    Signals without age data are allowed through (assume recent).
+    """
+    if not signal.activity:
+        return True  # no data, allow
+    evidence = signal.activity[0].get("evidence", {})
+    if not isinstance(evidence, dict):
+        return True
+    
+    age_hours = evidence.get("age_hours")
+    if age_hours is not None:
+        return age_hours <= max_age_hours
+    
+    # Check published_at timestamp
+    published = evidence.get("published_at") or evidence.get("published")
+    if published:
+        try:
+            pub_dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - pub_dt).total_seconds() / 3600
+            return age <= max_age_hours
+        except (ValueError, TypeError):
+            pass
+    
+    return True  # no age data, allow
+
+
 def _html_link(title: str, url: Optional[str]) -> str:
     """Create an HTML-linked title for Telegram."""
     if url and url.startswith("http"):
@@ -76,15 +119,26 @@ def _html_link(title: str, url: Optional[str]) -> str:
 class DailyDigestFormatter:
     """Formats signals into a daily Telegram digest."""
 
-    def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None) -> str:
+    def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
         """Format signals into daily digest text."""
         signals = [s for s in signals if not _is_noise(s)]
 
+        # Deduplicate by signal ID — keep highest scoring instance
+        seen = {}
+        for s in signals:
+            if s.id not in seen or s.priority_score > seen[s.id].priority_score:
+                seen[s.id] = s
+        signals = list(seen.values())
+
+        # Time filter: only include signals from past 24h
+        signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
+
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
 
-        critical = [s for s in signals if s.priority_score >= 10]
-        high = [s for s in signals if 8 <= s.priority_score < 10]
-        notable = [s for s in signals if 6 <= s.priority_score < 8]
+        # New scoring tiers
+        critical = [s for s in signals if s.priority_score >= 8]
+        high = [s for s in signals if 5 <= s.priority_score < 8]
+        medium = [s for s in signals if 3 <= s.priority_score < 5]
 
         sections = [
             f"📊 Chain Monitor — {now}",
@@ -98,27 +152,27 @@ class DailyDigestFormatter:
 
         # Critical
         if critical:
-            sections.append("🔴 Critical (Score ≥10)")
+            sections.append("🔴 Critical (Score ≥8)")
             for s in sorted(critical, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
         # High
         if high:
-            sections.append("🟠 High (Score 8-9)")
+            sections.append("🟠 High (Score 5-7)")
             for s in sorted(high, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Notable
-        if notable:
-            sections.append("🟡 Notable (Score 6-7)")
-            for s in sorted(notable, key=lambda x: -x.priority_score):
+        # Medium
+        if medium:
+            sections.append("🟡 Medium (Score 3-4)")
+            for s in sorted(medium, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Dev activity
-        dev_activity = [s for s in signals if s.category == "TECH_EVENT" and s.priority_score < 6]
+        # Dev activity (low-priority tech events not already surfaced)
+        dev_activity = [s for s in signals if s.category == "TECH_EVENT" and s.priority_score < 3]
         if dev_activity:
             sections.append("🔧 Dev activity")
             for s in sorted(dev_activity, key=lambda x: -x.priority_score)[:3]:
@@ -134,19 +188,19 @@ class DailyDigestFormatter:
                 sections.append("")
 
         # No events
-        if not critical and not high and not notable and not dev_activity and not partnerships:
+        if not critical and not high and not medium and not dev_activity and not partnerships:
             sections.append("— No high-priority events. Quiet day.")
 
         # Source Health
         if source_health:
-            sections.extend(self._format_health(source_health))
+            sections.extend(self._format_health(source_health, detail=source_health_detail))
 
         return "\n".join(sections)
 
     def should_send(self, signals: list[Signal]) -> bool:
-        """Determine if digest should be sent (3+ events score ≥6)."""
-        notable_count = sum(1 for s in signals if s.priority_score >= 6)
-        return notable_count >= 3
+        """Determine if digest should be sent (3+ events score ≥3)."""
+        count = sum(1 for s in signals if s.priority_score >= 3)
+        return count >= 3
 
     def _format_signal(self, signal: Signal) -> str:
         """Format a single signal with clickable link embedded in title."""
@@ -154,7 +208,6 @@ class DailyDigestFormatter:
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
-        rein_str = f" — {signal.source_count}x" if signal.source_count > 1 else ""
 
         if url:
             # Markdown link: [Title](URL) — Telegram renders as clickable
@@ -162,14 +215,14 @@ class DailyDigestFormatter:
         else:
             title = desc_clean
 
-        return f"• {chain}: {title} [{sources_str}{rein_str}]"
+        return f"• {chain}: {title} [{sources_str}]"
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""
         if not signals:
             return None
 
-        high_signals = [s for s in signals if s.priority_score >= 6]
+        high_signals = [s for s in signals if s.priority_score >= 5]
         if not high_signals:
             tech = [s for s in signals if s.category == "TECH_EVENT"]
             if tech:
@@ -201,8 +254,8 @@ class DailyDigestFormatter:
 
         return None
 
-    def _format_health(self, health: dict) -> list[str]:
-        """Format source health summary."""
+    def _format_health(self, health: dict, detail: dict = None) -> list[str]:
+        """Format source health summary with per-feed detail."""
         lines = ["⚠️ Source health"]
 
         def _norm(status: str) -> str:
@@ -218,17 +271,28 @@ class DailyDigestFormatter:
         down = sum(1 for h in health.values() if _norm(h.get("status", "")) == "down")
         total = len(health)
 
-        lines.append(f"  Healthy: {healthy}/{total} | Degraded: {degraded} | Down: {down}")
+        lines.append(f"  Collectors: {healthy}/{total} healthy | {degraded} degraded | {down} down")
 
+        # Per-feed detail from RSS and other collectors
+        if detail:
+            feed_down = [name for name, h in detail.items() if _norm(h.get("status", "")) != "healthy"]
+            if feed_down:
+                lines.append(f"  Feed issues ({len(feed_down)}):")
+                for name in feed_down[:5]:
+                    h = detail[name]
+                    error = h.get("last_error", "unknown")[:60]
+                    lines.append(f"    • {name}: {error}")
+                if len(feed_down) > 5:
+                    lines.append(f"    ... and {len(feed_down) - 5} more")
+
+        # Collector-level issues
         issues = [
             (name, h) for name, h in health.items()
             if _norm(h.get("status", "")) != "healthy"
         ]
         if issues:
-            details = []
             for name, h in issues[:3]:
-                details.append(f"{name} {h.get('status', 'unknown')} ({h.get('failures_24h', 0)} failures)")
-            lines.append(f"  [{', '.join(details)}]")
+                lines.append(f"  {name}: {h.get('status', 'unknown')} ({h.get('failures_24h', 0)} failures)")
 
         lines.append("")
         return lines

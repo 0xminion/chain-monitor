@@ -35,6 +35,7 @@ def run_collectors() -> list[dict]:
     """Run all collectors and return raw events."""
     events = []
     health = {}
+    feed_health = {}  # Per-feed detail (RSS, etc)
 
     collectors = [
         DefiLlamaCollector(),
@@ -57,8 +58,11 @@ def run_collectors() -> list[dict]:
         except Exception as e:
             logger.error(f"  {collector.name} failed: {e}")
         health[collector.name] = collector.get_health()
+        # Collect per-feed health from collectors that support it
+        if hasattr(collector, 'get_feed_health'):
+            feed_health.update(collector.get_feed_health())
 
-    return events, health
+    return events, health, feed_health
 
 
 def process_events(raw_events: list[dict]) -> tuple[list, NarrativeTracker]:
@@ -102,7 +106,7 @@ def main():
     logger.info("=" * 50)
 
     # Collect
-    raw_events, health = run_collectors()
+    raw_events, health, feed_health = run_collectors()
     logger.info(f"Total raw events: {len(raw_events)}")
 
     # Process
@@ -112,7 +116,7 @@ def main():
 
     # Generate digest
     formatter = DailyDigestFormatter()
-    digest = formatter.format(signals, source_health=health)
+    digest = formatter.format(signals, source_health=health, source_health_detail=feed_health)
 
     # Send if worth sending
     if formatter.should_send(signals):

@@ -20,17 +20,11 @@ rss_feeds:
   - name: DeFi Education Fund
     url: https://defieducationfund.org/feed/
   partnerships:
-  - name: CryptoSlate
-    url: https://cryptoslate.com/feed/
-  - name: CoinGape
-    url: https://coingape.com/feed/
   - name: Bitcoin.com News
     url: https://news.bitcoin.com/feed/
   - name: AMBCrypto
     url: https://ambcrypto.com/feed/
-  events:
-  - name: Coinpedia Events
-    url: https://events.coinpedia.org/feed/
+  events: []
   chain_events:
   - name: Solana Blog
     url: https://solana.com/news/rss.xml
@@ -68,10 +62,6 @@ rss_feeds:
     url: https://starknet.substack.com/feed
   - name: Bittensor
     url: https://bittensor.substack.com/feed
-  - name: Polygon Blog
-    url: https://polygon.technology/blog
-  - name: OP Mainnet Blog
-    url: https://optimism.io/blog
   - name: BSC Substack
     url: https://bnbchain.substack.com/feed
   - name: Mantle Substack
@@ -86,22 +76,10 @@ rss_feeds:
     url: https://tempo.substack.com/feed
   - name: Plasma Substack
     url: https://plasma.substack.com/feed
-  - name: Sei Blog
-    url: https://blog.sei.io/feed/
   - name: Sei Substack
     url: https://seinetwork.substack.com/feed
-  - name: Ink Blog
-    url: https://inkonchain.com/blog/rss.xml
   - name: Ink Substack
     url: https://ink.substack.com/feed
-  - name: Ink Press
-    url: https://inkonchain.com/press/rss
-  - name: X Layer Blog
-    url: https://www.xlayer.xyz/blog/rss.xml
-  - name: TON Newsroom
-    url: https://ton.org/en/newsroom/rss
-  - name: TON Ecosystem
-    url: https://ton.org/ecosystem/rss
   - name: Polygon Substack
     url: https://polygon.substack.com/feed
   - name: NEAR Substack
@@ -118,8 +96,6 @@ rss_feeds:
     url: https://eips.ethereum.org/rss/all.xml
   - name: Bitcoin Magazine
     url: https://bitcoinmagazine.com/feed
-  - name: Blockstream Blog
-    url: https://blockstream.com/blog/feed/
   - name: Solana Foundation Blog
     url: https://solanafoundation.org/blog/rss.xml
   - name: Solana Foundation News
@@ -132,16 +108,10 @@ rss_feeds:
     url: https://gnosis.substack.com/feed
   - name: GnosisDAO Substack
     url: https://gnosisdao.substack.com/feed
-  - name: Bitcoin BIPs
-    url: https://github.com/bitcoin/bips/commits/master.atom
-  - name: Gnosis Specs
-    url: https://github.com/gnosischain/specs/commits/master.atom
   - name: Polygon Governance Forum
     url: https://forum.polygon.technology/latest.rss
   - name: Plasma Blog
     url: https://plasma.dev/feed.xml
-  - name: Sei SIPs
-    url: https://github.com/sei-protocol/sips/commits/main.atom
   podcasts:
   - name: Bankless
     url: https://feeds.simplecast.com/82FI35Px
