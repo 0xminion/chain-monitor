@@ -68,7 +68,11 @@ twitter_accounts:
       - handle: inkonchain
         name: Ink
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: nightelf
+        name: Andrew Koller
+        role: founder
+        reliability: 0.80
   xlayer:
     official:
       - handle: XLayerOfficial
@@ -125,23 +129,53 @@ twitter_accounts:
         name: Adam Back
         role: core
         reliability: 0.85
-      - handle: lopp
-        name: Jameson Lopp
+      - handle: LukeDashjr
+        name: Luke Dashjr
         role: core
         reliability: 0.85
+      - handle: glozow
+        name: Gloria Zhao
+        role: core
+        reliability: 0.80
   solana:
     official:
       - handle: solana
         name: Solana
         reliability: 0.95
+      - handle: SolanaFndn
+        name: Solana Foundation
+        reliability: 0.90
+      - handle: SolanaEvents
+        name: Solana Events
+        reliability: 0.80
+      - handle: SolanaStatus
+        name: Solana Status
+        reliability: 0.80
+      - handle: solana_devs
+        name: Solana Devs
+        reliability: 0.80
+      - handle: solanagaming
+        name: Solana Gaming
+        reliability: 0.80
+      - handle: Solana_zh
+        name: Solana Chinese
+        reliability: 0.75
+      - handle: solanapayments
+        name: Solana Payments
+        reliability: 0.75
+      - handle: tokens
+        name: Solana Tokens
+        reliability: 0.75
+      - handle: x402
+        name: Solana x402
+        reliability: 0.75
+      - handle: capitalmarkets
+        name: Solana Capital Markets
+        reliability: 0.75
     contributors:
       - handle: aeyakovenko
         name: Anatoly Yakovenko
         role: founder
-        reliability: 0.90
-      - handle: solanafndn
-        name: Solana Foundation
-        role: org
         reliability: 0.90
       - handle: kashdhanda
         name: Kash Dhanda
@@ -150,6 +184,14 @@ twitter_accounts:
       - handle: 0xMert_
         name: Mert Mumtaz
         role: builder
+        reliability: 0.80
+      - handle: ynonestop
+        name: Ynonestop
+        role: core
+        reliability: 0.80
+      - handle: vibhu
+        name: Vibhu
+        role: core
         reliability: 0.80
   arbitrum:
     official:
@@ -220,7 +262,15 @@ twitter_accounts:
       - handle: stable
         name: Stablechain
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: mehler
+        name: Brian Mehler
+        role: ceo
+        reliability: 0.80
+      - handle: samkazemian
+        name: Sam Kazemian
+        role: cto
+        reliability: 0.80
   polygon:
     official:
       - handle: 0xPolygon
@@ -238,18 +288,26 @@ twitter_accounts:
         name: Anurag Arjun
         role: co-founder
         reliability: 0.80
+      - handle: Mudit__Gupta
+        name: Mudit Gupta
+        role: cto
+        reliability: 0.80
+      - handle: Dislikie
+        name: Brendan Farmer
+        role: co-founder
+        reliability: 0.80
   gnosis:
     official:
       - handle: gnosischain
         name: Gnosis Chain
         reliability: 0.95
     contributors:
-      - handle: tw_tter
-        name: Friederike Ernst
-        role: co-founder
-        reliability: 0.85
       - handle: koeppelmann
         name: Martin Köppelmann
+        role: co-founder
+        reliability: 0.85
+      - handle: StefanDGeorge
+        name: Stefan George
         role: co-founder
         reliability: 0.85
   megaeth:
@@ -320,6 +378,10 @@ twitter_accounts:
         name: Adeniyi Abiodun
         role: co-founder
         reliability: 0.80
+      - handle: b1ackd0g
+        name: Sam Blackshear
+        role: co-founder
+        reliability: 0.85
   aptos:
     official:
       - handle: Aptos
@@ -334,6 +396,10 @@ twitter_accounts:
         name: Avery Ching
         role: co-founder
         reliability: 0.85
+      - handle: alinush
+        name: Alin Tomescu
+        role: cryptography
+        reliability: 0.80
   virtuals:
     official:
       - handle: virtuals_io
@@ -383,6 +449,10 @@ twitter_accounts:
       - handle: tonkongz
         name: Justin Hyun
         role: incubation
+        reliability: 0.80
+      - handle: rogozov
+        name: Andrey Rogozov
+        role: founder
         reliability: 0.80
   optimism:
     official:
