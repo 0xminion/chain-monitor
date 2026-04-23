@@ -7,11 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from filelock import FileLock
+
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
 
 STORAGE_DIR = Path(__file__).parent.parent / "storage" / "events"
+_LOCK_PATH = STORAGE_DIR / ".reinforcer.lock"
 
 
 def _clean_description(desc: str) -> str:
@@ -50,18 +53,19 @@ class SignalReinforcer:
 
     def _load_existing(self):
         """Load existing signals from storage."""
-        for path in STORAGE_DIR.glob("*.json"):
-            try:
-                with open(path) as f:
-                    data = json.load(f)
-                signal = Signal(**data)
-                self.signals[signal.id] = signal
-                # Build URL index
-                url = _extract_evidence_url(signal.activity)
-                if url:
-                    self._url_index[url] = signal.id
-            except Exception as e:
-                logger.warning(f"Failed to load signal from {path}: {e}")
+        with FileLock(str(_LOCK_PATH)):
+            for path in STORAGE_DIR.glob("*.json"):
+                try:
+                    with open(path) as f:
+                        data = json.load(f)
+                    signal = Signal(**data)
+                    self.signals[signal.id] = signal
+                    # Build URL index
+                    url = _extract_evidence_url(signal.activity)
+                    if url:
+                        self._url_index[url] = signal.id
+                except Exception as e:
+                    logger.warning(f"Failed to load signal from {path}: {e}")
 
     def process(self, new_signal: Signal) -> tuple[Signal, str]:
         """Process a new signal. Returns (signal, action) where action is 'created', 'reinforced', or 'echo'."""
@@ -139,9 +143,10 @@ class SignalReinforcer:
 
     def _save_signal(self, signal: Signal):
         """Save signal to storage."""
-        path = STORAGE_DIR / f"{signal.id}.json"
-        with open(path, "w") as f:
-            json.dump(signal.to_dict(), f, indent=2)
+        with FileLock(str(_LOCK_PATH)):
+            path = STORAGE_DIR / f"{signal.id}.json"
+            with open(path, "w") as f:
+                json.dump(signal.to_dict(), f, indent=2)
 
     def get_signals_by_chain(self, chain: str) -> list[Signal]:
         """Get all signals for a chain."""

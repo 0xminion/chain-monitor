@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import yaml
 from dotenv import load_dotenv

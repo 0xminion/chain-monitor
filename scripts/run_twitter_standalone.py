@@ -79,9 +79,9 @@ def format_telegram_digest(tweets: list[dict]) -> str:
         return "🐦 Twitter Standalone — No tweets found in window."
 
     lines = [
-        f"🐦 *Twitter Standalone Digest*",
+        "🐦 *Twitter Standalone Digest*",
         f"_{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_",
-        f"",
+        "",
         f"*Tweets collected:* {len(tweets)}\n",
     ]
 

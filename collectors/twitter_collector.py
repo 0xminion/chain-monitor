@@ -8,13 +8,13 @@ Author: 0xminion
 
 import json
 import logging
-import os
+
 import random
-import re
+
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from collectors.base import BaseCollector
 from config.loader import get_env

@@ -8,11 +8,11 @@ Sources:
 """
 
 import logging
-import re
+
 from datetime import datetime, timezone
 
 from collectors.base import BaseCollector
-from config.loader import get_chains
+
 
 logger = logging.getLogger(__name__)
 
@@ -84,22 +84,22 @@ class HackathonOutcomesCollector(BaseCollector):
                         data = page.evaluate("""() => {
                             const main = document.querySelector('main') || document.body;
                             const text = main.innerText || '';
-                            
+
                             // Extract event name from title
                             const title = document.title.replace(' | ETHGlobal', '').trim();
-                            
+
                             // Extract date
                             const dateMatch = text.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}(?:\\s*[–-]\\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\\s*\\d{1,2})?,?\\s*\\d{4})/);
                             const date = dateMatch ? dateMatch[1] : '';
-                            
+
                             // Extract location
                             const locMatch = text.match(/(?:Attendees|Workshops)\\n([^\\n]+(?:,\\s*[^\\n]+)?)/);
                             const location = locMatch ? '' : ''; // Skip complex parsing
-                            
+
                             // Extract prize total
                             const prizeMatch = text.match(/\\$(\\d[\\d,]+)\\nAvailable in prizes/);
                             const totalPrize = prizeMatch ? prizeMatch[1] : '';
-                            
+
                             // Extract partner prizes
                             const partners = [];
                             const prizeSection = text.match(/Available in prizes\\n([\\s\\S]*?)(?:See prize|Make the most)/);
@@ -113,11 +113,11 @@ class HackathonOutcomesCollector(BaseCollector):
                                     }
                                 }
                             }
-                            
+
                             // Extract themes
                             const themesMatch = text.match(/Themes and Topics\\n([\\s\\S]*?)\\$\\d/);
                             const themes = themesMatch ? themesMatch[1].split('\\n').filter(l => l.trim()).map(l => l.trim()) : [];
-                            
+
                             return {title, date, totalPrize, partners: partners.slice(0, 10), themes};
                         }""")
 
@@ -186,17 +186,17 @@ class HackathonOutcomesCollector(BaseCollector):
                         data = page.evaluate("""() => {
                             const main = document.querySelector('main') || document.body;
                             const text = main.innerText || '';
-                            
+
                             // Extract winners - look for track names and winners
                             const winners = [];
                             const tracks = text.split(/(?:Consumer|Crypto|Gaming|DePIN|DAOs|DeFi|Payments|Infrastructure)\\s*(?:Apps?)?\\s*Track/i);
-                            
+
                             // Get first 2000 chars for summary
                             const summary = text.substring(0, 2000);
-                            
+
                             // Extract grand champion
                             const grandMatch = text.match(/Grand Champion[\\s\\S]*?\\n([^\\n]+)/);
-                            
+
                             return {
                                 title: document.title.split('|')[0].trim(),
                                 summary: summary,
@@ -259,16 +259,16 @@ class HackathonOutcomesCollector(BaseCollector):
                 hackathons = page.evaluate("""() => {
                     const items = [];
                     const cards = document.querySelectorAll('[class*="hackathon"], [class*="challenge"], article, .gallery-item, .challenge-card');
-                    
+
                     cards.forEach(el => {
                         const text = el.innerText?.trim();
                         if (!text || text.length < 20) return;
-                        
+
                         const link = el.querySelector('a');
                         const href = link ? link.href : '';
-                        
+
                         const lines = text.split('\\n').map(l => l.trim()).filter(l => l);
-                        
+
                         items.push({
                             title: lines[0] || '',
                             status: lines.find(l => l.match(/active|upcoming|ended|open/i)) || '',
@@ -277,7 +277,7 @@ class HackathonOutcomesCollector(BaseCollector):
                             fullText: text.substring(0, 300),
                         });
                     });
-                    
+
                     return items.slice(0, 15);
                 }""")
 

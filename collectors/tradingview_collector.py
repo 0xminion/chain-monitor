@@ -1,7 +1,7 @@
 """TradingView News Flow collector — scrapes crypto news via Playwright Chromium."""
 
 import logging
-import re
+
 from datetime import datetime, timezone
 
 from collectors.base import BaseCollector
@@ -17,7 +17,7 @@ _CHAIN_KEYWORDS = {}  # chain_name -> list of search keywords
 
 def _init_chain_keywords():
     """Build keyword lookup from chains.yaml config."""
-    global _TRACKED_CHAINS, _CHAIN_KEYWORDS
+    global _TRACKED_CHAINS
     if _CHAIN_KEYWORDS:
         return
     try:
@@ -136,7 +136,7 @@ class TradingViewCollector(BaseCollector):
                 self._browser = self._playwright.chromium.launch(headless=True)
                 page = self._browser.new_page()
 
-            logger.info(f"Navigating to TradingView News Flow...")
+            logger.info("Navigating to TradingView News Flow...")
             page.goto(TRADINGVIEW_URL, timeout=30000)
             page.wait_for_timeout(8000)  # Wait for JS rendering
 

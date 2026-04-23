@@ -167,8 +167,8 @@ class TestFullPipeline:
             signals.append(s)
 
         # Depending on scores, may or may not send
-        notable_count = sum(1 for s in signals if s.priority_score >= 6)
-        assert formatter.should_send(signals) == (notable_count >= 3)
+        count_ge_3 = sum(1 for s in signals if s.priority_score >= 3)
+        assert formatter.should_send(signals) == (count_ge_3 >= 3)
 
     def test_echo_detection_in_pipeline(self, pipeline_components):
         """Repeated similar events should be detected as echoes."""

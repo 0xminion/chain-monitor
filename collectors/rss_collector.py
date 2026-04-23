@@ -9,7 +9,7 @@ from typing import Optional
 import feedparser
 
 from collectors.base import BaseCollector
-from config.loader import get_chains, get_baselines, get_sources, get_narratives, get_env
+from config.loader import get_chains, get_baselines, get_sources, get_narratives
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,12 @@
 """DefiLlama collector — TVL, fees, volume signals."""
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
+
+
+from config.loader import get_chains, get_sources, get_baselines
 from collectors.base import BaseCollector
-from config.loader import get_chains, get_baselines, get_sources, get_env
 
 logger = logging.getLogger(__name__)
 

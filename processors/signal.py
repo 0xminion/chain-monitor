@@ -1,6 +1,6 @@
 """Signal data model — the core data structure for all events."""
 
-import json
+
 import hashlib
 import html
 from datetime import datetime, timezone

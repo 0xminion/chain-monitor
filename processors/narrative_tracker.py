@@ -5,7 +5,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
+
+
+from filelock import FileLock
 
 from config.loader import get_narratives
 from processors.signal import Signal
@@ -13,6 +15,7 @@ from processors.signal import Signal
 logger = logging.getLogger(__name__)
 
 NARRATIVE_DIR = Path(__file__).parent.parent / "storage" / "narratives"
+_LOCK_PATH = NARRATIVE_DIR / ".narrative.lock"
 
 
 class NarrativeTracker:
@@ -26,16 +29,18 @@ class NarrativeTracker:
 
     def _load_history(self):
         """Load narrative history from storage."""
-        path = NARRATIVE_DIR / "history.json"
-        if path.exists():
-            with open(path) as f:
-                self.weekly_counts = json.load(f)
+        with FileLock(str(_LOCK_PATH)):
+            path = NARRATIVE_DIR / "history.json"
+            if path.exists():
+                with open(path) as f:
+                    self.weekly_counts = json.load(f)
 
     def _save_history(self):
         """Save narrative history to storage."""
-        path = NARRATIVE_DIR / "history.json"
-        with open(path, "w") as f:
-            json.dump(self.weekly_counts, f, indent=2)
+        with FileLock(str(_LOCK_PATH)):
+            path = NARRATIVE_DIR / "history.json"
+            with open(path, "w") as f:
+                json.dump(self.weekly_counts, f, indent=2)
 
     def cleanup_old(self, retention_weeks: int = 13):
         """Remove weekly history entries older than retention period.

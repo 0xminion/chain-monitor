@@ -1,7 +1,7 @@
 """Signal scorer — assigns impact/urgency scores based on baselines."""
 
 import logging
-from typing import Optional
+
 
 from config.loader import get_baselines, get_chains
 from processors.signal import Signal

@@ -1,11 +1,11 @@
 """Daily digest formatter — generates the daily Telegram digest."""
 
 import logging
-import re
+
 from datetime import datetime, timezone
 from typing import Optional
 
-from config.loader import get_chains
+
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
@@ -107,17 +107,7 @@ def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
     return True  # no age data, allow
 
 
-def _html_link(title: str, url: Optional[str]) -> str:
-    """Create an HTML-linked title for Telegram."""
-    if url and url.startswith("http"):
-        # Escape HTML entities in title
-        safe = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f'<a href="{url}">{safe}</a>'
-    return title
-
-
 class DailyDigestFormatter:
-    """Formats signals into a daily Telegram digest."""
 
     def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
         """Format signals into daily digest text."""

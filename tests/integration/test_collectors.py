@@ -224,7 +224,10 @@ class TestRSSCollector:
             assert isinstance(signals, list)
 
     def test_process_feed_with_valid_rss(self, collector):
-        rss_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        pub_date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
           <channel>
             <title>Test Feed</title>
@@ -232,7 +235,7 @@ class TestRSSCollector:
               <title>Ethereum upgrade scheduled for next month</title>
               <description>Ethereum will undergo a major upgrade</description>
               <link>https://example.com/eth-upgrade</link>
-              <pubDate>Mon, 13 Apr 2026 12:00:00 GMT</pubDate>
+              <pubDate>{pub_date}</pubDate>
             </item>
           </channel>
         </rss>"""
@@ -263,7 +266,10 @@ class TestRSSCollector:
             assert len(signals) == 0
 
     def test_process_feed_with_default_chain(self, collector):
-        rss_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        pub_date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
           <channel>
             <title>Test Feed</title>
@@ -271,7 +277,7 @@ class TestRSSCollector:
               <title>Generic update posted</title>
               <description>Some generic update</description>
               <link>https://example.com/update</link>
-              <pubDate>Mon, 13 Apr 2026 12:00:00 GMT</pubDate>
+              <pubDate>{pub_date}</pubDate>
             </item>
           </channel>
         </rss>"""

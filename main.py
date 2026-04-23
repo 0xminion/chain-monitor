@@ -2,11 +2,11 @@
 
 import json
 import logging
-import sys
+
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config.loader import get_chains, get_active_chains, get_env
+from config.loader import get_active_chains, get_env
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.github_collector import GitHubCollector
@@ -96,7 +96,11 @@ def process_events(raw_events: list[dict]) -> tuple[list, NarrativeTracker]:
 def cleanup_old_signals():
     """Clean up signals older than retention period."""
     reinforcer = SignalReinforcer()
-    retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
+    try:
+        retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
+    except ValueError:
+        retention_days = 90
+        logger.warning("Invalid DATA_RETENTION_DAYS env var, using default 90")
     reinforcer.cleanup_old(retention_days)
 
 

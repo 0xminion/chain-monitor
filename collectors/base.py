@@ -4,8 +4,8 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Any, Optional
-from dataclasses import dataclass, field
+from typing import Optional
+from dataclasses import dataclass
 
 import requests
 

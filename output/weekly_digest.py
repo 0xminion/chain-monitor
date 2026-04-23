@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from typing import Optional
 
-from config.loader import get_chains
+
 from processors.signal import Signal
 from processors.narrative_tracker import NarrativeTracker
 
@@ -64,7 +64,7 @@ class WeeklyDigestFormatter:
         sections = []
 
         # Header
-        sections.append(f"📈 Chain Monitor — Weekly Digest")
+        sections.append("📈 Chain Monitor — Weekly Digest")
         sections.append(f"Period: {week_start} — {week_end}")
         sections.append("")
 

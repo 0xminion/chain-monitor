@@ -1,6 +1,6 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 7 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
+Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 8 event categories, scores events, detects narratives, and delivers daily/weekly digests to Telegram.
 
 ## Quick Start
 
@@ -22,6 +22,9 @@ nano .env
 
 # Run a collection cycle
 python3 main.py
+
+# Run tests
+python3 -m pytest tests/
 ```
 
 ## Configuration

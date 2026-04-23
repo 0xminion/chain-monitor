@@ -9,6 +9,7 @@ Falls back gracefully if Camoufox unavailable.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from collectors.base import BaseCollector

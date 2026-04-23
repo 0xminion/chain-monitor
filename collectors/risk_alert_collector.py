@@ -1,7 +1,7 @@
 """Risk alert collector — hacks, exploits from free sources."""
 
 import logging
-import re
+
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -69,10 +69,10 @@ class RiskAlertCollector(BaseCollector):
         if not data or not isinstance(data, list):
             return signals
 
-        now = datetime.now(timezone.utc)
+        # now = datetime.now(timezone.utc)  # unused
         for p in data:
             change_1d = p.get("change_1d")
-            change_7d = p.get("change_7d")
+            # change_7d = p.get("change_7d")  # unused
             tvl = p.get("tvl", 0)
             name = p.get("name", "")
             chains = p.get("chains", [])
