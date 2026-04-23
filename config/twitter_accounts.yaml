@@ -13,24 +13,56 @@ twitter_accounts:
         name: Jesse Pollak
         role: lead
         reliability: 0.85
+      - handle: brian_armstrong
+        name: Brian Armstrong
+        role: founder
+        reliability: 0.85
   bsc:
     official:
       - handle: BNBCHAIN
         name: BNB Chain
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: cz_binance
+        name: Changpeng Zhao
+        role: founder
+        reliability: 0.85
+      - handle: v_bnbchain
+        name: BNB Chain Chief Scientist
+        role: core
+        reliability: 0.80
+      - handle: BNBChainDevs
+        name: BNB Chain Developers
+        role: org
+        reliability: 0.80
   mantle:
     official:
       - handle: 0xMantle
         name: Mantle
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: gametheorizing
+        name: Jordi Alexander
+        role: advisor
+        reliability: 0.80
+      - handle: ArjunKalsy
+        name: Arjun Kalsy
+        role: ecosystem
+        reliability: 0.80
   hyperliquid:
     official:
       - handle: HyperliquidX
         name: Hyperliquid
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: chameleon_jeff
+        name: Jeff Yan
+        role: founder
+        reliability: 0.85
+      - handle: iliensinc
+        name: Iliensinc
+        role: co-founder
+        reliability: 0.80
   ink:
     official:
       - handle: inkonchain
@@ -42,13 +74,29 @@ twitter_accounts:
       - handle: XLayerOfficial
         name: X Layer
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: star_okx
+        name: Star Xu
+        role: founder
+        reliability: 0.85
+      - handle: LennixOKX
+        name: Lennix Lai
+        role: cco
+        reliability: 0.80
   morph:
     official:
       - handle: MorphLayer
         name: Morph
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: cecilia_hsueh
+        name: Cecilia Hsueh
+        role: founder
+        reliability: 0.80
+      - handle: azeemk_
+        name: Azeem Khan
+        role: co-founder
+        reliability: 0.80
   ethereum:
     official:
       - handle: ethereum
@@ -59,6 +107,14 @@ twitter_accounts:
         name: Vitalik Buterin
         role: founder
         reliability: 0.90
+      - handle: dannyryan
+        name: Danny Ryan
+        role: core
+        reliability: 0.85
+      - handle: TimBeiko
+        name: Tim Beiko
+        role: core
+        reliability: 0.85
   bitcoin:
     official:
       - handle: bitcoin
@@ -67,6 +123,10 @@ twitter_accounts:
     contributors:
       - handle: adam3us
         name: Adam Back
+        role: core
+        reliability: 0.85
+      - handle: lopp
+        name: Jameson Lopp
         role: core
         reliability: 0.85
   solana:
@@ -83,30 +143,78 @@ twitter_accounts:
         name: Solana Foundation
         role: org
         reliability: 0.90
+      - handle: kashdhanda
+        name: Kash Dhanda
+        role: core
+        reliability: 0.80
+      - handle: 0xMert_
+        name: Mert Mumtaz
+        role: builder
+        reliability: 0.80
   arbitrum:
     official:
       - handle: arbitrum
         name: Arbitrum
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: sgoldfed
+        name: Steven Goldfeder
+        role: co-founder
+        reliability: 0.85
+      - handle: edfelten
+        name: Ed Felten
+        role: co-founder
+        reliability: 0.85
+      - handle: ajwarner90
+        name: A.J. Warner
+        role: core
+        reliability: 0.80
   starknet:
     official:
       - handle: Starknet
         name: Starknet
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: EliBenSasson
+        name: Eli Ben-Sasson
+        role: co-founder
+        reliability: 0.85
+      - handle: ukolodny
+        name: Uri Kolodny
+        role: co-founder
+        reliability: 0.80
   tempo:
     official:
       - handle: tempo_xyz
         name: Tempo
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: varunsrin
+        name: Varun Srinivasan
+        role: core
+        reliability: 0.80
+      - handle: dwr
+        name: Dan Romero
+        role: core
+        reliability: 0.80
+      - handle: gakonst
+        name: Georgios Konstantopoulos
+        role: core
+        reliability: 0.80
   plasma:
     official:
       - handle: Plasma
         name: Plasma
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: pauliepunt
+        name: Paul Faecks
+        role: founder
+        reliability: 0.80
+      - handle: zaheerebtikar
+        name: Zaheer Ebtikar
+        role: cso
+        reliability: 0.75
   stablechain:
     official:
       - handle: stable
@@ -121,13 +229,29 @@ twitter_accounts:
       - handle: 0xPolygonDevs
         name: Polygon Developers
         reliability: 0.90
-    contributors: []
+    contributors:
+      - handle: sandeepnailwal
+        name: Sandeep Nailwal
+        role: founder
+        reliability: 0.85
+      - handle: anuragarjun
+        name: Anurag Arjun
+        role: co-founder
+        reliability: 0.80
   gnosis:
     official:
       - handle: gnosischain
         name: Gnosis Chain
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: tw_tter
+        name: Friederike Ernst
+        role: co-founder
+        reliability: 0.85
+      - handle: koeppelmann
+        name: Martin Köppelmann
+        role: co-founder
+        reliability: 0.85
   megaeth:
     official:
       - handle: megaeth_labs
@@ -137,6 +261,14 @@ twitter_accounts:
       - handle: YilunC
         name: Yilun Cheng
         role: founder
+        reliability: 0.85
+      - handle: hotpot_dao
+        name: Shuyao Kong
+        role: core contributor
+        reliability: 0.85
+      - handle: bread_
+        name: Bread
+        role: head of ecosystem
         reliability: 0.85
   monad:
     official:
@@ -148,42 +280,110 @@ twitter_accounts:
         name: Keone Hon
         role: founder
         reliability: 0.90
+      - handle: 0x_eunice
+        name: Eunice Giha
+        role: co-founder
+        reliability: 0.85
+      - handle: _jhunsaker
+        name: James Hunsaker
+        role: co-founder
+        reliability: 0.85
   sei:
     official:
       - handle: SeiNetwork
         name: Sei Network
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: jayendra_jog
+        name: Jay Jog
+        role: co-founder
+        reliability: 0.85
+      - handle: jeffdfeng
+        name: Jeff Feng
+        role: co-founder
+        reliability: 0.80
+      - handle: JustinBarlow
+        name: Justin Barlow
+        role: foundation
+        reliability: 0.80
   sui:
     official:
       - handle: SuiNetwork
         name: Sui
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: EvanWeb3
+        name: Evan Cheng
+        role: co-founder
+        reliability: 0.85
+      - handle: EmanAbio
+        name: Adeniyi Abiodun
+        role: co-founder
+        reliability: 0.80
   aptos:
     official:
       - handle: Aptos
         name: Aptos
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: Moshaikh
+        name: Mo Shaikh
+        role: co-founder
+        reliability: 0.85
+      - handle: AveryChing
+        name: Avery Ching
+        role: co-founder
+        reliability: 0.85
   virtuals:
     official:
       - handle: virtuals_io
         name: Virtuals Protocol
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: ethermage
+        name: Jansen Teng
+        role: co-founder
+        reliability: 0.80
+      - handle: everythingempt0
+        name: Wee Kee
+        role: co-founder
+        reliability: 0.80
+      - handle: sal_hotpot666
+        name: Sal
+        role: core contributor
+        reliability: 0.75
   bittensor:
     official:
       - handle: opentensor
         name: OpenTensor
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: shibshib89
+        name: Ala Shaabana
+        role: co-founder
+        reliability: 0.80
+      - handle: JacobSteeves3
+        name: Jacob Steeves
+        role: co-founder
+        reliability: 0.80
+      - handle: const_reborn
+        name: Yuma Rao
+        role: co-founder
+        reliability: 0.80
   ton:
     official:
       - handle: ton_blockchain
         name: TON
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: steveyun_ton
+        name: Steve Yun
+        role: president
+        reliability: 0.80
+      - handle: tonkongz
+        name: Justin Hyun
+        role: incubation
+        reliability: 0.80
   optimism:
     official:
       - handle: OptimismFND
@@ -197,9 +397,25 @@ twitter_accounts:
         name: Optimism Governance
         role: org
         reliability: 0.90
+      - handle: karl_dot_tech
+        name: Karl Floersch
+        role: co-founder
+        reliability: 0.85
+      - handle: ben_chain
+        name: Ben Jones
+        role: co-founder
+        reliability: 0.85
   near:
     official:
       - handle: NEARProtocol
         name: NEAR Protocol
         reliability: 0.95
-    contributors: []
+    contributors:
+      - handle: ilblackdragon
+        name: Illia Polosukhin
+        role: co-founder
+        reliability: 0.90
+      - handle: AlexSkidanov
+        name: Alexander Skidanov
+        role: co-founder
+        reliability: 0.85
