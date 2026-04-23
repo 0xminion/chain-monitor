@@ -92,9 +92,6 @@ twitter_accounts:
       - handle: XLayerOfficial
         name: X Layer
         reliability: 0.95
-      - handle: okx
-        name: OKX
-        reliability: 0.90
     contributors:
       - handle: star_okx
         name: Star Xu
