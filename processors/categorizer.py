@@ -61,6 +61,85 @@ CATEGORY_KEYWORDS = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# Twitter-specific keyword expansions (additive to existing keywords)
+# ---------------------------------------------------------------------------
+TWITTER_KEYWORD_EXPANSIONS = {
+    "TECH_EVENT": [
+        "mainnet soon", "mainnet live tomorrow", "mainnet live next",
+        "devnet live", "devnet reset", "devnet deployed",
+        "upgrade tomorrow", "upgrade going live", "upgrade going out",
+        "release thread", "v2 is here", "v2 is live", "v3 is here",
+        "eip discussion", "eip draft", "eip proposed",
+        "testnet reset", "testnet upgrade", "testnet live",
+        "shipped", "shipping", "rolling out", "rolled out",
+        "audit complete", "audit report", "security review",
+        "smart contract deployed", "contract deployed",
+    ],
+    "PARTNERSHIP": [
+        "excited to partner with", "thrilled to announce integration",
+        "welcomes", "welcome to the ecosystem", "join the ecosystem",
+        "now live on", "live on", "部署在", "goes live on",
+        "announce partnership", "partnering with",
+        "integrates with", "integrated into", "integration with",
+        "join forces with", "joins forces with",
+        "cross-chain integration", "bridge to", "bridging to",
+    ],
+    "VISIBILITY": [
+        "ama tomorrow", "ama today", "ama at", "ama with",
+        "keynote at", "keynote on", "speaking at", "speaking on",
+        "hackathon", "hackathon at", "ethglobal", "demo day",
+        "podcast with", "podcast episode", "on the pod",
+        "joined the team", "new role", "excited to join",
+        "new head of", "new vp of", "new director of",
+        "ask me anything", "community call tomorrow", "town hall",
+        "fireside chat", "panel at",
+    ],
+    "REGULATORY": [
+        "regulatory update", "compliance update", "legal update",
+        "licensed by", "authorised by", "authorised to",
+        "sec suit", "cftc suit", "doj investigation",
+        "policy update", "regulatory clarity", "regulatory framework",
+    ],
+    "FINANCIAL": [
+        "$ million", "$ billion",
+        "funding round", "seed round", "series a", "series b",
+        "public sale", "community sale", "launch token", "token live",
+    ],
+}
+
+# Merge Twitter expansions into CATEGORY_KEYWORDS
+for _cat, _kws in TWITTER_KEYWORD_EXPANSIONS.items():
+    if _cat in CATEGORY_KEYWORDS:
+        CATEGORY_KEYWORDS[_cat].extend(_kws)
+    else:
+        CATEGORY_KEYWORDS[_cat] = _kws
+
+# ---------------------------------------------------------------------------
+# Twitter noise filter — phrases that signal low-value tweets
+# ---------------------------------------------------------------------------
+TWITTER_NOISE_PHRASES = [
+    "gm ", "gm!", "gn ", "gn!", "wagmi", "ngmi",
+    "number go up", "number go down", "buy the dip", "sell the top",
+    "to the moon", "moon soon", "lambo", "wen lambo",
+    "threadooor", "threadoor", "1/ 🧵", "1/ thread", "1/\n🧵",
+    "like + rt", "like and rt", "like and retweet", "like + retweet",
+    "follow for", "follow me", "follow us", "don't miss", "don't skip",
+    "drop a", "comment below", "let us know", "what do you think",
+    "rate this", "top 10", "top 5", "list thread", "mini thread",
+    "alpha inside", "free alpha", "here is alpha",
+]
+
+TWITTER_HIGH_VALUE_INDICATORS = [
+    "mainnet", "testnet", "upgrade", "launch", "partnership",
+    "integration", "deployed", "audit", "funding", "airdrop",
+    "tge", "token generation", "eip", "bip", "governance",
+    "hack", "exploit", "outage", "sec ", "regulatory",
+    # Visibility
+    "keynote", "conference", "hackathon", "speaker", "panel",
+    "ama", "community call", "join the team", "hired", "appointed",
+]
+
 # Subcategory detection
 SUBCATEGORY_MAP = {
     "RISK_ALERT": {
@@ -166,6 +245,15 @@ class EventCategorizer:
                     event["subcategory"] = "price_commentary"
                     return event
 
+        # Twitter noise filter — skip low-value engagement-bait tweets
+        if "twitter" in source.lower() or "twitter" in str(event.get("source_name", "")).lower():
+            noise, reason = self._is_twitter_noise(text)
+            if noise:
+                event["_filtered_twitter_noise"] = True
+                event["category"] = "NOISE"
+                event["subcategory"] = reason
+                return event
+
         # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
         # EXCEPT for generic categories — re-categorize these into specific ones
         GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
@@ -178,6 +266,27 @@ class EventCategorizer:
         event["category"] = category
         event["subcategory"] = subcategory
         return event
+
+    def _is_twitter_noise(self, text: str) -> tuple[bool, str]:
+        """Check if a tweet is low-value noise. Returns (is_noise, reason)."""
+        t = text.lower()
+
+        # Check explicit noise phrases
+        for phrase in TWITTER_NOISE_PHRASES:
+            if phrase in t:
+                return True, f"noise_phrase:{phrase.strip()}"
+
+        # Check for engagement-bait structures: all caps, excessive emojis, very short
+        if len(t) < 30 and ("🚀" in t or "🔥" in t or "💰" in t):
+            return True, "short_emoji_bait"
+
+        # If tweet is short AND contains no high-value indicators, mark as noise
+        if len(t) < 60:
+            has_indicator = any(hv in t for hv in TWITTER_HIGH_VALUE_INDICATORS)
+            if not has_indicator:
+                return True, "short_no_substance"
+
+        return False, ""
 
     def _detect_category(self, text: str) -> str:
         """Detect primary category from text."""

@@ -1,0 +1,205 @@
+# Twitter/X accounts monitored by the TwitterCollector
+twitter_accounts:
+  base:
+    official:
+      - handle: Base
+        name: Base
+        reliability: 0.95
+      - handle: BuildOnBase
+        name: Base Builder
+        reliability: 0.90
+    contributors:
+      - handle: JessePollak
+        name: Jesse Pollak
+        role: lead
+        reliability: 0.85
+  bsc:
+    official:
+      - handle: BNBCHAIN
+        name: BNB Chain
+        reliability: 0.95
+    contributors: []
+  mantle:
+    official:
+      - handle: 0xMantle
+        name: Mantle
+        reliability: 0.95
+    contributors: []
+  hyperliquid:
+    official:
+      - handle: HyperliquidX
+        name: Hyperliquid
+        reliability: 0.95
+    contributors: []
+  ink:
+    official:
+      - handle: inkonchain
+        name: Ink
+        reliability: 0.95
+    contributors: []
+  xlayer:
+    official:
+      - handle: XLayerOfficial
+        name: X Layer
+        reliability: 0.95
+    contributors: []
+  morph:
+    official:
+      - handle: MorphLayer
+        name: Morph
+        reliability: 0.95
+    contributors: []
+  ethereum:
+    official:
+      - handle: ethereum
+        name: Ethereum
+        reliability: 0.95
+    contributors:
+      - handle: VitalikButerin
+        name: Vitalik Buterin
+        role: founder
+        reliability: 0.90
+  bitcoin:
+    official:
+      - handle: bitcoin
+        name: Bitcoin
+        reliability: 0.95
+    contributors:
+      - handle: adam3us
+        name: Adam Back
+        role: core
+        reliability: 0.85
+  solana:
+    official:
+      - handle: solana
+        name: Solana
+        reliability: 0.95
+    contributors:
+      - handle: aeyakovenko
+        name: Anatoly Yakovenko
+        role: founder
+        reliability: 0.90
+      - handle: solanafndn
+        name: Solana Foundation
+        role: org
+        reliability: 0.90
+  arbitrum:
+    official:
+      - handle: arbitrum
+        name: Arbitrum
+        reliability: 0.95
+    contributors: []
+  starknet:
+    official:
+      - handle: Starknet
+        name: Starknet
+        reliability: 0.95
+    contributors: []
+  tempo:
+    official:
+      - handle: tempo_xyz
+        name: Tempo
+        reliability: 0.95
+    contributors: []
+  plasma:
+    official:
+      - handle: Plasma
+        name: Plasma
+        reliability: 0.95
+    contributors: []
+  stablechain:
+    official:
+      - handle: stable
+        name: Stablechain
+        reliability: 0.95
+    contributors: []
+  polygon:
+    official:
+      - handle: 0xPolygon
+        name: Polygon
+        reliability: 0.95
+      - handle: 0xPolygonDevs
+        name: Polygon Developers
+        reliability: 0.90
+    contributors: []
+  gnosis:
+    official:
+      - handle: gnosischain
+        name: Gnosis Chain
+        reliability: 0.95
+    contributors: []
+  megaeth:
+    official:
+      - handle: megaeth_labs
+        name: MegaETH Labs
+        reliability: 0.95
+    contributors:
+      - handle: YilunC
+        name: Yilun Cheng
+        role: founder
+        reliability: 0.85
+  monad:
+    official:
+      - handle: monad_xyz
+        name: Monad
+        reliability: 0.95
+    contributors:
+      - handle: keoneHD
+        name: Keone Hon
+        role: founder
+        reliability: 0.90
+  sei:
+    official:
+      - handle: SeiNetwork
+        name: Sei Network
+        reliability: 0.95
+    contributors: []
+  sui:
+    official:
+      - handle: SuiNetwork
+        name: Sui
+        reliability: 0.95
+    contributors: []
+  aptos:
+    official:
+      - handle: Aptos
+        name: Aptos
+        reliability: 0.95
+    contributors: []
+  virtuals:
+    official:
+      - handle: virtuals_io
+        name: Virtuals Protocol
+        reliability: 0.95
+    contributors: []
+  bittensor:
+    official:
+      - handle: opentensor
+        name: OpenTensor
+        reliability: 0.95
+    contributors: []
+  ton:
+    official:
+      - handle: ton_blockchain
+        name: TON
+        reliability: 0.95
+    contributors: []
+  optimism:
+    official:
+      - handle: OptimismFND
+        name: Optimism Foundation
+        reliability: 0.95
+      - handle: Optimism
+        name: Optimism
+        reliability: 0.95
+    contributors:
+      - handle: OptimismGov
+        name: Optimism Governance
+        role: org
+        reliability: 0.90
+  near:
+    official:
+      - handle: NEARProtocol
+        name: NEAR Protocol
+        reliability: 0.95
+    contributors: []

@@ -16,6 +16,8 @@ from collectors.risk_alert_collector import RiskAlertCollector
 from collectors.tradingview_collector import TradingViewCollector
 from collectors.events_collector import EventsCollector
 from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
+from collectors.twitter_collector import TwitterCollector
+
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
@@ -42,6 +44,7 @@ def run_collectors() -> list[dict]:
         CoinGeckoCollector(),
         GitHubCollector(),
         RSSCollector(),
+        TwitterCollector(standalone_mode=False),
         RegulatoryCollector(),
         RiskAlertCollector(),
         TradingViewCollector(),
