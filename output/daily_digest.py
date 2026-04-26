@@ -1,4 +1,7 @@
-"""Daily digest formatter — generates the daily Telegram digest."""
+"""Daily digest formatter — generates the daily Telegram digest.
+
+v0.2: Added LLM-powered digest generation with template fallback.
+"""
 
 import logging
 
@@ -6,6 +9,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+from config.loader import get_env
+from output.llm_digest_generator import LLMDigestGenerator
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
@@ -110,7 +115,11 @@ def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
 class DailyDigestFormatter:
 
     def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
-        """Format signals into daily digest text."""
+        """Format signals into daily digest text.
+
+        v0.2: Routes to LLM generator if LLM_DIGEST_ENABLED=true and LLM available,
+        otherwise falls back to template-based formatting.
+        """
         signals = [s for s in signals if not _is_noise(s)]
 
         # Deduplicate by signal ID — keep highest scoring instance
@@ -123,6 +132,28 @@ class DailyDigestFormatter:
         # Time filter: only include signals from past 24h
         signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
 
+        # ── v0.2: LLM Digest Generation (with template fallback) ───────────
+        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "false").lower() == "true"
+        if llm_digest_enabled:
+            try:
+                llm_gen = LLMDigestGenerator()
+                llm_output = llm_gen.generate(
+                    signals=signals,
+                    source_health=source_health,
+                    source_health_detail=source_health_detail,
+                )
+                if llm_output:
+                    logger.info("[digest] LLM digest generated successfully")
+                    # Still append source health footer
+                    if source_health:
+                        llm_output += "\n" + "\n".join(self._format_health(source_health, detail=source_health_detail))
+                    return llm_output
+                else:
+                    logger.warning("[digest] LLM digest returned empty — falling back to template")
+            except Exception as e:
+                logger.warning(f"[digest] LLM digest generation failed: {e}")
+
+        # ── Template-based formatting (legacy, reliable) ────────────────────
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
 
         # New scoring tiers

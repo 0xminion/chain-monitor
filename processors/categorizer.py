@@ -1,4 +1,11 @@
-"""Event categorizer — classifies raw events into categories."""
+"""Event categorizer — classifies raw events into categories.
+
+Uses keyword matching as baseline. For Twitter sources, uses LLM semantic enrichment
+as primary (high confidence) or tiebreaker (medium confidence). Falls back to keyword
+on LLM failure or for non-Twitter sources.
+
+Author: 0xminion
+"""
 
 import logging
 
@@ -210,15 +217,99 @@ PRICE_NOISE_KEYWORDS = [
 ]
 
 
+def _has_semantic_override(event: dict) -> tuple[bool, str, str]:
+    """Check if event has high-confidence semantic enrichment that should override keywords.
+
+    Returns (has_override, category, subcategory).
+    """
+    semantic = event.get("semantic")
+    if not semantic or not isinstance(semantic, dict):
+        return False, "", ""
+
+    confidence = float(semantic.get("confidence", 0.0))
+    category = semantic.get("category", "")
+    subcategory = semantic.get("subcategory", "")
+    is_noise = bool(semantic.get("is_noise", False))
+
+    if is_noise and confidence >= 0.50:
+        return True, "NOISE", "noise_phrase"
+
+    if confidence >= 0.75 and category and category in CATEGORY_KEYWORDS:
+        return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
+
+    return False, "", ""
+
+
+def _has_semantic_vote(event: dict, keyword_category: str) -> tuple[bool, str, str]:
+    """Check if medium-confidence semantic should act as tiebreaker.
+
+    Returns (use_semantic, category, subcategory).
+    """
+    semantic = event.get("semantic")
+    if not semantic or not isinstance(semantic, dict):
+        return False, "", ""
+
+    confidence = float(semantic.get("confidence", 0.0))
+    category = semantic.get("category", "")
+    subcategory = semantic.get("subcategory", "")
+    is_noise = bool(semantic.get("is_noise", False))
+
+    # Low confidence — ignore
+    if confidence < 0.50:
+        return False, "", ""
+
+    # Noise flag from LLM — honour it even at medium confidence
+    if is_noise:
+        return True, "NOISE", "noise_phrase"
+
+    # Medium confidence with explicit reasoning that contradicts keyword
+    # Only override if keyword is generic (NEWS, TECH_EVENT) and LLM is specific
+    if 0.50 <= confidence < 0.75:
+        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
+        if keyword_category in GENERIC_CATEGORIES and category not in GENERIC_CATEGORIES:
+            return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
+
+    return False, "", ""
+
+
+def _detect_subcategory_keyword(text: str, category: str) -> str:
+    """Detect subcategory using keyword matching."""
+    subcats = SUBCATEGORY_MAP.get(category, {})
+    for subcat, keywords in subcats.items():
+        for keyword in keywords:
+            if keyword in text.lower():
+                return subcat
+    return "general"
+
+
 class EventCategorizer:
     """Classifies raw events into categories and subcategories."""
 
+    def __init__(self):
+        # Optional: external semantic enricher for pre-processing
+        self.semantic_enricher = None
+        self._preprocess_twitter = False
+        try:
+            from processors.semantic_enricher import SemanticEnricher
+            self.semantic_enricher = SemanticEnricher()
+            self._preprocess_twitter = True
+            logger.info("[categorizer] Semantic enrichment loaded for Twitter sources")
+        except Exception as e:
+            logger.warning(f"[categorizer] Semantic enrichment not available: {e}")
+
     def categorize(self, event: dict) -> dict:
         """Add category and subcategory to event dict."""
+        source = event.get("source", "") or event.get("source_name", "")
+
+        # --- 1. Pre-process Twitter with semantic enrichment if available ---
+        if self._preprocess_twitter and "twitter" in source.lower():
+            try:
+                event = self.semantic_enricher.enrich(event)
+            except Exception as e:
+                logger.warning(f"[categorizer] Semantic enrichment failed: {e}")
+
         # Build text for matching from all available fields
         text_parts = [event.get("description", "")]
-
-        # Handle evidence as dict (extract title, summary) or string
         evidence = event.get("evidence", "")
         if isinstance(evidence, dict):
             text_parts.append(evidence.get("title", ""))
@@ -230,22 +321,27 @@ class EventCategorizer:
 
         text = " ".join(str(p) for p in text_parts if p).lower()
 
+        # --- 2. Check LLM semantic result for override ---
+        has_override, override_cat, override_sub = _has_semantic_override(event)
+        if has_override:
+            event["category"] = override_cat
+            event["subcategory"] = override_sub
+            if override_cat == "NOISE":
+                event["_filtered_twitter_noise"] = True
+            return event
+
         # Filter out price/trading noise from FINANCIAL
-        # But NEVER filter DefiLlama TVL data (it's real on-chain data)
-        source = event.get("source", "") or event.get("source_name", "")
         is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
-        
         existing = event.get("category", "")
         if (existing == "FINANCIAL" or existing == "NEWS") and not is_defillama:
             for noise_kw in PRICE_NOISE_KEYWORDS:
                 if noise_kw in text:
-                    # Mark as filtered — digest can skip these
                     event["_filtered_price_noise"] = True
                     event["category"] = "PRICE_NOISE"
                     event["subcategory"] = "price_commentary"
                     return event
 
-        # Twitter noise filter — skip low-value engagement-bait tweets
+        # Check Twitter noise keywords
         if "twitter" in source.lower() or "twitter" in str(event.get("source_name", "")).lower():
             noise, reason = self._is_twitter_noise(text)
             if noise:
@@ -254,33 +350,38 @@ class EventCategorizer:
                 event["subcategory"] = reason
                 return event
 
-        # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
-        # EXCEPT for generic categories — re-categorize these into specific ones
+        # --- 3. Keyword-based categorization ---
         GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
         if existing and existing not in GENERIC_CATEGORIES:
-            event["subcategory"] = self._detect_subcategory(text, existing)
+            keyword_category = existing
+        else:
+            keyword_category = self._detect_category(text)
+
+        keyword_subcategory = self._detect_subcategory(text, keyword_category)
+
+        # --- 4. LLM semantic as tiebreaker (medium confidence) ---
+        has_sem_vote, sem_cat, sem_sub = _has_semantic_vote(event, keyword_category)
+        if has_sem_vote:
+            event["category"] = sem_cat
+            event["subcategory"] = sem_sub
             return event
 
-        category = self._detect_category(text)
-        subcategory = self._detect_subcategory(text, category)
-        event["category"] = category
-        event["subcategory"] = subcategory
+        # Result: keyword category
+        event["category"] = keyword_category
+        event["subcategory"] = keyword_subcategory
         return event
 
     def _is_twitter_noise(self, text: str) -> tuple[bool, str]:
         """Check if a tweet is low-value noise. Returns (is_noise, reason)."""
         t = text.lower()
 
-        # Check explicit noise phrases
         for phrase in TWITTER_NOISE_PHRASES:
             if phrase in t:
                 return True, f"noise_phrase:{phrase.strip()}"
 
-        # Check for engagement-bait structures: all caps, excessive emojis, very short
         if len(t) < 30 and ("🚀" in t or "🔥" in t or "💰" in t):
             return True, "short_emoji_bait"
 
-        # If tweet is short AND contains no high-value indicators, mark as noise
         if len(t) < 60:
             has_indicator = any(hv in t for hv in TWITTER_HIGH_VALUE_INDICATORS)
             if not has_indicator:
@@ -289,8 +390,7 @@ class EventCategorizer:
         return False, ""
 
     def _detect_category(self, text: str) -> str:
-        """Detect primary category from text."""
-        # Specific overrides: tech phrases that PARTNERSHIP's "live on" would falsely match
+        """Detect primary category from text using keywords."""
         tech_overrides = [
             "live on mainnet", "live on testnet", "goes live on mainnet",
             "is live on mainnet", "is live on testnet",
@@ -301,7 +401,6 @@ class EventCategorizer:
             if phrase in text:
                 return "TECH_EVENT"
 
-        # Standard order: RISK > REGULATORY > FINANCIAL > PARTNERSHIP > TECH > VISIBILITY
         for category, keywords in CATEGORY_KEYWORDS.items():
             for keyword in keywords:
                 if keyword in text:
@@ -309,10 +408,5 @@ class EventCategorizer:
         return "TECH_EVENT"  # default
 
     def _detect_subcategory(self, text: str, category: str) -> str:
-        """Detect subcategory within a category."""
-        subcats = SUBCATEGORY_MAP.get(category, {})
-        for subcat, keywords in subcats.items():
-            for keyword in keywords:
-                if keyword in text:
-                    return subcat
-        return "general"
+        """Detect subcategory within a category using keywords."""
+        return _detect_subcategory_keyword(text, category)
