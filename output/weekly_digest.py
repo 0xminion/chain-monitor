@@ -1,4 +1,7 @@
-"""Weekly digest formatter — generates the weekly strategic report."""
+"""Weekly digest formatter — generates the weekly strategic report.
+
+v0.2: Added optional LLM-powered narrative summary synthesis.
+"""
 
 import logging
 from datetime import datetime, timezone, timedelta
@@ -6,8 +9,10 @@ from collections import defaultdict
 from typing import Optional
 
 
+from config.loader import get_env
 from processors.signal import Signal
 from processors.narrative_tracker import NarrativeTracker
+from output.llm_digest_generator import LLMDigestGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +142,48 @@ class WeeklyDigestFormatter:
         by_cat: dict,
         narrative_tracker: NarrativeTracker = None,
     ) -> list[str]:
-        """Generate narrative of the week summary."""
+        """Generate narrative of the week summary.
+        
+        v0.2: Attempts LLM-powered prose synthesis if LLM_DIGEST_ENABLED=true,
+        otherwise falls back to template-based generation.
+        """
+        # ── v0.2: LLM Narrative Summary (with fallback) ──────────────────
+        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "false").lower() == "true"
+        if llm_digest_enabled:
+            try:
+                llm_gen = LLMDigestGenerator()
+                now = datetime.now(timezone.utc)
+                week_start = (now - timedelta(days=7)).strftime("%b %d")
+                week_end = now.strftime("%b %d, %Y")
+                # For weekly, we ask for a weekly-focused prose summary
+                # (WeeklyDigestFormatter.format handles the full structure;
+                # this is just the "Narrative of the Week" section.)
+                # We'll construct a focused prompt and parse it.
+                llm_output = llm_gen.generate(
+                    signals=signals,
+                    date_str=f"{week_start} — {week_end}",
+                )
+                if llm_output:
+                    logger.info("[weekly-digest] LLM narrative generated successfully")
+                    # Extract the theme section from LLM output
+                    lines = ["🧠 Narrative of the Week", ""]
+                    # Look for the theme section in the LLM output
+                    theme_start = llm_output.find("🧠")
+                    if theme_start >= 0:
+                        text = llm_output[theme_start + 2:]
+                        # Strip emoji
+                        text = text.lstrip().strip()
+                        # Take first 2-3 sentences as narrative
+                        sentences = text.split(". ")
+                        narrative = ". ".join(s.strip() for s in sentences[:3] if s.strip())
+                        if narrative:
+                            lines.append(f"  {narrative}")
+                    lines.append("")
+                    return lines
+            except Exception as e:
+                logger.warning(f"[weekly-digest] LLM narrative failed: {e}")
+
+        # ── Template-based narrative (legacy) ──────────────────────────────
         lines = ["🧠 Narrative of the Week", ""]
 
         if not signals:

@@ -18,6 +18,7 @@ from typing import Optional
 
 from collectors.base import BaseCollector
 from config.loader import get_env
+from processors.semantic_enricher import SemanticEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ REPO_ROOT = Path(__file__).parent.parent
 TWITTER_ACCOUNTS_PATH = REPO_ROOT / "config" / "twitter_accounts.yaml"
 RAW_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "raw"
 SUMMARY_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "summaries"
+
+# ---------------------------------------------------------------------------
+# NEW v0.2: Enrichment output dir
+# ---------------------------------------------------------------------------
+ENRICHED_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "enriched"
+
 
 # ---------------------------------------------------------------------------
 # JS script — extract timeline tweets  (works on x.com profile pages)
@@ -145,6 +152,15 @@ class TwitterCollector(BaseCollector):
         # Ensure output dirs exist
         RAW_OUT_DIR.mkdir(parents=True, exist_ok=True)
         SUMMARY_OUT_DIR.mkdir(parents=True, exist_ok=True)
+        ENRICHED_OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+        # v0.2: Semantic enricher for LLM-powered tweet categorization
+        self._semantic_enricher: SemanticEnricher | None = None
+        try:
+            self._semantic_enricher = SemanticEnricher()
+            logger.info("[twitter] Semantic enricher loaded")
+        except Exception as e:
+            logger.warning(f"[twitter] Semantic enricher unavailable: {e}")
 
     def _load_accounts(self):
         """Load twitter_accounts.yaml."""
@@ -298,6 +314,11 @@ class TwitterCollector(BaseCollector):
         # Persist raw tweets for historical/trending analysis
         self._persist_raw(all_tweets)
 
+        # ── v0.2: Semantic enrichment ─────────────────────────────────────
+        if self._semantic_enricher is not None:
+            all_tweets = self._semantic_enricher.enrich_tweets(all_tweets)
+            self._persist_enriched(all_tweets)
+
         # Convert to event dicts for pipeline
         events = self._tweets_to_events(all_tweets)
         return events
@@ -436,6 +457,18 @@ class TwitterCollector(BaseCollector):
             f.write("\n".join(new_lines))
         logger.info(f"[twitter] Summary appended: {path}")
 
+    def _persist_enriched(self, tweets: list[dict]):
+        """Save enriched tweets (with semantic annotations) to JSON."""
+        enriched = [t for t in tweets if t.get("semantic")]
+        if not enriched:
+            return
+        now = datetime.now(timezone.utc)
+        file_name = f"enriched_{now.strftime('%Y%m%d_%H%M%S')}.json"
+        path = ENRICHED_OUT_DIR / file_name
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(enriched, f, indent=2, ensure_ascii=False)
+        logger.info(f"[twitter] {len(enriched)} enriched tweets persisted: {path}")
+
     # -----------------------------------------------------------------------
     # Convert tweets to pipeline event dicts
     # -----------------------------------------------------------------------
@@ -486,6 +519,7 @@ class TwitterCollector(BaseCollector):
                 "original_author": original_author,
                 "quoted_text": quoted_text,
                 "media_urls": t.get("media_urls", []),
+                "semantic": t.get("semantic"),  # v0.2: pass LLM semantic result through
             }
 
             event = {
