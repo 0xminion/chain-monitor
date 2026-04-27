@@ -1,12 +1,33 @@
-"""Chain Monitor — Main entry point."""
+"""Chain Monitor v2.0 — Main entry point.
 
+6-stage pipeline:
+  1. Parallel collect (async gather across all collectors)
+  2. Dedup (O(n) hash-based)
+  3. Categorize + score + reinforce (per-event, backward compat)
+  4. Per-chain LLM analyze (27 parallel calls, semantic synthesis)
+  5. Final digest synthesize (LLM prose for ≥5, bullets for <5)
+  6. Deliver (Telegram) + cleanup
+"""
+
+import asyncio
 import json
 import logging
-
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config.loader import get_active_chains, get_env
+from config.loader import get_active_chains, get_env, reload_configs
+from processors.pipeline_types import PipelineContext, RawEvent
+from processors.parallel_runner import collect_all
+from processors.dedup_engine import deduplicate_events
+from processors.categorizer import EventCategorizer
+from processors.scoring import SignalScorer
+from processors.reinforcement import SignalReinforcer
+from processors.chain_analyzer import analyze_all_chains
+from processors.summary_engine import synthesize_digest
+from output.telegram_sender import TelegramSender
+from processors.llm_client import LLMClient
+
+# Import all collectors
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.github_collector import GitHubCollector
@@ -18,14 +39,6 @@ from collectors.events_collector import EventsCollector
 from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
 from collectors.twitter_collector import TwitterCollector
 
-from processors.categorizer import EventCategorizer
-from processors.scoring import SignalScorer
-from processors.reinforcement import SignalReinforcer
-from processors.narrative_tracker import NarrativeTracker
-from output.daily_digest import DailyDigestFormatter
-from output.weekly_digest import WeeklyDigestFormatter
-from output.telegram_sender import TelegramSender
-
 logging.basicConfig(
     level=get_env("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -33,12 +46,19 @@ logging.basicConfig(
 logger = logging.getLogger("chain-monitor")
 
 
-def run_collectors() -> list[dict]:
-    """Run all collectors and return raw events."""
-    events = []
-    health = {}
-    feed_health = {}  # Per-feed detail (RSS, etc)
+async def run_pipeline() -> PipelineContext:
+    """Execute the full 6-stage pipeline.
 
+    Returns a PipelineContext with all intermediate and final data.
+    """
+    reload_configs()
+    ctx = PipelineContext()
+    logger.info("=" * 50)
+    logger.info("Chain Monitor v2.0 — Starting pipeline")
+    logger.info(f"Active chains: {len(get_active_chains())}")
+    logger.info("=" * 50)
+
+    # ── Stage 1: Parallel Collect ──────────────────────────────
     collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
@@ -52,118 +72,159 @@ def run_collectors() -> list[dict]:
         HackathonOutcomesCollector(),
     ]
 
-    for collector in collectors:
-        logger.info(f"Running collector: {collector.name}")
-        try:
-            raw_events = collector.collect()
-            events.extend(raw_events)
-            logger.info(f"  {collector.name}: {len(raw_events)} events")
-        except Exception as e:
-            logger.error(f"  {collector.name} failed: {e}")
-        health[collector.name] = collector.get_health()
-        # Collect per-feed health from collectors that support it
-        if hasattr(collector, 'get_feed_health'):
-            feed_health.update(collector.get_feed_health())
+    ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(collectors)
+    logger.info(
+        f"Stage 1 complete: {len(ctx.raw_events)} raw events from "
+        f"{len([c for c in collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy collectors"
+    )
 
-    return events, health, feed_health
+    # ── Stage 2: Dedup (O(n)) ──────────────────────────────────
+    ctx.unique_events = deduplicate_events(ctx.raw_events)
+    logger.info(
+        f"Stage 2 complete: {len(ctx.unique_events)} unique events "
+        f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
+    )
 
-
-def process_events(raw_events: list[dict]) -> tuple[list, NarrativeTracker]:
-    """Process raw events through categorizer, scorer, reinforcer. Returns (signals, narrative_tracker)."""
+    # ── Stage 3: Categorize + Score + Reinforce ────────────────
+    # 3a. Categorize + score
     categorizer = EventCategorizer()
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
-    narrative_tracker = NarrativeTracker()
 
-    signals = []
-    for event in raw_events:
-        categorized = categorizer.categorize(event)
-        signal = scorer.score(categorized)
-        processed_signal, action = reinforcer.process(signal)
+    enriched_events: list[RawEvent] = []
+    signals_for_storage: list = []
 
-        if action != "echo":
-            narrative_tracker.record_signal(processed_signal)
+    for ev in ctx.unique_events:
+        # Categorize (keyword + optional semantic)
+        ev_dict = {
+            "chain": ev.chain,
+            "category": ev.category,
+            "subcategory": ev.subcategory,
+            "description": ev.description,
+            "source": ev.source,
+            "reliability": ev.reliability,
+            "evidence": ev.evidence,
+            "semantic": ev.semantic,
+        }
+        categorized = categorizer.categorize(ev_dict)
+        ev.category = categorized.get("category", ev.category)
+        ev.subcategory = categorized.get("subcategory", ev.subcategory)
+        ev.semantic = categorized.get("semantic")
+        enriched_events.append(ev)
 
-        signals.append(processed_signal)
-        if action == "created":
-            logger.info(f"  NEW: [{processed_signal.chain}] {processed_signal.description[:60]}")
-        elif action == "reinforced":
-            logger.info(f"  REINFORCED ({processed_signal.source_count}x): [{processed_signal.chain}] {processed_signal.description[:60]}")
+        # Score into Signal (backward compat with storage)
+        try:
+            signal = scorer.score(categorized)
+            signals_for_storage.append(signal)
+        except Exception as exc:
+            logger.warning(f"Scoring failed for {ev.chain}: {exc}")
 
-    return signals, narrative_tracker
+    ctx.signals = signals_for_storage
+    logger.info(f"Stage 3a complete: {len(ctx.signals)} signals scored")
 
+    # 3b. Reinforce (persist to storage)
+    reinforced_signals: list = []
+    for sig in signals_for_storage:
+        try:
+            processed_signal, action = reinforcer.process(sig)
+            reinforced_signals.append(processed_signal)
+            if action == "created":
+                logger.info(f"  NEW: [{sig.chain}] {sig.description[:60]} (score {sig.priority_score})")
+            elif action == "reinforced":
+                logger.info(f"  REINFORCED ({sig.source_count}x): [{sig.chain}] {sig.description[:60]}")
+        except Exception as exc:
+            logger.warning(f"Reinforcement failed for signal [{sig.chain}]: {exc}")
 
-def cleanup_old_signals():
-    """Clean up signals older than retention period."""
-    reinforcer = SignalReinforcer()
-    try:
-        retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
-    except ValueError:
-        retention_days = 90
-        logger.warning("Invalid DATA_RETENTION_DAYS env var, using default 90")
-    reinforcer.cleanup_old(retention_days)
+    ctx.signals = reinforced_signals
+    logger.info(f"Stage 3b complete: {len(ctx.signals)} signals reinforced")
 
+    # ── Stage 4: Per-chain LLM analyze ───────────────────────────
+    # Group enriched events by chain (pass the UNIQUE events, not reinforced signals,
+    # so the LLM sees all distinct raw observations to merge them properly)
+    events_by_chain: dict[str, list[RawEvent]] = {}
+    for ev in enriched_events:
+        events_by_chain.setdefault(ev.chain, []).append(ev)
 
-def main():
-    """Main entry point — run collectors, process, format, send."""
-    logger.info("=" * 50)
-    logger.info("Chain Monitor — Starting collection run")
-    logger.info(f"Time: {datetime.now(timezone.utc).isoformat()}")
-    logger.info(f"Active chains: {len(get_active_chains())}")
-    logger.info("=" * 50)
+    # Ensure every configured chain has an entry (even empty)
+    for chain_name in get_active_chains():
+        events_by_chain.setdefault(chain_name, [])
 
-    # Collect
-    raw_events, health, feed_health = run_collectors()
-    logger.info(f"Total raw events: {len(raw_events)}")
+    # Shared LLM client for all chain analyses
+    llm_client = LLMClient.from_env()
+    ctx.chain_digests = await analyze_all_chains(
+        events_by_chain,
+        client=llm_client,
+        max_concurrent=int(get_env("LLM_MAX_CONCURRENT_CHAINS", "5")),
+    )
+    significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
+    logger.info(
+        f"Stage 4 complete: {len(ctx.chain_digests)} chain digests, "
+        f"{significant} with significant activity"
+    )
 
-    # Process
-    signals, narrative_tracker = process_events(raw_events)
-    high_priority = [s for s in signals if s.priority_score >= 8]
-    logger.info(f"Total signals: {len(signals)}, High priority: {len(high_priority)}")
+    # ── Stage 5: Final digest synthesize ───────────────────────
+    ctx.final_digest = await synthesize_digest(
+        ctx.chain_digests,
+        source_health=ctx.health,
+        source_health_detail=ctx.feed_health,
+        client=llm_client,
+    )
+    logger.info(f"Stage 5 complete: digest {len(ctx.final_digest)} chars")
 
-    # Generate digest
-    formatter = DailyDigestFormatter()
-    digest = formatter.format(signals, source_health=health, source_health_detail=feed_health)
-
-    # Send if worth sending
-    if formatter.should_send(signals):
-        sender = TelegramSender()
-        success = sender.send_sync(digest)
-        logger.info(f"Daily digest sent: {success}")
+    # ── Stage 6: Deliver + cleanup ─────────────────────────────
+    sender = TelegramSender()
+    sent = False
+    if _should_send(ctx.chain_digests):
+        try:
+            sent = await sender.send(ctx.final_digest)
+            logger.info(f"Digest delivered: {sent}")
+        except Exception as exc:
+            logger.error(f"Telegram delivery failed: {exc}")
     else:
-        logger.info("No daily digest sent (< 3 events scored ≥6)")
-
-    # Weekly digest (Sundays)
-    now = datetime.now(timezone.utc)
-    if now.weekday() == 6:  # Sunday
-        weekly_formatter = WeeklyDigestFormatter()
-        weekly = weekly_formatter.format(signals, narrative_tracker=narrative_tracker, source_health=health)
-        sender = TelegramSender()
-        success = sender.send_sync(weekly)
-        logger.info(f"Weekly digest sent: {success}")
-
-    # Cleanup
-    cleanup_old_signals()
-    narrative_tracker.cleanup_old(retention_weeks=13)  # ~90 days
+        logger.info("Digest not sent — fewer than 3 chains with significant activity")
 
     # Save run log
-    run_log = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "raw_events": len(raw_events),
-        "signals": len(signals),
-        "high_priority": len(high_priority),
-        "digest_sent": formatter.should_send(signals),
-        "source_health": health,
-    }
+    _save_run_log(ctx, sent)
+
+    # Cleanup old signals
+    try:
+        retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
+        reinforcer.cleanup_old(retention_days)
+    except (ValueError, Exception):
+        logger.warning("Failed to cleanup old signals")
+
+    logger.info("Pipeline complete")
+    return ctx
+
+
+def _should_send(chain_digests: list) -> bool:
+    """Send digest if ≥3 chains have significant activity."""
+    significant = [d for d in chain_digests if d.has_significant_activity()]
+    return len(significant) >= 3
+
+
+def _save_run_log(ctx: PipelineContext, sent: bool):
+    """Write run statistics to storage/health/."""
     log_dir = Path(__file__).parent / "storage" / "health"
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(log_path, "w") as f:
-        json.dump(run_log, f, indent=2)
 
-    logger.info("Run complete")
-    return signals
+    stats = ctx.stats()
+    stats["timestamp"] = datetime.now(timezone.utc).isoformat()
+    stats["digest_sent"] = sent
+    stats["source_health"] = ctx.health
+
+    log_path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    try:
+        with open(log_path, "w") as f:
+            json.dump(stats, f, indent=2)
+    except Exception as exc:
+        logger.warning(f"Failed to write run log: {exc}")
+
+
+async def main():
+    """Main entry — run pipeline."""
+    await run_pipeline()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
