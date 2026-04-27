@@ -69,7 +69,7 @@ def main():
         api_key = ""
     else:
         ollama_host = ""
-        api_key = getpass("  API key (if required): ")
+        api_key = getpass("  API key (if required): ") or ""
         model = prompt("  Model name", "")
         fallback = prompt("  Fallback model (optional)", "")
 
@@ -106,6 +106,7 @@ def main():
         lines.append(f"LLM_FALLBACK_MODEL={fallback}")
     if ollama_host:
         lines.append(f"OLLAMA_HOST={ollama_host}")
+
     lines.extend([
         "LLM_DIGEST_ENABLED=true",
         f"LLM_DIGEST_MODEL={digest_model}",
@@ -114,6 +115,7 @@ def main():
         "LLM_DIGEST_TIMEOUT=45",
         "",
     ])
+
     if api_key:
         lines.append(f"{provider.upper()}_API_KEY={api_key}")
     if cryptorank:
@@ -124,6 +126,7 @@ def main():
         lines.append(f"YOUTUBE_API_KEY={youtube}")
     if github:
         lines.append(f"GITHUB_TOKEN={github}")
+
     lines.extend([
         "",
         f"TELEGRAM_BOT_TOKEN={tg_token}",
