@@ -4,6 +4,7 @@ Uses LLM prose for high-priority chains (≥5) and structured bullets for
 low-priority chains (<5) — hybrid approach per user specification.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -200,7 +201,9 @@ async def synthesize_digest(
     if llm_digest_enabled:
         client = client or LLMClient.from_env()
         try:
-            raw_output = client.generate(prompt, system_prompt=_DIGEST_SYSTEM_PROMPT)
+            raw_output = await asyncio.to_thread(
+                client.generate, prompt, system_prompt=_DIGEST_SYSTEM_PROMPT
+            )
         except LLMError as exc:
             logger.error(f"Digest synthesis LLM failed: {exc}, using fallback")
             raw_output = ""

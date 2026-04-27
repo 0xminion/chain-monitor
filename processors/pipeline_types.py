@@ -63,13 +63,22 @@ class RawEvent:
                 except (ValueError, TypeError):
                     pass
 
+        chain_val = d.get("chain")
+        chain_str = str(chain_val).lower().strip() if chain_val is not None else "unknown"
+
+        reliability_val = d.get("reliability", 0.7)
+        try:
+            reliability_float = float(reliability_val) if reliability_val is not None else 0.7
+        except (ValueError, TypeError):
+            reliability_float = 0.7
+
         return cls(
-            chain=str(d.get("chain", "unknown")).lower().strip(),
+            chain=chain_str,
             category=str(d.get("category", "TECH_EVENT")),
             subcategory=str(d.get("subcategory", "general")),
             description=str(d.get("description", "")),
             source=str(d.get("source", source_name)),
-            reliability=float(d.get("reliability", 0.7)),
+            reliability=reliability_float,
             evidence=evidence,
             raw_url=url,
             published_at=published,

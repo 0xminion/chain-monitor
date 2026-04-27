@@ -60,18 +60,28 @@ Produce a JSON object with these keys:
 ## Output: STRICT JSON. No markdown fences. No prose outside JSON.
 """
 
-_EMPTY_DIGEST = ChainDigest(
-    chain="",
-    chain_tier=3,
-    chain_category="unknown",
-    summary="No significant activity today.",
-    key_events=[],
-    priority_score=0,
-    dominant_topic="Quiet",
-    sources_seen=0,
-    event_count=0,
-    confidence=0.0,
-)
+_EMPTY_DIGEST_TEMPLATE = {
+    "chain_tier": 3,
+    "chain_category": "unknown",
+    "summary": "No significant activity today.",
+    "key_events": [],
+    "priority_score": 0,
+    "dominant_topic": "Quiet",
+    "sources_seen": 0,
+    "event_count": 0,
+    "confidence": 0.0,
+}
+
+
+def _empty_digest(chain: str) -> ChainDigest:
+    """Return a fresh empty-chain digest. Never reuse a global mutable."""
+    tier, category = _chain_cfg_summary(chain)
+    return ChainDigest(
+        chain=chain,
+        chain_tier=tier,
+        chain_category=category,
+        **_EMPTY_DIGEST_TEMPLATE,
+    )
 
 
 def _build_signals_block(events: list[RawEvent]) -> str:
@@ -115,8 +125,8 @@ def _parse_llm_chain_result(raw: dict, chain: str, events: list[RawEvent]) -> Ch
             "topic": str(ke.get("topic", f"Event {idx+1}")),
             "category": str(ke.get("category", "TECH_EVENT")).upper(),
             "sources": ke.get("sources", ["unknown"]),
-            "priority": _clamp_priority(int(ke.get("priority", 0))),
-            "confidence": max(0.0, min(1.0, float(ke.get("confidence", 0.0)))),
+            "priority": _clamp_priority(int(ke.get("priority") or 0)),
+            "confidence": max(0.0, min(1.0, float(ke.get("confidence") or 0.0))),
             "detail": str(ke.get("detail", "")),
             "why_it_matters": str(ke.get("why_it_matters", "")),
         })
@@ -127,11 +137,11 @@ def _parse_llm_chain_result(raw: dict, chain: str, events: list[RawEvent]) -> Ch
         chain_category=category,
         summary=str(raw.get("summary", "No summary available.")),
         key_events=normalized_events,
-        priority_score=_clamp_priority(int(raw.get("priority_score", 0))),
+        priority_score=_clamp_priority(int(raw.get("priority_score") or 0)),
         dominant_topic=str(raw.get("dominant_topic", "")),
         sources_seen=len(set(e.source for e in events)),
         event_count=len(events),
-        confidence=max(0.0, min(1.0, float(raw.get("confidence", 0.0)))),
+        confidence=max(0.0, min(1.0, float(raw.get("confidence") or 0.0))),
     )
 
 
@@ -153,10 +163,11 @@ async def analyze_chain(
         ChainDigest. Never returns None — falls back to empty digest on failure.
     """
     if not events:
+        tier, category = _chain_cfg_summary(chain)
         return ChainDigest(
             chain=chain,
-            chain_tier=_chain_cfg_summary(chain)[0],
-            chain_category=_chain_cfg_summary(chain)[1],
+            chain_tier=tier,
+            chain_category=category,
             summary="No signals collected for this chain today.",
             priority_score=0,
             dominant_topic="Quiet",
@@ -182,7 +193,9 @@ async def analyze_chain(
     )
 
     try:
-        result = client.generate_json(prompt, system_prompt=_CHAIN_ANALYSIS_SYSTEM)
+        result = await asyncio.to_thread(
+            client.generate_json, prompt, system_prompt=_CHAIN_ANALYSIS_SYSTEM
+        )
     except LLMError as exc:
         logger.warning(f"[{chain}] Chain analysis LLM failed: {exc}")
         return ChainDigest(
@@ -199,7 +212,7 @@ async def analyze_chain(
         )
     except Exception as exc:
         logger.error(f"[{chain}] Unexpected error in chain analysis: {exc}")
-        return _EMPTY_DIGEST
+        return _empty_digest(chain)
 
     return _parse_llm_chain_result(result, chain, events)
 
