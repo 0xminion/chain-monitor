@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """
-Twitter/X standalone collector — run independently of daily digest cycle.
+Twitter/X standalone collector — parallel batched execution.
+
+Split 138 handles into 10 batches, run across 5 parallel workers.
+Each worker reuses a single page (page.goto() per handle).
 
 Usage:
-    python scripts/run_twitter_standalone.py --hours 48 --chains monad,solana
-    python scripts/run_twitter_standalone.py --hours 24 --all --telegram
-    python scripts/run_twitter_standalone.py --json-only
-
-Features:
-- Deduplication: OFF (intentional — each standalone run is independent).
-- Telegram delivery: optional (--telegram flag).
-- Persistence: raw JSON + monthly Markdown summary (always writes).
+    python scripts/run_twitter_standalone.py --hours 24
+    python scripts/run_twitter_standalone.py --hours 48 --telegram
 """
 
 import argparse
 import json
 import logging
+import random
 import sys
-from datetime import datetime, timezone
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# Set up repo root path
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -30,206 +29,237 @@ logging.basicConfig(
 )
 logger = logging.getLogger("twitter-standalone")
 
-from collectors.twitter_collector import TwitterCollector
-from processors.signal import Signal
-from processors.scoring import SignalScorer
-from output.telegram_sender import TelegramSender
+# ---------------------------------------------------------------------------
+# Worker function (must be importable / picklable for ProcessPoolExecutor)
+# ---------------------------------------------------------------------------
 
+def _scrape_batch(worker_id: int, batches: list, lookback_hours: int, accounts: dict) -> list[dict]:
+    """Open one browser + one page per worker, scrape 2 batches of handles.
+
+    Args:
+        worker_id: Worker index for logging.
+        batches: List of batches, each batch is a list of (chain, handle_cfg).
+        lookback_hours: Tweet lookback window.
+        accounts: Full accounts config dict (chain -> cfg).
+    """
+    from collectors.twitter_collector import TwitterCollector
+    # Import here to avoid pickling heavy deps from module level
+    import time, random
+
+    log = logging.getLogger(f"twitter-worker-{worker_id}")
+    log.info(f"[worker {worker_id}] Starting with {len(batches)} batches")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+    collector = TwitterCollector(standalone_mode=True, lookback_hours=lookback_hours)
+    collector._accounts = accounts  # inject full config
+
+    try:
+        collector._start_browser()
+        page = collector._context.new_page()
+        log.info(f"[worker {worker_id}] Browser + single page created")
+    except Exception as e:
+        log.error(f"[worker {worker_id}] Failed to start browser: {e}")
+        return []
+
+    total_tweets = []
+    try:
+        for b_idx, batch in enumerate(batches):
+            log.info(f"[worker {worker_id}] Batch {b_idx + 1}/{len(batches)} — {len(batch)} handles")
+            for chain_name, hdl in batch:
+                handle = hdl["handle"].lstrip("@")
+                try:
+                    tweets = collector._scrape_profile(handle, hdl, chain_name, cutoff, page=page)
+                    total_tweets.extend(tweets)
+                    log.info(f"[worker {worker_id}] @{handle}: {len(tweets)} tweets")
+                    time.sleep(random.uniform(2, 5))
+                except Exception as e:
+                    log.error(f"[worker {worker_id}] @{handle} failed: {e}")
+            # Sleep between batches to be nice to X
+            time.sleep(random.uniform(5, 10))
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
+        collector._cleanup()
+        log.info(f"[worker {worker_id}] Cleaned up. Tweets: {len(total_tweets)}")
+
+    return total_tweets
+
+
+# ---------------------------------------------------------------------------
+# Main orchestrator
+# ---------------------------------------------------------------------------
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Twitter/X standalone collector")
-    parser.add_argument(
-        "--hours",
-        type=int,
-        default=24,
-        help="Lookback window in hours (default: 24)",
-    )
-    parser.add_argument(
-        "--chains",
-        type=str,
-        default="",
-        help="Comma-separated chain names to monitor. Default: all",
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Monitor all chains (default behavior, explicit flag for clarity)",
-    )
-    parser.add_argument(
-        "--telegram",
-        action="store_true",
-        help="Send output via Telegram bot",
-    )
-    parser.add_argument(
-        "--json-only",
-        action="store_true",
-        help="Only write JSON/Markdown output, skip Telegram",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Run collection but do not send Telegram or write files",
-    )
+    parser = argparse.ArgumentParser(description="Twitter/X Parallel Batched Collector")
+    parser.add_argument("--hours", type=int, default=24, help="Lookback window (default: 24)")
+    parser.add_argument("--chains", type=str, default="", help="Comma-separated chains. Default: all.")
+    parser.add_argument("--workers", type=int, default=5, help="Parallel workers (default: 5)")
+    parser.add_argument("--batches", type=int, default=10, help="Total batches (default: 10)")
+    parser.add_argument("--telegram", action="store_true", help="Send digest via Telegram")
+    parser.add_argument("--json-only", action="store_true", help="Save JSON, skip Telegram")
+    parser.add_argument("--dry-run", action="store_true", help="Run but don't save/send")
+    parser.add_argument("--seed", type=int, default=None, help="Shuffle seed for deterministic batching")
     return parser.parse_args()
 
 
+def load_accounts(chains_filter: str = "") -> dict:
+    import yaml
+    path = REPO_ROOT / "config" / "twitter_accounts.yaml"
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    accounts = data.get("twitter_accounts", {})
+    if chains_filter:
+        selected = {c.strip().lower() for c in chains_filter.split(",")}
+        accounts = {k: v for k, v in accounts.items() if k.lower() in selected}
+    return accounts
+
+
+def chunk(lst, n):
+    """Split list into n roughly-equal chunks."""
+    size = len(lst) // n + (1 if len(lst) % n else 0)
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
+
+
 def format_telegram_digest(tweets: list[dict]) -> str:
-    """Format tweets into a Telegram-ready Markdown digest."""
     if not tweets:
         return "🐦 Twitter Standalone — No tweets found in window."
-
     lines = [
         "🐦 *Twitter Standalone Digest*",
         f"_{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_",
         "",
         f"*Tweets collected:* {len(tweets)}\n",
     ]
-
-    # Group by chain
-    by_chain: dict[str, list[dict]] = {}
+    by_chain = {}
     for t in tweets:
-        chain = t.get("chain", "unknown")
-        by_chain.setdefault(chain, []).append(t)
-
+        by_chain.setdefault(t.get("chain", "unknown"), []).append(t)
     for chain, chain_tweets in sorted(by_chain.items()):
         lines.append(f"\n🔗 *{chain.upper()}*")
-        for t in chain_tweets[:10]:  # Cap at 10 per chain for digest
-            handle = t.get("account_handle", "")
-            role = t.get("account_role", "")
-            role_badge = "✅" if role == "official" else "👤"
+        for t in chain_tweets[:10]:
+            h = t.get("account_handle", "")
             ts = t.get("timestamp", "")[:10]
-            text = t.get("text", "")
-            is_rt = t.get("is_retweet", False)
-            is_q = t.get("is_quote_tweet", False)
+            text = t.get("text", "")[:240].replace("*", "").replace("_", "")
             url = t.get("url", "")
-
-            rt_badge = "🔁 " if is_rt else ""
-            q_badge = "💬 " if is_q else ""
-            badge = f"{role_badge} {rt_badge}{q_badge}".strip()
-
-            safe_text = text[:240].replace("*", "").replace("_", "")
-            if len(text) > 240:
-                safe_text += "..."
-
-            lines.append(
-                f"• [{ts}] {badge} [@{handle}](https://x.com/{handle})\n"
-                f"  > {safe_text}\n"
-                f"  [Open tweet]({url})"
-            )
-
+            lines.append(f"• [{ts}] [@{h}](https://x.com/{h})\n  > {text}...\n  [Open tweet]({url})")
         if len(chain_tweets) > 10:
             lines.append(f"  _... and {len(chain_tweets) - 10} more_")
-
     return "\n".join(lines)
 
 
-def score_tweets_as_signals(tweets: list[dict]) -> list[Signal]:
-    """Score tweets using the pipeline's SignalScorer. Returns Signals for reference."""
+def score_tweets(tweets: list[dict]) -> list:
+    from processors.scoring import SignalScorer
     scorer = SignalScorer()
     signals = []
-
     for t in tweets:
         chain = t.get("chain", "unknown")
         text = t.get("text", "").strip()
         is_rt = t.get("is_retweet", False)
         is_q = t.get("is_quote_tweet", False)
-        quoted_text = t.get("quoted_text", "")
         handle = t.get("account_handle", "")
         role = t.get("account_role", "official")
         reliability = float(t.get("account_reliability", 0.75))
         url = t.get("url", "")
         ts = t.get("timestamp", "")
-        original_author = t.get("original_author", "")
 
-        # Build description
-        if is_rt and original_author:
-            description = f"@{handle} reposted @{original_author}: {text}"
-        elif is_q and quoted_text:
-            description = f"@{handle} quoted: {text} — Quoting: {quoted_text}"
+        if is_rt:
+            desc = f"@{handle} reposted: {text}"
+        elif is_q:
+            desc = f"@{handle} quoted: {text}"
         else:
-            description = text
-
-        # Boost reliability for RTs of official accounts
-        if is_rt and role != "official":
-            from collectors.twitter_collector import TwitterCollector as TC
-            accounts = TC._accounts if hasattr(TC, '_accounts') else {}
-            chain_cfg = accounts.get(chain, {})
-            official_handles = {
-                h["handle"].lstrip("@").lower()
-                for h in chain_cfg.get("official", [])
-            }
-            if original_author.lower() in official_handles:
-                reliability = max(reliability, 0.95)
-
-        evidence = {
-            "tweet_id": t.get("tweet_id"),
-            "url": url,
-            "author": handle,
-            "role": role,
-            "timestamp": ts,
-            "likes": t.get("likes", 0),
-            "retweets": t.get("retweets", 0),
-        }
+            desc = text
 
         event = {
             "chain": chain,
-            "category": "NEWS",  # categorizer will refine
-            "description": description[:500],
+            "category": "NEWS",
+            "description": desc[:500],
             "source": "twitter",
             "reliability": reliability,
-            "evidence": evidence,
             "timestamp": ts or datetime.now(timezone.utc).isoformat(),
-            "has_official_source": role == "official" or reliability >= 0.95,
         }
-
-        signal = scorer.score(event)
-        signals.append(signal)
-
+        try:
+            signal = scorer.score(event)
+            signals.append(signal)
+        except Exception as e:
+            logger.warning(f"Scoring failed for tweet: {e}")
     return signals
 
 
 def main():
     args = parse_args()
     logger.info("=" * 50)
-    logger.info("Twitter/X Standalone Collector")
-    logger.info(f"Lookback: {args.hours}h")
-    logger.info(f"Chains: {args.chains or 'ALL'}")
-    logger.info(f"Telegram: {args.telegram}")
+    logger.info("Twitter/X Parallel Batched Collector v2")
+    logger.info(f"Batches: {args.batches} | Workers: {args.workers} | Lookback: {args.hours}h")
     logger.info("=" * 50)
 
-    # Build collector
-    collector = TwitterCollector(standalone_mode=True, lookback_hours=args.hours)
-
-    # If --chains specified, filter the accounts before running
-    if args.chains:
-        selected = {c.strip().lower() for c in args.chains.split(",")}
-        collector._accounts = {
-            k: v for k, v in collector._accounts.items()
-            if k.lower() in selected
-        }
-        logger.info(f"Filtered to {len(collector._accounts)} chains")
-
-    if not collector._accounts:
-        logger.error("No chains matched. Exiting.")
+    accounts = load_accounts(args.chains)
+    if not accounts:
+        logger.error("No accounts matched. Exiting.")
         sys.exit(1)
 
-    # Run collection (raw tweets, no dedup)
-    raw_tweets = collector.collect_raw()
-    logger.info(f"Collected {len(raw_tweets)} tweets")
+    # Flatten all handles into a single list
+    all_handles = []
+    for chain, cfg in accounts.items():
+        for hdl in cfg.get("official", []) + cfg.get("contributors", []):
+            all_handles.append((chain, hdl))
 
-    if not raw_tweets:
-        logger.info("No tweets found — nothing to do.")
+    logger.info(f"Total handles: {len(all_handles)}")
+
+    # Shuffle for even distribution across batches (deterministic if --seed)
+    if args.seed is not None:
+        random.seed(args.seed)
+    random.shuffle(all_handles)
+
+    # Split into batches
+    batched = chunk(all_handles, args.batches)
+    logger.info(f"Batches created: {len(batched)} (sizes: {[len(b) for b in batched]})")
+
+    # Assign batches to workers: worker i gets batches[i], [i+workers], ...
+    worker_tasks = {wid: [] for wid in range(args.workers)}
+    for i, batch in enumerate(batched):
+        worker_tasks[i % args.workers].append(batch)
+
+    # Filter empty workers
+    tasks = [
+        {"worker_id": wid, "batches": batches, "lookback_hours": args.hours, "accounts": accounts}
+        for wid, batches in worker_tasks.items() if batches
+    ]
+    logger.info(f"Workers assigned: {len(tasks)}")
+    for t in tasks:
+        total_handles = sum(len(b) for b in t["batches"])
+        logger.info(f"  Worker {t['worker_id']}: {len(t['batches'])} batches, {total_handles} handles")
+
+    # Run parallel scraping
+    all_tweets = []
+    start_time = time.time()
+
+    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        futures = {executor.submit(_scrape_batch, t["worker_id"], t["batches"], t["lookback_hours"], t["accounts"]): t for t in tasks}
+        for future in as_completed(futures):
+            worker_cfg = futures[future]
+            try:
+                tweets = future.result()
+                logger.info(f"[main] Worker {worker_cfg['worker_id']} returned {len(tweets)} tweets")
+                all_tweets.extend(tweets)
+            except Exception as e:
+                logger.error(f"[main] Worker {worker_cfg['worker_id']} crashed: {e}")
+
+    elapsed = time.time() - start_time
+    logger.info(f"[main] All workers done — {len(all_tweets)} tweets in {elapsed:.1f}s")
+
+    if not all_tweets:
+        logger.info("No tweets collected. Nothing to do.")
         if args.telegram and not args.dry_run:
-            sender = TelegramSender()
-            sender.send_sync("🐦 Twitter Standalone — No tweets found.")
+            from output.telegram_sender import TelegramSender
+            TelegramSender().send_sync("🐦 Twitter — No tweets found.")
         return
 
-    # Score signals (reference, not used for dedup)
-    signals = score_tweets_as_signals(raw_tweets)
-    high_priority = [s for s in signals if s.priority_score >= 8]
-    logger.info(f"Signals scored: {len(signals)}, high priority (>=8): {len(high_priority)}")
+    # Score signals
+    signals = score_tweets(all_tweets)
+    high_priority = [s for s in signals if getattr(s, "priority_score", 0) >= 8]
+    logger.info(f"Signals scored: {len(signals)}, high priority: {len(high_priority)}")
 
-    # Write standalone JSON summary
+    # Persist
     if not args.dry_run:
         now = datetime.now(timezone.utc)
         summary_dir = REPO_ROOT / "storage" / "twitter" / "summaries"
@@ -240,24 +270,35 @@ def main():
                 {
                     "timestamp": now.isoformat(),
                     "lookback_hours": args.hours,
-                    "chains": list(collector._accounts.keys()),
-                    "tweet_count": len(raw_tweets),
-                    "tweets": raw_tweets,
+                    "chains": list(accounts.keys()),
+                    "tweet_count": len(all_tweets),
+                    "tweets": all_tweets,
                     "signals": [s.to_dict() for s in signals],
                     "high_priority_count": len(high_priority),
+                    "elapsed_seconds": elapsed,
                 },
                 f,
                 indent=2,
                 ensure_ascii=False,
             )
-        logger.info(f"Standalone summary written: {summary_path}")
+        logger.info(f"Summary written: {summary_path}")
 
-    # Telegram delivery (optional; can be triggered independently)
-    if args.telegram and not args.json_only and not args.dry_run:
-        digest = format_telegram_digest(raw_tweets)
+    # Telegram
+    if args.telegram and not args.dry_run:
+        from output.telegram_sender import TelegramSender
+        digest = format_telegram_digest(all_tweets)
         sender = TelegramSender()
         success = sender.send_sync(digest)
         logger.info(f"Telegram sent: {success}")
+
+    # Print top chains
+    by_chain = {}
+    for t in all_tweets:
+        by_chain.setdefault(t.get("chain", "unknown"), 0)
+        by_chain[t.get("chain", "unknown")] += 1
+    logger.info("Tweet counts by chain:")
+    for chain, count in sorted(by_chain.items(), key=lambda x: -x[1])[:10]:
+        logger.info(f"  {chain}: {count}")
 
     logger.info("Standalone run complete.")
 

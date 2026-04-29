@@ -1,10 +1,12 @@
-"""Weekly digest formatter — generates the weekly strategic report.
+"""Event-driven weekly digest — reads 7 days of daily digests and synthesizes.
 
-v1.0: Replaced chain-driven format with LLM event-driven thematic sections.
-v1.1: Reads 7 days of persisted daily digests, feeds them to LLM for
-thematic synthesis (up to 10 sections, not chain sections).
+v1.0: Replaces chain-driven format with LLM-generated thematic sections.
+Sections are determined by the LLM (up to 10), not hardcoded by chain.
+Example sections: Liquidity & Infrastructure, Political & Ecosystem Visibility,
+Regulatory & Macro Sentiment, etc.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -13,16 +15,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from config.loader import get_env
 from processors.llm_client import LLMClient, LLMError
+from config.loader import get_env
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
 DAILY_DIGEST_DIR = REPO_ROOT / "storage" / "twitter" / "summaries"
-
-
-# ── LLM prompt for weekly synthesis ──────────────────────────────────────────
 
 _WEEKLY_SYSTEM_PROMPT = """You are a senior crypto market strategist writing a weekly intelligence brief.
 Your audience is traders, analysts, and builders who need to understand cross-chain themes in under 90 seconds.
@@ -90,11 +89,10 @@ def _load_last_7_days() -> list[str]:
     if not DAILY_DIGEST_DIR.exists():
         return []
 
-    # Accept both v2_digest_*.txt and daily_digest_*.txt, and standalone_summary JSONs
+    # Accept both v2_digest_*.txt and daily_digest_*.txt
     files = sorted(
         list(DAILY_DIGEST_DIR.glob("v2_digest_*.txt"))
-        + list(DAILY_DIGEST_DIR.glob("daily_digest_*.txt"))
-        + list(DAILY_DIGEST_DIR.glob("standalone_summary_*.json")),
+        + list(DAILY_DIGEST_DIR.glob("daily_digest_*.txt")),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -102,23 +100,14 @@ def _load_last_7_days() -> list[str]:
     contents = []
     for p in last_7:
         try:
-            if p.suffix == ".json":
-                try:
-                    d = json.loads(p.read_text(encoding="utf-8"))
-                    text = d.get("final_digest") or d.get("digest") or d.get("generated_digest", "")
-                except json.JSONDecodeError:
-                    text = p.read_text(encoding="utf-8")
-            else:
-                text = p.read_text(encoding="utf-8")
-
+            text = p.read_text(encoding="utf-8")
             date_match = re.search(r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})", p.name)
             if date_match:
                 y, m, d, H, M, S = date_match.groups()
                 header = f"--- Daily Digest: {y}-{m}-{d} ---"
             else:
                 header = f"--- {p.name} ---"
-            if text.strip():
-                contents.append(f"{header}\n\n{text}\n")
+            contents.append(f"{header}\n\n{text}\n")
         except Exception as e:
             logger.warning(f"Failed to read {p}: {e}")
 
@@ -128,6 +117,7 @@ def _load_last_7_days() -> list[str]:
 def _format_daily_digests(contents: list[str]) -> str:
     """Join daily digests for the LLM prompt. Truncate if too long."""
     full_text = "\n".join(contents)
+    # Hard cap at ~200k chars to stay within context window
     max_chars = 200_000
     if len(full_text) > max_chars:
         logger.info(f"Truncating daily digests from {len(full_text)} to {max_chars} chars")
@@ -139,7 +129,15 @@ async def synthesize_weekly_digest(
     client: Optional[LLMClient] = None,
     daily_digests: Optional[list[str]] = None,
 ) -> str:
-    """Generate the weekly event-driven digest from the last 7 daily digests."""
+    """Generate the weekly event-driven digest from the last 7 daily digests.
+
+    Args:
+        client: Optional LLMClient (creates from env if None).
+        daily_digests: Optional pre-loaded list of daily digest strings.
+
+    Returns:
+        Markdown string of the weekly digest.
+    """
     contents = daily_digests or _load_last_7_days()
     if not contents:
         now = datetime.now(timezone.utc)
@@ -162,7 +160,6 @@ async def synthesize_weekly_digest(
     )
 
     llm_digest_enabled = get_env("WEEKLY_DIGEST_LLM_ENABLED", "true").lower() == "true"
-
     if not llm_digest_enabled:
         logger.info("[weekly-digest] LLM disabled, returning fallback")
         return _fallback_weekly(digest_text, week_range)
@@ -179,15 +176,24 @@ async def synthesize_weekly_digest(
         logger.error(f"Unexpected error in weekly digest: {exc}")
         return _fallback_weekly(digest_text, week_range)
 
+    # Sanitize
     raw = raw.strip()
-    if "📈 Weekly Intelligence Brief" not in raw:
+    # De-duplicate emoji header if LLM already included it
+    lines = raw.splitlines()
+    if lines and lines[0].startswith("📈") and "Weekly Intelligence Brief" in lines[0]:
+        # LLM included the header — keep it, just ensure consistent format
+        pass
+    elif "📈" not in raw.split("\n", 1)[0]:
         raw = f"📈 Weekly Intelligence Brief — {week_range}\n\n{raw}"
 
+    # Inject source health footer
     raw += _format_health_footer()
+
     return raw
 
 
 def _fallback_weekly(digest_text: str, week_range: str) -> str:
+    """Pure-Python fallback when LLM is unavailable."""
     lines = [
         f"📈 Weekly Intelligence Brief — {week_range}",
         "",
@@ -202,30 +208,20 @@ def _fallback_weekly(digest_text: str, week_range: str) -> str:
 
 
 def _format_health_footer() -> str:
+    """Minimal health footer for weekly digest."""
     return "\n\n⚠️ Source health\n  Weekly digest: LLM-driven synthesis complete.\n"
 
 
-# Legacy class kept for backward compat; delegates to new function
-class WeeklyDigestFormatter:
-    """Formats signals into a weekly strategic report."""
+async def main():
+    """CLI entry point for testing the weekly digest generation."""
+    logging.basicConfig(level=logging.INFO)
+    digest = await synthesize_weekly_digest()
+    print(digest)
 
-    def format(
-        self,
-        signals: list,
-        narrative_tracker=None,
-        source_health: dict = None,
-        client=None,
-    ) -> str:
-        """Generate weekly digest from signals and narrative data."""
-        import asyncio
-        try:
-            return asyncio.run(synthesize_weekly_digest(client=client))
-        except Exception as e:
-            logger.error(f"Weekly digest failed: {e}")
-            return _fallback_weekly("", _make_week_range())
+    out_path = REPO_ROOT / "storage" / "twitter" / "summaries" / f"weekly_digest_{datetime.now(timezone.utc).strftime('%Y%m%d')}.txt"
+    out_path.write_text(digest, encoding="utf-8")
+    print(f"\nSaved to: {out_path}")
 
 
-def _make_week_range() -> str:
-    now = datetime.now(timezone.utc)
-    week_start = (now - timedelta(days=7)).strftime("%b %d")
-    return f"{week_start} – {now.strftime('%b %d', )}"
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -60,9 +60,15 @@ EXTRACT_TWEETS_JS = r"""
         const timeEl = art.querySelector('time');
         const timestamp = timeEl ? timeEl.getAttribute('datetime') : '';
 
-        // Text
-        const textDiv = art.querySelector('div[data-testid="tweetText"]');
-        const text = textDiv ? textDiv.innerText.trim() : '';
+        // Text — collect all tweetText divs, pick the longest (handles RTs with nested text)
+        const allTextDivs = Array.from(art.querySelectorAll('div[data-testid="tweetText"]'));
+        let text = '';
+        for (const td of allTextDivs) {
+            const candidate = td.innerText.trim();
+            if (candidate.length > text.length) {
+                text = candidate;
+            }
+        }
 
         // Metrics
         const replyBtn = art.querySelector('button[data-testid="reply"]');
@@ -362,7 +368,16 @@ class TwitterCollector(BaseCollector):
             url = f"https://x.com/{handle}"
             logger.info(f"[twitter] Navigating {url}")
             page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            # Hard wait for React initial render + first article mount
             page.wait_for_timeout(random.randint(4000, 7000))
+            # Detect and mitigate SPA stale DOM: force a soft reload if fewer than 2 articles
+            articles = page.query_selector_all('article[data-testid="tweet"]')
+            if len(articles) < 2:
+                page.wait_for_timeout(random.randint(3000, 5000))
+                page.reload(wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(random.randint(4000, 6000))
+            # Allow X's background data fetch to complete
+            page.wait_for_timeout(random.randint(2000, 4000))
 
             # Check for login wall / suspension
             body_text = (page.inner_text("body") or "").lower()
@@ -390,6 +405,9 @@ class TwitterCollector(BaseCollector):
                     try:
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                     except ValueError:
+                        continue
+                    # Skip empty-text tweets unless they have media (signal that X suppressed text via JS)
+                    if not t.get("text", "").strip() and not t.get("media_urls"):
                         continue
                     if ts < cutoff:
                         # Too old — but keep scrolling a bit more to be sure we didn't miss anything

@@ -27,6 +27,8 @@ _CHAIN_ANALYSIS_SYSTEM = """You are a senior crypto market intelligence analyst.
 You synthesize raw signals across multiple data sources into coherent chain-level observations.
 Be precise. Merge signals only when they clearly describe the same event or closely related events.
 When in doubt, report separately.
+
+For each key event, you MUST extract the best URL from the raw signals (tweet_url, url, html_url, etc.) and include it as 'url' in your JSON output.
 """
 
 _CHAIN_ANALYSIS_PROMPT = """## Chain: {chain}
@@ -50,12 +52,14 @@ Produce a JSON object with these keys:
    - confidence: float 0.0-1.0
    - detail: 1 sentence what happened
    - why_it_matters: 1 sentence trader significance
+   - url: the exact tweet/article URL from the signals, if available (check evidence.url, evidence.link, evidence.html_url, evidence.tweet_url, evidence.pr_url, evidence.feed_url - use ONLY the first one found, never make up URLs)
 
 ## Rules
 - Merge signals only when they clearly reference the same event (e.g., GitHub release + blog post about same version = ONE event).
 - If signals are independent (e.g., a hack + a partnership), report SEPARATE events.
 - Use evidence-backed detail. Don't invent facts.
 - 'why_it_matters' should mention timeline or downstream effect when possible.
+- CRITICAL: For EACH key event, extract the best URL from the signal evidence (look for url, tweet_url, html_url fields) and include it as 'url'.
 
 ## Output: STRICT JSON. No markdown fences. No prose outside JSON.
 """
@@ -93,7 +97,7 @@ def _build_signals_block(events: list[RawEvent]) -> str:
         src = f"[{ev.source}]" if ev.source else "[unknown]"
         cat = f"{ev.category}/{ev.subcategory}"
         desc = ev.description[:180] if ev.description else "(no description)"
-        url_hint = f" | {ev.raw_url}" if ev.raw_url else ""
+        url_hint = f" | URL: {ev.raw_url}" if ev.raw_url else ""
         lines.append(f"- {src} {cat}: {desc}{url_hint}")
     return "\n".join(lines)
 
@@ -121,6 +125,12 @@ def _parse_llm_chain_result(raw: dict, chain: str, events: list[RawEvent]) -> Ch
     for idx, ke in enumerate(key_events[:20]):  # cap at 20
         if not isinstance(ke, dict):
             continue
+        url = ""
+        for key in ("url", "html_url", "pr_url", "link", "feed_url"):
+            val = ke.get(key)
+            if val and isinstance(val, str) and val.startswith("http"):
+                url = val
+                break
         normalized_events.append({
             "topic": str(ke.get("topic", f"Event {idx+1}")),
             "category": str(ke.get("category", "TECH_EVENT")).upper(),
@@ -129,6 +139,7 @@ def _parse_llm_chain_result(raw: dict, chain: str, events: list[RawEvent]) -> Ch
             "confidence": max(0.0, min(1.0, float(ke.get("confidence") or 0.0))),
             "detail": str(ke.get("detail", "")),
             "why_it_matters": str(ke.get("why_it_matters", "")),
+            "url": url,
         })
 
     return ChainDigest(
@@ -194,7 +205,7 @@ async def analyze_chain(
 
     try:
         result = await asyncio.to_thread(
-            client.generate_json, prompt, system_prompt=_CHAIN_ANALYSIS_SYSTEM
+            client.generate_json_with_retry, prompt, system_prompt=_CHAIN_ANALYSIS_SYSTEM
         )
     except LLMError as exc:
         logger.warning(f"[{chain}] Chain analysis LLM failed: {exc}")

@@ -186,6 +186,9 @@ async def run_pipeline() -> PipelineContext:
     # Save run log
     _save_run_log(ctx, sent)
 
+    # Persist daily digest for weekly rollup
+    _persist_daily_digest(ctx.final_digest)
+
     # Cleanup old signals
     try:
         retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
@@ -198,9 +201,10 @@ async def run_pipeline() -> PipelineContext:
 
 
 def _should_send(chain_digests: list) -> bool:
-    """Send digest if ≥3 chains have significant activity."""
+    """Send digest if ≥2 chains have significant activity or ≥1 high-priority (≥5)."""
     significant = [d for d in chain_digests if d.has_significant_activity()]
-    return len(significant) >= 3
+    high = [d for d in chain_digests if d.priority_score >= 5]
+    return len(significant) >= 2 or len(high) >= 1
 
 
 def _save_run_log(ctx: PipelineContext, sent: bool):
@@ -219,6 +223,19 @@ def _save_run_log(ctx: PipelineContext, sent: bool):
             json.dump(stats, f, indent=2)
     except Exception as exc:
         logger.warning(f"Failed to write run log: {exc}")
+
+
+def _persist_daily_digest(digest_text: str):
+    """Write daily digest to storage/twitter/summaries for weekly rollup."""
+    digest_dir = Path(__file__).parent / "storage" / "twitter" / "summaries"
+    digest_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    path = digest_dir / f"daily_digest_{ts}.txt"
+    try:
+        path.write_text(digest_text, encoding="utf-8")
+        logger.info(f"Daily digest persisted: {path}")
+    except Exception as exc:
+        logger.warning(f"Failed to persist daily digest: {exc}")
 
 
 async def main():

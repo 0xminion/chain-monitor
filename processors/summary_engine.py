@@ -25,14 +25,19 @@ Your audience is busy traders and analysts who need actionable insight in under 
 Rules:
 - Use Telegram Markdown: **bold** for emphasis. No # headers. No HTML tags.
 - Never use all-caps headings.
-- Never print raw URLs as plain text — use [text](url) markdown links if a URL is provided.
+- Do NOT print raw URLs as plain text.
+- URL LINKING RULE: Look at the `key_event.url` field provided in the prompt. If a URL is present, embed the first content-bearing word of the sentence as a markdown link. Example: "Polygon [announced](https://x.com/...) a Visa integration..." — NOT "[source](url)". If NO url is provided in key_event.url, write the sentence WITHOUT any markdown link.
 - Be precise. Do not invent events that are not in the input data.
+- Do NOT hallucinate URLs. Only use URLs explicitly given in the key_event data. If no URL is given, do not include a link.
 - Explain WHY an event matters, not just WHAT happened.
 - Group related chains thematically if they share a story (e.g., "ZK Ecosystem Upgrades").
 - TENSE RULE: All events happened in the past 24h. Use past tense throughout ("went live", "secured", "announced", "patched").
   Exception: forward-looking "Watch" bullets may use present tense for upcoming items.
 - WATCH BULLETS: Maximum 12-15 words each. Tight, specific, no filler.
 - CHAIN EMOJIS: Use ⚡ for Solana, 🔵 for Base, ⬡ for Ethereum, 🟠 for Bitcoin, 💧 for Sui, etc.
+- For chains with priority >= 2, write a full 2-3 sentence paragraph with embedded links, NOT just a bullet.
+- For chains with priority >= 2, you MUST include the URL from at least one key_event as a markdown link in the FIRST content-bearing word of a sentence. Example: "BSC [hosted](url) a Miami event..." NOT "BSC hosted a Miami event [source](url)".
+- Every claim should trace back to a source. Only include links when a real URL is present in key_events.
 """
 
 _DIGEST_PROMPT = """## Date: {date_str}
@@ -49,24 +54,27 @@ Output format:
 🧠 Today's theme
 [1-2 sentences of the single most important market theme across all chains]
 
-[Then for each high-priority chain (priority ≥ 5), write a short section:]
+[Then for each chain with priority >= 2, write a prose paragraph:]
 
 **ChainName (Score: X)**
-[2-3 sentences synthesizing what's happening and why it matters. Include specific detail — version numbers, funding amounts, partner names when available.]
+[2-3 sentences synthesizing what's happening and why it matters. Embed [source](url) links using the FIRST content-bearing word of a sentence.]
 
-[For chains with priority < 5, use bullet format:]
+[For chains with priority < 2, use bullet format:]
 • ChainName: dominant_topic (score: X)
 
 👀 Watch
 [2-3 specific follow-ups or upcoming events to monitor]
 
-Total length: 250-450 words.
+Total length: 400-800 words.
 No code fences. No markdown # headings.
 """
 
 
 def _format_chain_for_digest(digest: ChainDigest, idx: int) -> str:
-    """Format a ChainDigest for inclusion in the LLM prompt."""
+    """Format a ChainDigest for inclusion in the LLM prompt.
+    
+    v1.1: Includes URLs in key_events for LLM to embed as markdown links.
+    """
     lines = [
         f"\n### {idx+1}. {digest.chain.upper()} (Priority: {digest.priority_score}, Confidence: {digest.confidence:.0%})\n",
         f"Topic: {digest.dominant_topic or 'No dominant topic'}\n",
@@ -80,10 +88,24 @@ def _format_chain_for_digest(digest: ChainDigest, idx: int) -> str:
             c = ke.get("confidence", 0.0)
             detail = ke.get("detail", "")
             why = ke.get("why_it_matters", "")
-            lines.append(f"  - [{cat}] {topic} (P{p}, {c:.0%} conf): {detail}")
+            url = ke.get("url", "")
+            url_line = f" | url: {url}" if url else ""
+            lines.append(f"  - [{cat}] {topic} (P{p}, {c:.0%} conf): {detail}{url_line}")
             if why:
                 lines.append(f"    → {why}")
     return "".join(lines)
+
+
+def _extract_url(line: str) -> str:
+    """Pull a markdown [text](url) or bare URL out of a line."""
+    import re
+    m = re.search(r'\[([^\]]+)\]\((https?://[^\s)]+)\)', line)
+    if m:
+        return m.group(2)
+    m2 = re.search(r'(https?://[^\s)\]\n]+)', line)
+    if m2:
+        return m2.group(1)
+    return ""
 
 
 def _fallback_digest(digests: list[ChainDigest], date_str: str) -> str:
@@ -96,8 +118,8 @@ def _fallback_digest(digests: list[ChainDigest], date_str: str) -> str:
         "",
     ]
 
-    high = [d for d in digests if d.priority_score >= 5]
-    low = [d for d in digests if 0 < d.priority_score < 5]
+    high = [d for d in digests if d.priority_score >= 2]
+    low = [d for d in digests if 0 < d.priority_score < 2]
 
     if high:
         lines.append("🔴 High Priority")
@@ -180,8 +202,8 @@ async def synthesize_digest(
 
     # Sort by priority desc for consistent prompt ordering
     digests = sorted(digests, key=lambda d: -d.priority_score)
-    high_priority = [d for d in digests if d.priority_score >= 5]
-    low_priority = [d for d in digests if 0 < d.priority_score < 5]
+    high_priority = [d for d in digests if d.priority_score >= 2]
+    low_priority = [d for d in digests if 0 < d.priority_score < 2]
 
     # Build chain block for LLM
     chain_block_parts = []
