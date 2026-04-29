@@ -1,7 +1,7 @@
 """Tests for O(n) deduplication engine."""
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from processors.pipeline_types import RawEvent
 from processors.dedup_engine import deduplicate_events
@@ -60,7 +60,7 @@ class TestDedupEngine:
         )
         later = RawEvent(
             "solana", "TECH_EVENT", "upgrade", "Solana v2",
-            "twitter", 0.7, evidence={"a": 1}, published_at=now.replace(second=now.second + 1)
+            "twitter", 0.7, evidence={"a": 1}, published_at=now + timedelta(seconds=1)
         )
         result = deduplicate_events([earlier, later])
         assert len(result) == 1
