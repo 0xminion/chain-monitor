@@ -12,7 +12,7 @@ class TestChainAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_chain_with_mock_llm(self):
         client = MagicMock()
-        client.generate_json.return_value = {
+        client.generate_json_with_retry.return_value = {
             "chain": "solana",
             "priority_score": 8,
             "dominant_topic": "Mainnet upgrade imminent",
@@ -58,7 +58,7 @@ class TestChainAnalyzer:
         """LLM failure should return a graceful fallback digest."""
         client = MagicMock()
         from processors.llm_client import LLMError
-        client.generate_json.side_effect = LLMError("connection refused")
+        client.generate_json_with_retry.side_effect = LLMError("connection refused")
 
         events = [RawEvent("solana", "TECH_EVENT", "upgrade", "Something", "rss", 0.7)]
         digest = await analyze_chain("solana", events, client)
@@ -71,7 +71,7 @@ class TestChainAnalyzer:
     async def test_analyze_chain_truncates_large_event_lists(self):
         """If > max_events_in_prompt, events are truncated."""
         client = MagicMock()
-        client.generate_json.return_value = {
+        client.generate_json_with_retry.return_value = {
             "chain": "ethereum",
             "priority_score": 5,
             "dominant_topic": "Many events",

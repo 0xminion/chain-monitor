@@ -30,14 +30,21 @@
          │ list[ChainDigest]
          v
 ┌─────────────────┐
-│ Stage 5: Digest  │ ← 1 LLM call (or fallback to structured)
-│    Synthesize    │     LLM prose for chains ≥5, bullets for <5
+│ Stage 5: Digest   │ ← LLM prose for chains scoring ≥2, bullets for <2
+│    Synthesize     │     Markdown links embedded on first word.
 └────────┬────────┘
          │ str (Telegram Markdown)
          v
 ┌─────────────────┐
-│ Stage 6: Deliver │ ← Telegram + JSON run log + cleanup
-│                  │     Send if ≥3 chains have significant activity
+│ Stage 6: Weekly   │ ← LLM event-driven thematic synthesis
+│    Synthesize     │     Reads 7 days of persisted daily digests.
+│                   │     Up to 10 thematic sections with emoji headers.
+└────────┬────────┘
+         │ str (Telegram Markdown)
+         v
+┌─────────────────┐
+│ Stage 7: Deliver  │ ← Telegram + JSON run log + daily digest persistence
+│                  │     Send if ≥2 chains have significant activity
 └─────────────────┘
 ```
 
@@ -81,13 +88,17 @@ If LLM disabled: pure-Python fallback with structured bullets.
 
 ## LLM Call Budget
 
-Per run:
-- Stage 4: up to 27 calls × ~2,000 prompt tokens each
-- Stage 5: 1 call × ~3,000 prompt tokens
-- Total: ~57K tokens per run
+Per daily digest run:
+- Stage 4 (per-chain analyze): up to 27 calls × ~2,000 prompt tokens each
+- Stage 5 (daily digest synthesize): 1 call × ~4,000 prompt tokens
+- Total: ~58K tokens per daily run
 
-Context window requirement: 200K+ recommended for chains with 100+ events
-(truncation keeps top 40 per chain).
+Per weekly digest run:
+- Stage 6 (weekly synthesize): 1 call × ~60,000 prompt tokens (reads 7 days of digests)
+- Total: ~60K tokens per weekly run
+
+Context window requirement: 262K+ recommended (Ollama default for gemma4:31b-cloud).
+Truncation keeps top 40 events per chain for Stage 4; daily digests clipped to 200K chars for Stage 6.
 
 ## Configuration Files
 
@@ -127,5 +138,17 @@ python3 -m pytest tests/ -q
 - Add a collector: subclass `BaseCollector`, implement `collect()`, register in `main.py`
 - Add a chain: use `scripts/chain_monitor_cli.py chains add` or edit `config/chains.yaml`
 - Change LLM prompt: edit `processors/chain_analyzer.py` or `processors/summary_engine.py`
+- Change weekly digest format: edit `scripts/run_weekly_digest.py` `_WEEKLY_SYSTEM_PROMPT`
 - Change scoring: edit `processors/scoring.py`
 - Add new event category: update `processors/categorizer.py` CATEGORY_KEYWORDS + LLM prompts
+
+## Key Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/setup.py` | Interactive `.env` generator with LLM validation |
+| `scripts/doctor.py` | End-to-end health check with auto-fix hints |
+| `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
+| `scripts/run_all_chains.py` | Full pipeline for all 27 chains (batch Twitter, divide & conquer) |
+| `scripts/run_v2_digest.py` | Twitter-centric v2 digest (raw tweets → events → analyze → digest) |
+| `scripts/run_weekly_digest.py` | Weekly event-driven synthesizer (7 days → thematic sections) |

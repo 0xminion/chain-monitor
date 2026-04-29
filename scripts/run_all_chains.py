@@ -13,7 +13,7 @@ import sys, logging, time, subprocess, os
 from pathlib import Path
 from datetime import datetime, timezone
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def _sweep_stale_chromes(min_age_sec: int = 60):

@@ -6,12 +6,16 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# EIP description cache (fetched once per run)
-_eip_cache: dict[str, str] = {}
+def _get_eip_cache():
+    """Return the EIP cache dict — lazy init to avoid module-level mutable."""
+    if not hasattr(_get_eip_cache, "_cache"):
+        _get_eip_cache._cache: dict[str, str] = {}
+    return _get_eip_cache._cache
 
 
 def fetch_eip_description(eip_number: str) -> str:
     """Fetch EIP title and summary from eips.ethereum.org."""
+    _eip_cache = _get_eip_cache()
     if eip_number in _eip_cache:
         return _eip_cache[eip_number]
 

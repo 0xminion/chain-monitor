@@ -226,6 +226,7 @@ class WeeklyDigestFormatter:
 
 
 def _make_week_range() -> str:
+    """Build a human-readable week range string."""
     now = datetime.now(timezone.utc)
     week_start = (now - timedelta(days=7)).strftime("%b %d")
-    return f"{week_start} – {now.strftime('%b %d', )}"
+    return f"{week_start} – {now.strftime('%b %d, %Y')}"

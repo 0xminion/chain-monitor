@@ -1,6 +1,6 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 8 event categories, scores events, synthesizes per-chain narratives via LLM, and delivers daily/weekly digests to Telegram.
+Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 9 event categories, scores events, synthesizes per-chain narratives via LLM, and delivers daily/weekly digests to Telegram.
 
 ## v2.0 — Chain-Centric LLM Synthesis
 
@@ -10,15 +10,18 @@ The pipeline now treats every chain as a unit of intelligence:
 2. **Dedup** — O(n) hash-based deduplication (URL + fingerprint index)
 3. **Categorize + Score** — keyword categorization + rule-based scoring (backward compatible)
 4. **Per-chain LLM analyze** — 27 parallel LLM calls, each merges related signals into coherent observations
-5. **Digest synthesize** — LLM prose for chains scoring ≥5, structured bullets for <5
-6. **Deliver** — Telegram send + run log
+- **Digest synthesize** — LLM prose for chains scoring ≥2, structured bullets for <2. Markdown links embedded on first word of sentence.
+- **Weekly synthesize** — Event-driven thematic sections (up to 10) with emoji headers, fed from 7 days of persisted daily digests. Chain tags per section.
+- **Deliver** — Telegram send + run log + daily digest persistence
 
 ### What's New in v2.0
 
-- **Per-chain narrative**: Instead of raw signal bullets, the digest tells you *"Solana is pushing v2.3 with performance gains — watch for downstream DeFi migrations."*
+- **Per-chain narrative**: Instead of raw signal bullets, the digest tells you *"Polygon activated Visa rails for global stablecoin settlement — watch for transaction volume."*
 - **Cross-source merging**: GitHub release + tweet + blog post about the same event = ONE merged observation with multiple sources
 - **Parallel everything**: Collectors and chain analyzers both run concurrently
 - **O(n) dedup**: Single-pass hash dedup replaces the old O(n*m) text similarity loop
+- **Event-driven weekly digest**: Thematic sections (up to 10) with LLM-assigned emojis, not chain-by-chain breakdown
+- **Markdown links on first word**: Evidence-backed hyperlinks embedded via `[Word](URL)` format
 - **Management CLI**: `scripts/chain_monitor_cli.py` for chains, cron, digest, health
 - **Setup wizard**: `scripts/setup.py` interactive `.env` generator with LLM validation
 - **Doctor**: `scripts/doctor.py` end-to-end health check with auto-fix hints
@@ -28,14 +31,36 @@ The pipeline now treats every chain as a unit of intelligence:
 ```bash
 cd chain-monitor
 
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Playwright browsers
+python -m playwright install chromium
+
+# Install Camoufox (anti-detect browser for Cloudflare-protected sites)
+camoufox fetch
+
 # Interactive setup (creates .env, validates LLM, checks Telegram)
 python3 scripts/setup.py
+
+# Edit .env with your API keys
+cp .env.example .env
+nano .env
 
 # Health check
 python3 scripts/doctor.py
 
-# Run the full pipeline
+# Run the full pipeline (daily digest)
 python3 main.py
+
+# Run the v2 Twitter-centric digest (raw tweets → events → analyze → digest)
+python3 scripts/run_v2_digest.py
+
+# Run the weekly event-driven synthesizer
+python3 scripts/run_weekly_digest.py
+
+# Full pipeline for all 27 chains (divide & conquer, batch Twitter collection)
+python3 scripts/run_all_chains.py
 
 # Dry-run digest (no Telegram, print to stdout)
 python3 scripts/chain_monitor_cli.py digest --dry-run --preview
