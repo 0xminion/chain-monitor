@@ -91,8 +91,20 @@ def _clean_description(desc: str) -> str:
 
 
 def _is_noise(signal: Signal) -> bool:
-    """Filter out noisy signals that clutter the digest."""
+    """Filter out noisy signals that clutter the digest.
+
+    Never drops retweets from official accounts, as these are
+time-sensitive ecosystem signals.
+    """
     desc = signal.description
+    evidence = {} if not signal.activity else (
+        signal.activity[0].get("evidence", {}) if isinstance(signal.activity[0].get("evidence"), dict) else {}
+    )
+
+    # NEVER filter official-account content (originals or retweets)
+    if evidence.get("role") == "official":
+        return False
+
     # EIPs RSS index pages — just category listings, not real content
     if "EIPs RSS" in desc:
         return True
@@ -210,6 +222,7 @@ class DailyDigestFormatter:
         # Issue #3: Consistent score capitalization
         critical = [s for s in signals if s.priority_score >= 8]
         high = [s for s in signals if 5 <= s.priority_score < 8]
+        notable = [s for s in signals if 2 <= s.priority_score < 5]
         medium = [s for s in signals if 3 <= s.priority_score < 5]
 
         sections = [
@@ -236,11 +249,14 @@ class DailyDigestFormatter:
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Medium
-        if medium:
-            sections.append("🟡 Medium (Score 3-4)")
-            for s in sorted(medium, key=lambda x: -x.priority_score):
+        # Notable — Score 2+ with summary prose (Issue #3 expansion)
+        if notable:
+            sections.append("🔵 Notable (Score 2+)")
+            for s in sorted(notable, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
+                # Add trader context / why it matters if available
+                if s.trader_context:
+                    sections.append(f"  → {s.trader_context}")
                 sections.append("")
 
         # Dev activity (low-priority tech events not already surfaced)

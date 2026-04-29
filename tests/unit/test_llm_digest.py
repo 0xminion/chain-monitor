@@ -42,10 +42,13 @@ class TestSanitizeDigest:
         assert "```" not in result
         assert "hello" in result
 
-    def test_bare_url_linked(self):
+    def test_bare_url_not_auto_linked(self):
+        """Bare URLs are left alone — Telegram handles them natively."""
         raw = "Check out https://example.com/page"
         result = _sanitize_digest(raw)
-        assert "[link](https://example.com/page)" in result
+        assert "https://example.com/page" in result
+        # We intentionally do NOT wrap bare URLs to avoid double-bracket conflicts
+        assert "[link](" not in result
 
 
 class TestLLMDigestGeneratorMocked:

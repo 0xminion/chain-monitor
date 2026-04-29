@@ -57,8 +57,8 @@ class TestFormatWithSignals:
     def test_notable_section(self, formatter):
         sig = _make_signal(chain="ethereum", impact=2, urgency=2, description="Notable event")
         result = formatter.format([sig])
-        assert "Medium" in result
-        assert "Score 3-4" in result
+        assert "Notable" in result
+        assert "Score 2+" in result
 
     def test_sorted_by_priority(self, formatter):
         s1 = _make_signal(chain="ethereum", impact=4, urgency=2, description="Lower priority")

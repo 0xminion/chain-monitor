@@ -38,6 +38,7 @@ Rules:
 - For chains with priority >= 2, write a full 2-3 sentence paragraph with embedded links, NOT just a bullet.
 - For chains with priority >= 2, you MUST include the URL from at least one key_event as a markdown link in the FIRST content-bearing word of a sentence. Example: "BSC [hosted](url) a Miami event..." NOT "BSC hosted a Miami event [source](url)".
 - Every claim should trace back to a source. Only include links when a real URL is present in key_events.
+- SCORE ≥2 FORMAT: Each score≥2 chain paragraph MUST contain: (1) a one-sentence summary of the dominant topic, (2) a one-sentence explanation of why it matters to traders, and (3) an embedded markdown link using the first content-bearing word, if a URL is provided.
 """
 
 _DIGEST_PROMPT = """## Date: {date_str}
@@ -72,8 +73,9 @@ No code fences. No markdown # headings.
 
 def _format_chain_for_digest(digest: ChainDigest, idx: int) -> str:
     """Format a ChainDigest for inclusion in the LLM prompt.
-    
-    v1.1: Includes URLs in key_events for LLM to embed as markdown links.
+
+    v1.2: Includes URLs in key_events AND formats them as markdown link examples
+    so the LLM learns by demonstration.
     """
     lines = [
         f"\n### {idx+1}. {digest.chain.upper()} (Priority: {digest.priority_score}, Confidence: {digest.confidence:.0%})\n",
@@ -90,6 +92,14 @@ def _format_chain_for_digest(digest: ChainDigest, idx: int) -> str:
             why = ke.get("why_it_matters", "")
             url = ke.get("url", "")
             url_line = f" | url: {url}" if url else ""
+            # Show markdown link example in prompt to teach by demonstration
+            if url:
+                words = topic.split()
+                if words:
+                    link_example = f"  📎 LINK EXAMPLE: [{words[0]}]({url}) {' '.join(words[1:])}"
+                else:
+                    link_example = f"  📎 LINK EXAMPLE: [{topic}]({url})"
+                url_line += f"\n{link_example}"
             lines.append(f"  - [{cat}] {topic} (P{p}, {c:.0%} conf): {detail}{url_line}")
             if why:
                 lines.append(f"    → {why}")
@@ -130,14 +140,37 @@ def _fallback_digest(digests: list[ChainDigest], date_str: str) -> str:
                 if isinstance(ke, dict):
                     topic = ke.get("topic", "Event")
                     why = ke.get("why_it_matters", "")
-                    lines.append(f"• {topic}")
+                    url = ke.get("url", "")
+                    # Embed the URL in the topic text using first-word markdown link style
+                    if url:
+                        words = topic.split()
+                        if words:
+                            linked_topic = f"[{words[0]}]({url}) {' '.join(words[1:])}".strip()
+                            lines.append(f"• {linked_topic}")
+                        else:
+                            lines.append(f"• {topic}")
+                    else:
+                        lines.append(f"• {topic}")
                     if why:
                         lines.append(f"  → {why}")
 
     if low:
         lines.append("\n🟡 Other Chains")
         for d in sorted(low, key=lambda x: -x.priority_score):
-            lines.append(f"• {d.chain.upper()}: {d.dominant_topic or 'Activity'} (score {d.priority_score})")
+            url = ""
+            if d.key_events and isinstance(d.key_events[0], dict):
+                url = d.key_events[0].get("url", "")
+                topic = d.key_events[0].get("topic", d.dominant_topic or "Activity")
+            else:
+                topic = d.dominant_topic or "Activity"
+            if url:
+                words = topic.split()
+                if words:
+                    lines.append(f"• {d.chain.upper()}: [{words[0]}]({url}) {' '.join(words[1:])} (score {d.priority_score})")
+                else:
+                    lines.append(f"• {d.chain.upper()}: {topic} (score {d.priority_score})")
+            else:
+                lines.append(f"• {d.chain.upper()}: {topic} (score {d.priority_score})")
 
     if not high and not low:
         lines.append("— Quiet day across monitored chains.")

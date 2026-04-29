@@ -352,13 +352,23 @@ class TestSemanticEnricherUnit:
         enricher.client.generate_json.assert_not_called()
 
     def test_enrich_tweets_batch(self, enricher):
-        enricher.client.generate_json.return_value = {
-            "category": "TECH_EVENT",
-            "subcategory": "upgrade",
-            "confidence": 0.80,
-            "reasoning": "test",
-            "is_noise": False,
-        }
+        # Batch enrichment returns a LIST of results, one per tweet
+        enricher.client.generate_json.return_value = [
+            {
+                "category": "TECH_EVENT",
+                "subcategory": "upgrade",
+                "confidence": 0.80,
+                "reasoning": "test",
+                "is_noise": False,
+            },
+            {
+                "category": "PARTNERSHIP",
+                "subcategory": "integration",
+                "confidence": 0.75,
+                "reasoning": "test",
+                "is_noise": False,
+            },
+        ]
         tweets = [
             {"chain": "eth", "text": "upgrade live", "account_handle": "eth"},
             {"chain": "sol", "text": "partnership", "account_handle": "sol"},
