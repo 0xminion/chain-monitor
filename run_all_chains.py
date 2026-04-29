@@ -109,20 +109,20 @@ for CollectorClass in [DefiLlamaCollector, RSSCollector, RegulatoryCollector, Ri
 
 print(f"\n[Phase 1] Total non-Twitter events: {len(events)}")
 
-# ── Phase 2: Twitter in 3 batches ───────────────────────────────────────────
-print(f"\n[Phase 2] Twitter collection in 3 batches ({len(ALL_CHAINS)} chains)")
+# ── Phase 2: Twitter in 9 batches (~3 chains per batch) ─────────────────────────
+print(f"\n[Phase 2] Twitter collection in 9 batches ({len(ALL_CHAINS)} chains)")
 _sweep_stale_chromes()
 _free_and_swap()
 
 full_twitter = TwitterCollector(standalone_mode=False, lookback_hours=24)
 full_accounts = getattr(full_twitter, '_accounts', {})
 
-batch_size = (len(ALL_CHAINS) + 2) // 3
+batch_size = (len(ALL_CHAINS) + 8) // 9
 batches = [ALL_CHAINS[i:i+batch_size] for i in range(0, len(ALL_CHAINS), batch_size)]
 
 total_tweets = 0
 for i, batch in enumerate(batches, 1):
-    print(f"\n  [Batch {i}/3] Chains: {', '.join(batch)}")
+    print(f"\n  [Batch {i}/{len(batches)}] Chains: {', '.join(batch)}")
     batch_accounts = {k: v for k, v in full_accounts.items() if k in batch}
     
     if not batch_accounts:
@@ -145,11 +145,11 @@ for i, batch in enumerate(batches, 1):
     health["twitter"] = twitter.get_health()
     
     if i < len(batches):
-        print(f"  [WAIT] 10s cooldown + zombie sweep...")
-        time.sleep(5)
-        _sweep_stale_chromes(min_age_sec=10)
+        print(f"  [WAIT] 5s cooldown + zombie sweep...")
+        time.sleep(2)
+        _sweep_stale_chromes(min_age_sec=5)
         _free_and_swap()
-        time.sleep(5)
+        time.sleep(3)
 
 print(f"\n[Phase 2] Total Twitter tweets: {total_tweets}")
 print(f"[Phase 2] Total events: {len(events)}")
