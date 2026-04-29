@@ -247,7 +247,7 @@ class SemanticEnricher:
         self._failures = 0
         self._max_failures_before_disable = 3
 
-    def enrich_tweets(self, tweets: list[dict], max_batch_size: int = 15, max_workers: int = 4) -> list[dict]:
+    def enrich_tweets(self, tweets: list[dict], max_batch_size: int = 15, max_workers: int = 2) -> list[dict]:
         """Batch enrichment for scraped tweet dicts — batched per-chain with parallel LLM calls.
 
         Groups tweets by chain, batches {max_batch_size} per LLM call, and runs up to
