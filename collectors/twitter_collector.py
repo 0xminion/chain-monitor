@@ -8,7 +8,7 @@ Author: 0xminion
 
 import json
 import logging
-
+import os
 import random
 
 import time
@@ -258,7 +258,25 @@ class TwitterCollector(BaseCollector):
         return None
 
     def _cleanup(self):
-        """Close browser resources."""
+        """Close browser resources and clean up any orphaned Chrome processes."""
+        # Kill any Chrome processes spawned by our own PID tree first
+        try:
+            import subprocess
+            parent_pid = str(os.getpid())
+            # Find Chrome child processes of our PID (or grand/children)
+            result = subprocess.run(
+                ["pgrep", "-P", parent_pid, "-f", "chrome"],
+                capture_output=True, text=True
+            )
+            for pid_str in result.stdout.strip().split("\n"):
+                if pid_str.strip():
+                    try:
+                        os.kill(int(pid_str.strip()), 9)
+                    except ProcessLookupError:
+                        pass
+        except Exception:
+            pass
+
         try:
             if self._context and hasattr(self._context, "close"):
                 self._context.close()
