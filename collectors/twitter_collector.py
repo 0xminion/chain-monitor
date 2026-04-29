@@ -306,6 +306,8 @@ class TwitterCollector(BaseCollector):
             return []
 
         self._start_browser()
+        # Reuse one page across all handles to avoid renderer proliferation
+        page = self._context.new_page() if self._context else None
         try:
             for chain_name, cfg in self._accounts.items():
                 handles = cfg.get("official", []) + cfg.get("contributors", [])
@@ -315,7 +317,7 @@ class TwitterCollector(BaseCollector):
                 for hdl in handles:
                     handle = hdl["handle"].lstrip("@")
                     logger.info(f"[twitter] Scraping @{handle} for {chain_name}")
-                    tweets = self._scrape_profile(handle, hdl, chain_name, cutoff)
+                    tweets = self._scrape_profile(handle, hdl, chain_name, cutoff, page=page)
                     all_tweets.extend(tweets)
                     # Rate-limiting sleep between accounts
                     time.sleep(random.randint(3, 8))
@@ -327,6 +329,11 @@ class TwitterCollector(BaseCollector):
             logger.error(f"[twitter] Collector failed: {e}")
             self.health.mark_failure(str(e))
         finally:
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
             self._cleanup()
 
         # Persist raw tweets for historical/trending analysis
@@ -341,12 +348,16 @@ class TwitterCollector(BaseCollector):
         events = self._tweets_to_events(all_tweets)
         return events
 
-    def _scrape_profile(self, handle: str, hdl_cfg: dict, chain_name: str, cutoff: datetime) -> list[dict]:
-        """Open a profile, scroll, extract tweets within time window."""
+    def _scrape_profile(self, handle: str, hdl_cfg: dict, chain_name: str, cutoff: datetime, page=None) -> list[dict]:
+        """Open a profile, scroll, extract tweets within time window.
+        If page is provided, reuses it instead of creating a new page each time.
+        """
         if not self._context:
             return []
 
-        page = self._context.new_page()
+        new_page = page is None
+        if new_page:
+            page = self._context.new_page()
         try:
             url = f"https://x.com/{handle}"
             logger.info(f"[twitter] Navigating {url}")
@@ -424,7 +435,11 @@ class TwitterCollector(BaseCollector):
             logger.error(f"[twitter] Error scraping @{handle}: {e}")
             return []
         finally:
-            page.close()
+            if new_page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
     # -----------------------------------------------------------------------
     # Persistence — JSON + Markdown summaries for trending analysis
