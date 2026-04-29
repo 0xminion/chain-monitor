@@ -185,8 +185,8 @@ class DailyDigestFormatter:
         else:
             fixed_health = None
 
-        # ── v0.2: LLM Digest Generation (with template fallback) ───────────
-        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "false").lower() == "true"
+        # ── v0.2: LLM Digest Generation (default, with template fallback) ────
+        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "true").lower() == "true"
         if llm_digest_enabled:
             try:
                 llm_gen = LLMDigestGenerator()
@@ -195,7 +195,7 @@ class DailyDigestFormatter:
                     source_health=fixed_health,
                     source_health_detail=source_health_detail,
                 )
-                if llm_output:
+                if llm_output and llm_output.strip():
                     logger.info("[digest] LLM digest generated successfully")
                     # Still append source health footer
                     if fixed_health:
@@ -206,7 +206,7 @@ class DailyDigestFormatter:
             except Exception as e:
                 logger.warning(f"[digest] LLM digest generation failed: {e}")
 
-        # ── Template-based formatting (legacy, reliable) ────────────────────
+        # ── Template-based formatting (fallback) ────────────────────────────
         # Issue #3: Consistent score capitalization
         critical = [s for s in signals if s.priority_score >= 8]
         high = [s for s in signals if 5 <= s.priority_score < 8]

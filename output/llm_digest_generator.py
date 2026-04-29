@@ -76,9 +76,11 @@ Source Health: {health_block}
 6. Total output: 200-400 words.
 7. If no high-priority signals, say so and briefly mention any notable low-priority activity.
 8. Do NOT include any raw URLs as text — embed them as [text](url) Markdown links.
-9. Never use HTML tags. Never use all-caps headings.
-10. Do not invent events. Only summarize the provided signals.
-11. Do not mention the health statistics in the digest body (those are for internal awareness only).
+   NEVER wrap URLs in double brackets like [text]([link](url)). Use only ONE layer of brackets.
+9. Cover ALL signal categories present — not just regulatory. Include tech events, partnerships, and dev activity if they appear in the input.
+10. Never use HTML tags. Never use all-caps headings.
+11. Do not invent events. Only summarize the provided signals.
+12. Do not mention health statistics in the digest body.
 
 ## Output Format (Telegram Markdown, no code fences)
 📊 Chain Monitor — {date_str}
@@ -157,16 +159,66 @@ def _sanitize_digest(text: str) -> str:
     # 3. Collapse triple+ newlines
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    # 4. Bare URL detection — try to inline as link text if obvious
-    # This is best-effort; we don't want to break existing [text](url)
-    text = re.sub(r"(?<!\])\b(https?://[^\s)\]]+)", r"[link](\1)", text)
+    # 4. Fix double-wrapped markdown links [text]([link](url)) → [text](url)
+    text = re.sub(
+        r"\[([^\]]+)\]\(\[link\]\((https?://[^\s)]+)\)\)",
+        r"[\1](\2)",
+        text,
+    )
+    # 4b. If any bare URLs remain (LLM forgot to wrap), leave them alone —
+    # Telegram handles them fine. Do NOT auto-wrap as [link] to avoid
+    # conflict with existing markdown links.
 
-    # 5. Remove any remaining ``` fences that might confuse Telegram
+    # 5. Strip ``` fences
     text = re.sub(r"^```\w*\n", "", text)
     text = re.sub(r"\n```\w*$", "", text)
     text = re.sub(r"```", "", text)
 
+    # 6. Inject chain emojis for faster visual scanning
+    text = _add_chain_emojis(text)
+
     return text.strip()
+
+
+def _add_chain_emojis(text: str) -> str:
+    """Prepend chain-specific emojis to chain names where missing.
+
+    Matches common chain names at start of lines, after bullets, or after bold.
+    """
+    # Chain -> emoji mapping (same as daily_digest.py)
+    EMOJIS = {
+        "bitcoin": "🟠", "ethereum": "⬡", "solana": "⚡",
+        "base": "🔵", "arbitrum": "🔷", "optimism": "🔴",
+        "bnb chain": "🟡", "bsc": "🟡", "mantle": "🟢",
+        "hyperliquid": "🟣", "ink": "🩵", "xlayer": "❌",
+        "monad": "🔘", "zircuit": "⚪", "aptos": "🔺",
+        "sui": "🔹", "starknet": "🦁", "movement": "🏃",
+        "sei": "🌊", "berachain": "🐻", "corn": "🌽",
+    }
+    import re
+
+    for chain, emoji in EMOJIS.items():
+        # Case-insensitive match for chain name at line start, after bullet, or after **
+        # e.g. "Bitcoin:", "• Bitcoin", "**Bitcoin**", "- BSC"
+        pattern = re.compile(
+            rf"(?P<prefix>^|\n)(?P<bullet>[\s]*•\s+|\s*-\s+|\*\*|__)?"
+            rf"(?P<chain>\b{re.escape(chain)}\b)"
+            rf"(?P<suffix>\s*:|\s+-|\*\*|__)?",
+            re.IGNORECASE,
+        )
+
+        def repl(m: re.Match) -> str:
+            # If emoji already present right before the chain, skip
+            start = m.start()
+            if start > 0 and text[start - 1 : start] == emoji:
+                return m.group(0)
+            bullet = m.group("bullet") or ""
+            suffix = m.group("suffix") or ""
+            return f"{m.group('prefix')}{bullet}{emoji} {m.group('chain').capitalize()}{suffix}"
+
+        text = pattern.sub(repl, text)
+
+    return text
 
 
 class LLMDigestGenerator:
