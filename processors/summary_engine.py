@@ -29,6 +29,10 @@ Rules:
 - Be precise. Do not invent events that are not in the input data.
 - Explain WHY an event matters, not just WHAT happened.
 - Group related chains thematically if they share a story (e.g., "ZK Ecosystem Upgrades").
+- TENSE RULE: All events happened in the past 24h. Use past tense throughout ("went live", "secured", "announced", "patched").
+  Exception: forward-looking "Watch" bullets may use present tense for upcoming items.
+- WATCH BULLETS: Maximum 12-15 words each. Tight, specific, no filler.
+- CHAIN EMOJIS: Use ⚡ for Solana, 🔵 for Base, ⬡ for Ethereum, 🟠 for Bitcoin, 💧 for Sui, etc.
 """
 
 _DIGEST_PROMPT = """## Date: {date_str}

@@ -15,25 +15,68 @@ from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
 
+# ── Issue #6: Chain emoji mapping ────────────────────────────────────────────
+_CHAIN_EMOJIS = {
+    "solana": "⚡",
+    "base": "🔵",
+    "ethereum": "⬡",
+    "bitcoin": "🟠",
+    "sui": "💧",
+    "aptos": "🅰️",
+    "arbitrum": "🔷",
+    "optimism": "🔴",
+    "hyperliquid": "⚗️",
+    "monad": "🔮",
+    "xlayer": "❌",
+    "bsc": "🟡",
+    "polkadot": "🔘",
+    "cosmos": "🌌",
+    "cardano": "🔷",
+    "algorand": "△",
+    "near": "🌑",
+    "starknet": "🦁",
+    "zksync": "💎",
+    "mantle": "🟤",
+}
+
+_EXPECTED_COLLECTOR_COUNT = 10  # total collectors in pipeline
+
+
+def _chain_emoji(chain: str) -> str:
+    """Return emoji prefix for a chain name."""
+    return _CHAIN_EMOJIS.get(chain.lower(), "🔗")
+
+
+def _ensure_collector_health_slots(health: dict):
+    """Backfill missing collector entries so health shows 10/10 not 2/2."""
+    expected = {
+        "DefiLlama", "CoinGecko", "GitHub", "RSS", "twitter",
+        "Regulatory", "RiskAlert", "tradingview", "events", "hackathon_outcomes",
+    }
+    existing_lower = {k.lower() for k in health}
+    for name in expected:
+        if name.lower() not in existing_lower:
+            health[name] = {"status": "unknown", "last_error": "No data yet"}
+
 
 def _extract_url(signal: Signal) -> Optional[str]:
-    """Extract the best URL from signal evidence for linking."""
+    """Extract the best URL from signal evidence for linking (Issue #7)."""
     if not signal.activity:
         return None
     evidence = signal.activity[0].get("evidence", {})
     if not isinstance(evidence, dict):
         return None
-    for key in ("html_url", "pr_url", "link", "feed_url"):
+    for key in ("html_url", "pr_url", "link", "feed_url", "url", "tweet_url"):
         url = evidence.get(key)
-        if url and url.startswith("http"):
+        if url and isinstance(url, str) and url.startswith("http"):
             return url
     # Fallback: check all activities for a URL
     for act in signal.activity:
         ev = act.get("evidence", {})
         if isinstance(ev, dict):
-            for key in ("html_url", "pr_url", "link", "feed_url"):
+            for key in ("html_url", "pr_url", "link", "feed_url", "url", "tweet_url"):
                 url = ev.get(key)
-                if url and url.startswith("http"):
+                if url and isinstance(url, str) and url.startswith("http"):
                     return url
     return None
 
@@ -132,6 +175,16 @@ class DailyDigestFormatter:
         # Time filter: only include signals from past 24h
         signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
 
+        # Issue #1: Date — timezone-aware UTC date (always correct)
+        now = datetime.now(timezone.utc).strftime("%b %d, %Y")
+
+        # Issue #5: Ensure all 10 collector slots show up in health (only if caller provided health)
+        if source_health:
+            fixed_health = {**source_health}
+            _ensure_collector_health_slots(fixed_health)
+        else:
+            fixed_health = None
+
         # ── v0.2: LLM Digest Generation (with template fallback) ───────────
         llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "false").lower() == "true"
         if llm_digest_enabled:
@@ -139,14 +192,14 @@ class DailyDigestFormatter:
                 llm_gen = LLMDigestGenerator()
                 llm_output = llm_gen.generate(
                     signals=signals,
-                    source_health=source_health,
+                    source_health=fixed_health,
                     source_health_detail=source_health_detail,
                 )
                 if llm_output:
                     logger.info("[digest] LLM digest generated successfully")
                     # Still append source health footer
-                    if source_health:
-                        llm_output += "\n" + "\n".join(self._format_health(source_health, detail=source_health_detail))
+                    if fixed_health:
+                        llm_output += "\n" + "\n".join(self._format_health(fixed_health, detail=source_health_detail))
                     return llm_output
                 else:
                     logger.warning("[digest] LLM digest returned empty — falling back to template")
@@ -154,9 +207,7 @@ class DailyDigestFormatter:
                 logger.warning(f"[digest] LLM digest generation failed: {e}")
 
         # ── Template-based formatting (legacy, reliable) ────────────────────
-        now = datetime.now(timezone.utc).strftime("%b %d, %Y")
-
-        # New scoring tiers
+        # Issue #3: Consistent score capitalization
         critical = [s for s in signals if s.priority_score >= 8]
         high = [s for s in signals if 5 <= s.priority_score < 8]
         medium = [s for s in signals if 3 <= s.priority_score < 5]
@@ -212,9 +263,9 @@ class DailyDigestFormatter:
         if not critical and not high and not medium and not dev_activity and not partnerships:
             sections.append("— No high-priority events. Quiet day.")
 
-        # Source Health
-        if source_health:
-            sections.extend(self._format_health(source_health, detail=source_health_detail))
+        # Issue #5: Use fixed health with all 10 collectors
+        if fixed_health:
+            sections.extend(self._format_health(fixed_health, detail=source_health_detail))
 
         return "\n".join(sections)
 
@@ -224,19 +275,21 @@ class DailyDigestFormatter:
         return count >= 3
 
     def _format_signal(self, signal: Signal) -> str:
-        """Format a single signal with clickable link embedded in title."""
+        """Format a single signal with chain emoji, click link, consistent Score (Issues #3, #6, #7)."""
         chain = signal.chain.capitalize()
+        emoji = _chain_emoji(signal.chain)
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
+        # Issue #3: Consistent capitalized "Score" across all tiers
+        score_label = f"Score: {signal.priority_score}"
 
         if url:
-            # Markdown link: [Title](URL) — Telegram renders as clickable
-            title = f"[{desc_clean}]({url})"
+            title = f"[{desc_clean} 📝]({url})"
         else:
             title = desc_clean
 
-        return f"• {chain}: {title} [{sources_str}]"
+        return f"• {emoji} {chain}: {title} ({score_label}) [{sources_str}]"
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""
@@ -276,7 +329,7 @@ class DailyDigestFormatter:
         return None
 
     def _format_health(self, health: dict, detail: dict = None) -> list[str]:
-        """Format source health summary with per-feed detail."""
+        """Format source health summary. Shows expected collector count (Issue #5)."""
         lines = ["⚠️ Source health"]
 
         def _norm(status: str) -> str:
@@ -291,8 +344,9 @@ class DailyDigestFormatter:
         degraded = sum(1 for h in health.values() if _norm(h.get("status", "")) == "degraded")
         down = sum(1 for h in health.values() if _norm(h.get("status", "")) == "down")
         total = len(health)
+        expected = max(total, _EXPECTED_COLLECTOR_COUNT)
 
-        lines.append(f"  Collectors: {healthy}/{total} healthy | {degraded} degraded | {down} down")
+        lines.append(f"  Collectors: {healthy}/{expected} healthy | {degraded} degraded | {down} down")
 
         # Per-feed detail from RSS and other collectors
         if detail:

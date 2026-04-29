@@ -156,7 +156,8 @@ class TestHealthFormatting:
         }
         result = formatter.format([], source_health=health)
         assert "Source health" in result
-        assert "2/2 healthy" in result
+        # Issue #5: All 10 collector slots are now shown (backfilled with unknown)
+        assert "2/10 healthy" in result
 
     def test_health_with_degraded(self, formatter):
         health = {
@@ -164,6 +165,7 @@ class TestHealthFormatting:
             "coingecko": {"source_name": "CoinGecko", "status": "degraded", "failures_24h": 3},
         }
         result = formatter.format([], source_health=health)
+        # Issue #5: Shows all 10 slots; 1 degraded in 2 explicit + 8 unknown backfills
         assert "1 degraded" in result
 
     def test_health_with_down(self, formatter):
@@ -171,7 +173,9 @@ class TestHealthFormatting:
             "defillama": {"source_name": "DefiLlama", "status": "down", "failures_24h": 5},
         }
         result = formatter.format([], source_health=health)
-        assert "1 down" in result
+        # Issue #5: defillama is down; 9 others are backfilled as unknown (counts as down)
+        assert "10 down" in result
+        assert "defillama: down" in result
 
     def test_health_shows_issue_details(self, formatter):
         health = {
