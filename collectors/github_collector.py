@@ -58,6 +58,9 @@ class GitHubCollector(BaseCollector):
         self.api_base = gh_cfg.get("api_base", "https://api.github.com")
 
         self._token = get_env("GITHUB_TOKEN", "")
+        # Treat common placeholder values as empty
+        if self._token in ("***", "", "None", "null"):
+            self._token = ""
         # Fall back to gh CLI token if env var is empty
         if not self._token:
             try:
