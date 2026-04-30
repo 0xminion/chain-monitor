@@ -54,7 +54,7 @@ python3 scripts/doctor.py
 python3 main.py
 
 # Run the v2 Twitter-centric digest (raw tweets → events → analyze → digest)
-python3 scripts/run_v2_digest.py
+python3 scripts/run_stored_reanalysis.py
 
 # Run the weekly event-driven synthesizer
 python3 scripts/run_weekly_digest.py
