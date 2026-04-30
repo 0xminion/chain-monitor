@@ -1,92 +1,83 @@
-"""Tests for per-chain semantic analyzer."""
+"""Tests for per-chain deterministic analyzer."""
 
 import pytest
-from unittest.mock import MagicMock
 
-from processors.pipeline_types import RawEvent, ChainDigest
-from processors.chain_analyzer import analyze_chain
+from processors.pipeline_types import ChainDigest
+from processors.chain_analyzer import analyze_chain, analyze_all_chains
+from processors.signal import Signal
+
+
+def _make_signal(chain="solana", category="TECH_EVENT", description="test", priority_score=5, rel=0.8, activity=None):
+    sig = Signal(
+        id=Signal.generate_id(chain, category, description),
+        chain=chain,
+        category=category,
+        description=description,
+        impact=3,
+        urgency=2,
+        priority_score=priority_score,
+    )
+    if activity:
+        for a in activity:
+            sig.add_activity(a["source"], a.get("reliability", rel), a.get("evidence", description))
+    else:
+        sig.add_activity("rss", rel, description)
+    return sig
 
 
 class TestChainAnalyzer:
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_with_mock_llm(self):
-        client = MagicMock()
-        client.generate_json_with_retry.return_value = {
-            "chain": "solana",
-            "priority_score": 8,
-            "dominant_topic": "Mainnet upgrade imminent",
-            "confidence": 0.92,
-            "summary": "Solana is pushing v2 with significant performance gains.",
-            "key_events": [
-                {
-                    "topic": "v2 release",
-                    "category": "TECH_EVENT",
-                    "sources": ["GitHub", "RSS"],
-                    "priority": 8,
-                    "confidence": 0.92,
-                    "detail": "Solana v2 tagged and released.",
-                    "why_it_matters": "Performance gains could attract new DeFi protocols.",
-                }
-            ],
-        }
-
-        events = [
-            RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2 released", "rss", 0.8),
-            RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2 on GitHub", "github", 0.9),
+    async def test_analyze_chain_with_signals(self):
+        signals = [
+            _make_signal("solana", "TECH_EVENT", "Solana v2 released", priority_score=8, rel=0.8),
+            _make_signal("solana", "TECH_EVENT", "Solana v2 on GitHub", priority_score=6, rel=0.9),
         ]
 
-        digest = await analyze_chain("solana", events, client)
+        digest = await analyze_chain("solana", signals)
         assert isinstance(digest, ChainDigest)
         assert digest.chain == "solana"
-        assert digest.priority_score == 8
-        assert digest.dominant_topic == "Mainnet upgrade imminent"
-        assert len(digest.key_events) == 1
+        assert digest.priority_score > 0
+        assert digest.dominant_topic == "Tech Event"
+        assert len(digest.key_events) == 2
         assert digest.key_events[0]["category"] == "TECH_EVENT"
+        assert digest.event_count == 2
+        assert digest.sources_seen == 1  # both from "rss"
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_empty_events(self):
-        """Empty events should produce a quiet digest, not crash."""
-        digest = await analyze_chain("solana", [], MagicMock())
+    async def test_analyze_chain_empty_signals(self):
+        """Empty signals should produce a quiet digest, not crash."""
+        digest = await analyze_chain("solana", [])
         assert isinstance(digest, ChainDigest)
         assert digest.chain == "solana"
         assert digest.priority_score == 0
-        assert "no signals" in digest.summary.lower() or "quiet" in digest.summary.lower()
+        assert digest.dominant_topic == "Quiet"
+        assert digest.event_count == 0
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_llm_failure(self):
-        """LLM failure should return a graceful fallback digest."""
-        client = MagicMock()
-        from processors.llm_client import LLMError
-        client.generate_json_with_retry.side_effect = LLMError("connection refused")
-
-        events = [RawEvent("solana", "TECH_EVENT", "upgrade", "Something", "rss", 0.7)]
-        digest = await analyze_chain("solana", events, client)
-        assert isinstance(digest, ChainDigest)
-        assert digest.chain == "solana"
-        assert digest.priority_score == 0
-        assert "unavailable" in digest.summary.lower() or "error" in digest.summary.lower()
-
-    @pytest.mark.asyncio
-    async def test_analyze_chain_truncates_large_event_lists(self):
-        """If > max_events_in_prompt, events are truncated."""
-        client = MagicMock()
-        client.generate_json_with_retry.return_value = {
-            "chain": "ethereum",
-            "priority_score": 5,
-            "dominant_topic": "Many events",
-            "confidence": 0.8,
-            "summary": "Lots of stuff happened.",
-            "key_events": [{"topic": "Event", "category": "TECH_EVENT", "priority": 5, "confidence": 0.8, "detail": "x"}],
-        }
-
-        events = [
-            RawEvent(f"ethereum", "TECH_EVENT", "upgrade", f"Event {i}", "rss", 0.5 + (i % 10) * 0.05)
-            for i in range(60)
+    async def test_analyze_chain_source_diversity_bonus(self):
+        """More independent sources should boost priority score."""
+        signals = [
+            _make_signal("solana", "PARTNERSHIP", "Partner A", priority_score=5, rel=0.9,
+                         activity=[{"source": "Twitter", "reliability": 0.9, "evidence": "tweet"}]),
+            _make_signal("solana", "PARTNERSHIP", "Partner B", priority_score=4, rel=0.8,
+                         activity=[{"source": "RSS", "reliability": 0.8, "evidence": "blog"}]),
+            _make_signal("solana", "PARTNERSHIP", "Partner C", priority_score=3, rel=0.7,
+                         activity=[{"source": "GitHub", "reliability": 0.7, "evidence": "repo"}]),
         ]
+        digest = await analyze_chain("solana", signals)
+        # Top score is 5, +2 bonus for 3 sources (sources_seen - 1) = 7
+        assert digest.priority_score == 7
+        assert digest.sources_seen == 3
 
-        digest = await analyze_chain("ethereum", events, client, max_events_in_prompt=40)
-        assert isinstance(digest, ChainDigest)
-        # Verify prompt was called with fewer events (can't inspect directly, but
-        # test passes if no crash and result is valid)
-        assert digest.priority_score == 5
+    @pytest.mark.asyncio
+    async def test_analyze_all_chains_includes_empty(self):
+        """Chains with no signals should still appear in output."""
+        signals_by_chain = {
+            "solana": [_make_signal("solana", "TECH_EVENT", "Upgrade", priority_score=5)],
+        }
+        digests = await analyze_all_chains(signals_by_chain)
+        chains = {d.chain for d in digests}
+        assert "solana" in chains
+        # Should include all configured chains (even empty ones)
+        assert len(digests) >= len(signals_by_chain)

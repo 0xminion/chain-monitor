@@ -1,12 +1,14 @@
-"""Chain Monitor v2.0 — Main entry point.
+"""Chain Monitor v3.0 — Agent-native pipeline.
 
 6-stage pipeline:
   1. Parallel collect (async gather across all collectors)
   2. Dedup (O(n) hash-based)
-  3. Categorize + score + reinforce (per-event, backward compat)
-  4. Per-chain LLM analyze (27 parallel calls, semantic synthesis)
-  5. Final digest synthesize (LLM prose for ≥5, bullets for <5)
+  3. Categorize + score + reinforce (deterministic heuristics)
+  4. Per-chain deterministic analyze (builds ChainDigest for agent review)
+  5. Agent prompt synthesis (rich markdown prompt saved for running agent)
   6. Deliver (Telegram) + cleanup
+
+No external LLM calls. The running agent is the synthesis engine.
 """
 
 import asyncio
@@ -25,7 +27,6 @@ from processors.reinforcement import SignalReinforcer
 from processors.chain_analyzer import analyze_all_chains
 from processors.summary_engine import synthesize_digest
 from output.telegram_sender import TelegramSender
-from processors.llm_client import LLMClient
 
 # Import all collectors
 from collectors.defillama import DefiLlamaCollector
@@ -47,18 +48,20 @@ logger = logging.getLogger("chain-monitor")
 
 
 async def run_pipeline() -> PipelineContext:
-    """Execute the full 6-stage pipeline.
+    """Execute the full 6-stage agent-native pipeline.
 
     Returns a PipelineContext with all intermediate and final data.
+    The running agent reads ctx.final_digest (or the saved prompt)
+    and produces the prose digest.
     """
     reload_configs()
     ctx = PipelineContext()
     logger.info("=" * 50)
-    logger.info("Chain Monitor v2.0 — Starting pipeline")
+    logger.info("Chain Monitor v3.0 — Agent-native pipeline")
     logger.info(f"Active chains: {len(get_active_chains())}")
     logger.info("=" * 50)
 
-    # ── Stage 1: Parallel Collect ──────────────────────────────
+    # ── Stage 1: Parallel Collect ─────────────────────────────────────
     collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
@@ -78,15 +81,14 @@ async def run_pipeline() -> PipelineContext:
         f"{len([c for c in collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy collectors"
     )
 
-    # ── Stage 2: Dedup (O(n)) ──────────────────────────────────
+    # ── Stage 2: Dedup (O(n)) ─────────────────────────────────────────
     ctx.unique_events = deduplicate_events(ctx.raw_events)
     logger.info(
         f"Stage 2 complete: {len(ctx.unique_events)} unique events "
         f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
     )
 
-    # ── Stage 3: Categorize + Score + Reinforce ────────────────
-    # 3a. Categorize + score
+    # ── Stage 3: Categorize + Score + Reinforce ───────────────────────
     categorizer = EventCategorizer()
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
@@ -95,7 +97,6 @@ async def run_pipeline() -> PipelineContext:
     signals_for_storage: list = []
 
     for ev in ctx.unique_events:
-        # Categorize (keyword + optional semantic)
         ev_dict = {
             "chain": ev.chain,
             "category": ev.category,
@@ -112,7 +113,6 @@ async def run_pipeline() -> PipelineContext:
         ev.semantic = categorized.get("semantic")
         enriched_events.append(ev)
 
-        # Score into Signal (backward compat with storage)
         try:
             signal = scorer.score(categorized)
             signals_for_storage.append(signal)
@@ -138,50 +138,44 @@ async def run_pipeline() -> PipelineContext:
     ctx.signals = reinforced_signals
     logger.info(f"Stage 3b complete: {len(ctx.signals)} signals reinforced")
 
-    # ── Stage 4: Per-chain LLM analyze ───────────────────────────
-    # Group enriched events by chain (pass the UNIQUE events, not reinforced signals,
-    # so the LLM sees all distinct raw observations to merge them properly)
-    events_by_chain: dict[str, list[RawEvent]] = {}
-    for ev in enriched_events:
-        events_by_chain.setdefault(ev.chain, []).append(ev)
+    # ── Stage 4: Per-chain deterministic analyze ─────────────────────────────
+    signals_by_chain: dict[str, list] = {}
+    for sig in ctx.signals:
+        signals_by_chain.setdefault(sig.chain, []).append(sig)
 
     # Ensure every configured chain has an entry (even empty)
     for chain_name in get_active_chains():
-        events_by_chain.setdefault(chain_name, [])
+        signals_by_chain.setdefault(chain_name, [])
 
-    # Shared LLM client for all chain analyses
-    llm_client = LLMClient.from_env()
-    ctx.chain_digests = await analyze_all_chains(
-        events_by_chain,
-        client=llm_client,
-        max_concurrent=int(get_env("LLM_MAX_CONCURRENT_CHAINS", "5")),
-    )
+    ctx.chain_digests = await analyze_all_chains(signals_by_chain)
     significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
     logger.info(
         f"Stage 4 complete: {len(ctx.chain_digests)} chain digests, "
         f"{significant} with significant activity"
     )
 
-    # ── Stage 5: Final digest synthesize ───────────────────────
+    # ── Stage 5: Agent prompt synthesis ──────────────────────────────────
     ctx.final_digest = await synthesize_digest(
         ctx.chain_digests,
         source_health=ctx.health,
         source_health_detail=ctx.feed_health,
-        client=llm_client,
     )
-    logger.info(f"Stage 5 complete: digest {len(ctx.final_digest)} chars")
+    logger.info(f"Stage 5 complete: agent prompt built ({len(ctx.final_digest)} chars)")
 
-    # ── Stage 6: Deliver + cleanup ─────────────────────────────
+    # ── Stage 6: Deliver + cleanup ─────────────────────────────────────
     sender = TelegramSender()
     sent = False
     if _should_send(ctx.chain_digests):
-        try:
-            sent = await sender.send(ctx.final_digest)
-            logger.info(f"Digest delivered: {sent}")
-        except Exception as exc:
-            logger.error(f"Telegram delivery failed: {exc}")
+        if "🤖 Agent synthesis required" in ctx.final_digest:
+            logger.info("Agent prompt ready — awaiting agent synthesis before sending")
+        else:
+            try:
+                sent = await sender.send(ctx.final_digest)
+                logger.info(f"Digest delivered: {sent}")
+            except Exception as exc:
+                logger.error(f"Telegram delivery failed: {exc}")
     else:
-        logger.info("Digest not sent — fewer than 3 chains with significant activity")
+        logger.info("Digest not sent — fewer than 2 chains with significant activity")
 
     # Save run log
     _save_run_log(ctx, sent)

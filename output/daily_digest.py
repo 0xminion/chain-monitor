@@ -1,6 +1,7 @@
 """Daily digest formatter — generates the daily Telegram digest.
 
-v0.2: Added LLM-powered digest generation with template fallback.
+Agent-native: template fallback only. The summary_engine builds the rich
+agent prompt for prose synthesis.
 """
 
 import logging
@@ -8,9 +9,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-
-from config.loader import get_env
-from output.llm_digest_generator import LLMDigestGenerator
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
@@ -170,10 +168,10 @@ def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
 class DailyDigestFormatter:
 
     def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
-        """Format signals into daily digest text.
+        """Format signals into daily digest text (template fallback only).
 
-        v0.2: Routes to LLM generator if LLM_DIGEST_ENABLED=true and LLM available,
-        otherwise falls back to template-based formatting.
+        v0.2: LLM path removed — agent-native architecture. The summary_engine
+        builds the rich agent prompt. This formatter exists for backward compat.
         """
         signals = [s for s in signals if not _is_noise(s)]
 
@@ -187,39 +185,16 @@ class DailyDigestFormatter:
         # Time filter: only include signals from past 24h
         signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
 
-        # Issue #1: Date — timezone-aware UTC date (always correct)
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
 
-        # Issue #5: Ensure all 10 collector slots show up in health (only if caller provided health)
+        # Ensure all 10 collector slots show up in health
         if source_health:
             fixed_health = {**source_health}
             _ensure_collector_health_slots(fixed_health)
         else:
             fixed_health = None
 
-        # ── v0.2: LLM Digest Generation (default, with template fallback) ────
-        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "true").lower() == "true"
-        if llm_digest_enabled:
-            try:
-                llm_gen = LLMDigestGenerator()
-                llm_output = llm_gen.generate(
-                    signals=signals,
-                    source_health=fixed_health,
-                    source_health_detail=source_health_detail,
-                )
-                if llm_output and llm_output.strip():
-                    logger.info("[digest] LLM digest generated successfully")
-                    # Still append source health footer
-                    if fixed_health:
-                        llm_output += "\n" + "\n".join(self._format_health(fixed_health, detail=source_health_detail))
-                    return llm_output
-                else:
-                    logger.warning("[digest] LLM digest returned empty — falling back to template")
-            except Exception as e:
-                logger.warning(f"[digest] LLM digest generation failed: {e}")
-
-        # ── Template-based formatting (fallback) ────────────────────────────
-        # Issue #3: Consistent score capitalization
+        # Template-based formatting (only path available — agent synthesizes prose)
         critical = [s for s in signals if s.priority_score >= 8]
         high = [s for s in signals if 5 <= s.priority_score < 8]
         notable = [s for s in signals if 2 <= s.priority_score < 5]
@@ -249,12 +224,11 @@ class DailyDigestFormatter:
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Notable — Score 2+ with summary prose (Issue #3 expansion)
+        # Notable — Score 2+ with summary prose
         if notable:
             sections.append("🔵 Notable (Score 2+)")
             for s in sorted(notable, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
-                # Add trader context / why it matters if available
                 if s.trader_context:
                     sections.append(f"  → {s.trader_context}")
                 sections.append("")
@@ -279,7 +253,7 @@ class DailyDigestFormatter:
         if not critical and not high and not medium and not dev_activity and not partnerships:
             sections.append("— No high-priority events. Quiet day.")
 
-        # Issue #5: Use fixed health with all 10 collectors
+        # Health footer
         if fixed_health:
             sections.extend(self._format_health(fixed_health, detail=source_health_detail))
 

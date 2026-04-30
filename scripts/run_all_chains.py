@@ -4,7 +4,9 @@ Full pipeline for ALL chains using divide-and-conquer.
 
 Phase 1: Non-Twitter collectors (run once)
 Phase 2: Twitter in batches with zombie cleanup
-Phase 3: Process through v2.0 pipeline (dedup → categorize → score → reinforce → chain analyze → synthesize)
+Phase 3: Agent-native pipeline (dedup → categorize → score → reinforce → chain analyze → build prompt)
+
+No external LLM calls. The running agent reads the saved prompt and writes prose.
 
 Run with: timeout 1800 python3 scripts/run_all_chains.py
 """
@@ -68,7 +70,6 @@ from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.chain_analyzer import analyze_all_chains
 from processors.summary_engine import synthesize_digest
-from processors.llm_client import LLMClient
 from output.telegram_sender import TelegramSender
 
 from collectors.defillama import DefiLlamaCollector
@@ -92,9 +93,8 @@ ALL_CHAINS = list(get_chains().keys())
 TIER_1_2 = [c for c, cfg in get_chains().items() if cfg.get("tier") in (1, 2)]
 
 print("=" * 60)
-print(f"Chain Monitor — All {len(ALL_CHAINS)} Chains (Divide & Conquer)")
+print(f"Chain Monitor — All {len(ALL_CHAINS)} Chains (Agent-Native)")
 print(f"Time: {datetime.now(timezone.utc).isoformat()}")
-print(f"LLM model: {get_env('LLM_DIGEST_MODEL', 'gemma4:31b-cloud')}")
 print(f"Tier 1+2 focus: {len(TIER_1_2)} chains")
 print("=" * 60)
 
@@ -113,7 +113,7 @@ def _persist_digest(digest_text: str):
 
 
 async def run_all_chains_pipeline() -> PipelineContext:
-    """Execute full pipeline with batched Twitter collection."""
+    """Execute full agent-native pipeline with batched Twitter collection."""
     ctx = PipelineContext()
 
     # ── Phase 1: Non-Twitter collectors ──────────────────────────────────────
@@ -219,36 +219,29 @@ async def run_all_chains_pipeline() -> PipelineContext:
     ctx.signals = reinforced_signals
     print(f"  Signals reinforced: {len(ctx.signals)}")
 
-    # ── Phase 5: Per-chain LLM analyze ───────────────────────────────────────
-    print("\n[Phase 5] Per-chain LLM analysis...")
-    _sweep_stale_chromes(min_age_sec=5)
+    # ── Phase 5: Per-chain deterministic analyze ───────────────────────────────────────
+    print("\n[Phase 5] Per-chain deterministic analysis...")
 
-    events_by_chain = {}
-    for ev in enriched_events:
-        events_by_chain.setdefault(ev.chain, []).append(ev)
+    signals_by_chain = {}
+    for sig in ctx.signals:
+        signals_by_chain.setdefault(sig.chain, []).append(sig)
     for chain_name in get_active_chains():
-        events_by_chain.setdefault(chain_name, [])
+        signals_by_chain.setdefault(chain_name, [])
 
-    llm_client = LLMClient.from_env()
-    ctx.chain_digests = await analyze_all_chains(
-        events_by_chain,
-        client=llm_client,
-        max_concurrent=int(get_env("LLM_MAX_CONCURRENT_CHAINS", "5")),
-    )
+    ctx.chain_digests = await analyze_all_chains(signals_by_chain)
     significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
     print(f"  Chain digests: {len(ctx.chain_digests)} ({significant} with activity)")
     for d in sorted(ctx.chain_digests, key=lambda x: -x.priority_score)[:5]:
         print(f"    {d.chain}: score={d.priority_score}, topic={d.dominant_topic[:50]}")
 
-    # ── Phase 6: Final digest synthesize ─────────────────────────────────────
-    print("\n[Phase 6] Synthesizing final digest...")
+    # ── Phase 6: Agent prompt synthesis ─────────────────────────────────────────
+    print("\n[Phase 6] Building agent synthesis prompt...")
     ctx.final_digest = await synthesize_digest(
         ctx.chain_digests,
         source_health=ctx.health,
         source_health_detail=ctx.feed_health,
-        client=llm_client,
     )
-    print(f"  Digest length: {len(ctx.final_digest)} chars")
+    print(f"  Prompt saved. Length: {len(ctx.final_digest)} chars")
 
     # ── Phase 7: Deliver ─────────────────────────────────────────────────────
     sender = TelegramSender()
@@ -256,11 +249,14 @@ async def run_all_chains_pipeline() -> PipelineContext:
     significant_digests = [d for d in ctx.chain_digests if d.has_significant_activity()]
     high_priority = [d for d in ctx.chain_digests if d.priority_score >= 5]
     if len(significant_digests) >= 2 or len(high_priority) >= 1:
-        try:
-            sent = await sender.send(ctx.final_digest)
-            print(f"  Digest delivered: {sent}")
-        except Exception as exc:
-            logger.error(f"Telegram delivery failed: {exc}")
+        if "🤖 Agent synthesis required" in ctx.final_digest:
+            print("  Agent prompt ready — awaiting agent synthesis before sending")
+        else:
+            try:
+                sent = await sender.send(ctx.final_digest)
+                print(f"  Digest delivered: {sent}")
+            except Exception as exc:
+                logger.error(f"Telegram delivery failed: {exc}")
     else:
         print("  Digest not sent — low activity threshold")
 

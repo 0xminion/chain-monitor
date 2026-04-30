@@ -1,11 +1,9 @@
-"""Tests for summary engine."""
+"""Tests for summary engine (agent-native prompt builder)."""
 
 import pytest
-from unittest.mock import MagicMock
 
 from processors.pipeline_types import ChainDigest
-from processors.summary_engine import synthesize_digest
-from processors.llm_client import LLMError
+from processors.summary_engine import synthesize_digest, _build_daily_prompt
 
 
 class TestSummaryEngine:
@@ -17,44 +15,42 @@ class TestSummaryEngine:
         assert "Quiet day" in result
 
     @pytest.mark.asyncio
-    async def test_fallback_digest_no_llm(self):
-        """When LLM is disabled, produce structured fallback."""
-        import os
-        os.environ["LLM_DIGEST_ENABLED"] = "false"
+    async def test_builds_agent_prompt(self):
+        """When digests exist, synthesize_digest should save a prompt and return indicator."""
         digests = [
-            ChainDigest("solana", 1, "majors", "Solana upgrade", priority_score=8, dominant_topic="Mainnet v2"),
-            ChainDigest("ethereum", 1, "majors", "Eth quiet", priority_score=2, dominant_topic="Nothing major"),
+            ChainDigest("solana", 1, "majors", "", priority_score=8, dominant_topic="Mainnet v2",
+                        key_events=[{"topic": "v2 release", "category": "TECH_EVENT", "priority": 8,
+                                     "confidence": 0.9, "detail": "Solana v2 tagged", "why_it_matters": "Perf gains",
+                                     "url": "https://x.com/solana/status/123", "sources": ["Twitter"]}]),
+            ChainDigest("ethereum", 1, "majors", "", priority_score=2, dominant_topic="Quiet",
+                        key_events=[]),
         ]
         result = await synthesize_digest(digests)
-        assert "📊 Chain Monitor" in result
-        assert "Solana" in result or "solana" in result
+        assert "🤖 Agent synthesis required" in result
+        assert "daily_prompt_" in result  # path to saved prompt
 
     @pytest.mark.asyncio
-    async def test_llm_prose_for_high_priority(self):
-        """When LLM works and chains have priority ≥5, prose digest is produced."""
-        client = MagicMock()
-        client.generate.return_value = (
-            "📊 Chain Monitor — Apr 27, 2026\n\n"
-            "🧠 Today's theme\nSolana is the main story.\n\n"
-            "**SOLANA (Score: 8)**\nMajor upgrade releasing that improves throughput.\n\n"
-            "👀 Watch\nFollow ETH Dencun timeline."
-        )
-
+    async def test_prompt_contains_chain_data(self):
+        """The saved prompt should contain chain names, scores, and event details."""
         digests = [
-            ChainDigest("solana", 1, "majors", "Solana upgrade", priority_score=8, dominant_topic="Mainnet v2"),
+            ChainDigest("solana", 1, "majors", "", priority_score=8, dominant_topic="Mainnet v2",
+                        key_events=[{"topic": "v2 release", "category": "TECH_EVENT", "priority": 8,
+                                     "confidence": 0.9, "detail": "Solana v2 tagged", "why_it_matters": "Perf gains",
+                                     "url": "https://x.com/solana/status/123", "sources": ["Twitter"]}]),
         ]
-        result = await synthesize_digest(digests, client=client)
-        assert "Solana" in result
-        assert "👀 Watch" in result
+        prompt = _build_daily_prompt(digests, date_str="Apr 29, 2026")
+        assert "SOLANA" in prompt
+        assert "Score: 8" in prompt
+        assert "v2 release" in prompt
+        assert "https://x.com/solana/status/123" in prompt
+        assert "Daily Digest Agent Prompt" in prompt
 
     @pytest.mark.asyncio
-    async def test_llm_failure_uses_fallback(self):
-        """LLM error should fall back to structured output."""
-        client = MagicMock()
-        client.generate.side_effect = LLMError("timeout")
-
+    async def test_prompt_with_health(self):
         digests = [
-            ChainDigest("solana", 1, "majors", "Upgrade", priority_score=8, dominant_topic="Mainnet v2"),
+            ChainDigest("solana", 1, "majors", "", priority_score=5, dominant_topic="Upgrade"),
         ]
-        result = await synthesize_digest(digests, client=client)
-        assert "📊 Chain Monitor" in result
+        health = {"defillama": {"status": "healthy"}, "twitter": {"status": "down"}}
+        prompt = _build_daily_prompt(digests, source_health=health, date_str="Apr 29, 2026")
+        assert "Collectors:" in prompt
+        assert "degraded" in prompt or "down" in prompt
