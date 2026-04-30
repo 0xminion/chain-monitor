@@ -121,9 +121,6 @@ Output format:
 
 [For chains with score < 2, omit or use a single bullet.]
 
-👀 Watch
-[2-3 specific follow-ups to monitor]
-
 Rules:
 - Use Telegram Markdown: **bold** for emphasis. No # headers. No HTML tags.
 - Never use all-caps headings.

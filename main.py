@@ -1,4 +1,4 @@
-"""Chain Monitor v3.0 — Agent-native pipeline.
+"""Chain Monitor v0.1.0 — Agent-native pipeline.
 
 6-stage pipeline:
   1. Parallel collect (async gather across all collectors)
@@ -57,7 +57,7 @@ async def run_pipeline() -> PipelineContext:
     reload_configs()
     ctx = PipelineContext()
     logger.info("=" * 50)
-    logger.info("Chain Monitor v3.0 — Agent-native pipeline")
+    logger.info("Chain Monitor v0.1.0 — Agent-native pipeline")
     logger.info(f"Active chains: {len(get_active_chains())}")
     logger.info("=" * 50)
 

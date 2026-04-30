@@ -2,19 +2,19 @@
 
 Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 9 event categories, scores events, synthesizes per-chain narratives via LLM, and delivers daily/weekly digests to Telegram.
 
-## v2.0 — Chain-Centric LLM Synthesis
+## v0.1.0 — Chain-Centric Agent-Native Pipeline
 
 The pipeline now treats every chain as a unit of intelligence:
 
 1. **Parallel Collect** — all 10 collectors run concurrently via `asyncio.gather()`
 2. **Dedup** — O(n) hash-based deduplication (URL + fingerprint index)
-3. **Categorize + Score** — keyword categorization + rule-based scoring (backward compatible)
-4. **Per-chain LLM analyze** — 27 parallel LLM calls, each merges related signals into coherent observations
-- **Digest synthesize** — LLM prose for chains scoring ≥2, structured bullets for <2. Markdown links embedded on first word of sentence.
-- **Weekly synthesize** — Event-driven thematic sections (up to 10) with emoji headers, fed from 7 days of persisted daily digests. Chain tags per section.
-- **Deliver** — Telegram send + run log + daily digest persistence
+3. **Categorize + Score** — keyword categorization + rule-based scoring
+4. **Per-chain deterministic analyze** — deterministic scoring merges related signals into ChainDigests
+5. **Agent-native synthesis** — the running agent reads a rich prompt and writes prose directly. No external LLM subprocess calls.
+6. **Weekly synthesize** — Event-driven thematic sections fed from 7 days of persisted daily digests
+7. **Deliver** — Telegram send + run log + daily digest persistence
 
-### What's New in v2.0
+### What's New in v0.1.0
 
 - **Per-chain narrative**: Instead of raw signal bullets, the digest tells you *"Polygon activated Visa rails for global stablecoin settlement — watch for transaction volume."*
 - **Cross-source merging**: GitHub release + tweet + blog post about the same event = ONE merged observation with multiple sources

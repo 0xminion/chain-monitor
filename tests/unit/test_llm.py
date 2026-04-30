@@ -405,16 +405,15 @@ class TestSemanticEnricherUnit:
         assert h["provider"] == "ollama"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CHAIN_MONITOR_ENABLE_LLM_TESTS") != "1",
+    reason="LLM integration tests disabled (set CHAIN_MONITOR_ENABLE_LLM_TESTS=1)",
+)
 class TestSemanticEnricherWithRealIntegration:
     """These tests use real Ollama and are conditionally skipped.
-    
+
     Set CHAIN_MONITOR_ENABLE_LLM_TESTS=1 to run them.
     """
-
-    @pytest.fixture
-    def can_run_llm(self, enricher):
-        if os.environ.get("CHAIN_MONITOR_ENABLE_LLM_TESTS") != "1":
-            pytest.skip("LLM integration tests disabled (set CHAIN_MONITOR_ENABLE_LLM_TESTS=1)")
 
     def test_real_llm_call(self):
         """End-to-end enrichment with real Ollama."""

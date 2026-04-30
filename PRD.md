@@ -1,6 +1,6 @@
 # Chain Monitor — Product Requirements Document
 
-**Version:** v0.1
+**Version:** v0.1.0
 **Date:** 2026-04-14
 **Scope:** 27-chain monitoring system
 **Cadence:** Daily digest + weekly deep analysis
