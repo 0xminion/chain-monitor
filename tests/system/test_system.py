@@ -59,8 +59,8 @@ class TestImportsWork:
         assert BaseCollector is not None
 
     def test_import_output(self):
-        from output.daily_digest import DailyDigestFormatter
-        assert DailyDigestFormatter is not None
+        from processors.summary_engine import synthesize_digest
+        assert synthesize_digest is not None
 
     def test_import_config(self):
         from config.loader import (
@@ -120,10 +120,9 @@ class TestProcessorInstantiation:
         c = EventCategorizer()
         assert c is not None
 
-    def test_formatter(self):
-        from output.daily_digest import DailyDigestFormatter
-        f = DailyDigestFormatter()
-        assert f is not None
+    def test_agent_native_synthesis(self):
+        from processors.summary_engine import synthesize_digest
+        assert synthesize_digest is not None
 
 
 class TestSourceHealth:

@@ -1,13 +1,12 @@
 """Integration test for full signal pipeline."""
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.signal import Signal
-from output.daily_digest import DailyDigestFormatter
+from main import _should_send
 
 
 @pytest.fixture
@@ -19,13 +18,11 @@ def pipeline_components(tmp_path, monkeypatch, mock_config):
     categorizer = EventCategorizer()
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
-    formatter = DailyDigestFormatter()
 
     return {
         "categorizer": categorizer,
         "scorer": scorer,
         "reinforcer": reinforcer,
-        "formatter": formatter,
     }
 
 
@@ -56,11 +53,10 @@ class TestFullPipeline:
         assert signal.priority_score == signal.impact * signal.urgency
 
     def test_full_pipeline_with_reinforcement(self, pipeline_components):
-        """Raw events → categorizer → scorer → reinforcer → digest."""
+        """Raw events → categorizer → scorer → reinforcer."""
         cat = pipeline_components["categorizer"]
         scorer = pipeline_components["scorer"]
         reinforcer = pipeline_components["reinforcer"]
-        formatter = pipeline_components["formatter"]
 
         # First event
         raw1 = {
@@ -102,11 +98,12 @@ class TestFullPipeline:
         result3, action3 = reinforcer.process(sig3)
         assert action3 == "created"
 
-        # Format digest
+        # Verify signals exist in reinforcer storage
         all_signals = list(reinforcer.signals.values())
-        digest = formatter.format(all_signals)
-        assert "Chain Monitor" in digest
-        assert "Ethereum" in digest
+        assert len(all_signals) >= 2  # ethereum (reinforced) + solana (created)
+        chains = {s.chain for s in all_signals}
+        assert "ethereum" in chains
+        assert "solana" in chains
 
     def test_risk_alert_high_priority(self, pipeline_components):
         """Hack event should produce high-priority signal."""
@@ -149,10 +146,9 @@ class TestFullPipeline:
         assert signal.priority_score == 15
 
     def test_digest_should_send(self, pipeline_components):
-        """Verify should_send logic with real signals."""
+        """Verify _should_send logic with real signals."""
         cat = pipeline_components["categorizer"]
         scorer = pipeline_components["scorer"]
-        formatter = pipeline_components["formatter"]
 
         events = [
             {"chain": "ethereum", "description": "TVL crosses milestone", "source": "DL", "reliability": 0.9, "evidence": {}},
@@ -160,15 +156,27 @@ class TestFullPipeline:
             {"chain": "arbitrum", "description": "New upgrade released", "source": "GH", "reliability": 0.9, "evidence": {}},
         ]
 
-        signals = []
+        from processors.pipeline_types import ChainDigest
+        digests = []
         for evt in events:
             c = cat.categorize(evt)
             s = scorer.score(c)
-            signals.append(s)
+            # Build a minimal ChainDigest for _should_send
+            digests.append(ChainDigest(
+                chain=s.chain,
+                chain_tier=1,
+                chain_category="L1",
+                summary="",
+                key_events=[],
+                priority_score=s.priority_score,
+                dominant_topic="",
+                sources_seen=1,
+                event_count=1,
+                confidence=0.8,
+            ))
 
-        # Depending on scores, may or may not send
-        count_ge_3 = sum(1 for s in signals if s.priority_score >= 3)
-        assert formatter.should_send(signals) == (count_ge_3 >= 3)
+        result = _should_send(digests)
+        assert result is True
 
     def test_echo_detection_in_pipeline(self, pipeline_components):
         """Repeated similar events should be detected as echoes."""
