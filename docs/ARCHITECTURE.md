@@ -150,5 +150,5 @@ python3 -m pytest tests/ -q
 | `scripts/doctor.py` | End-to-end health check with auto-fix hints |
 | `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
 | `scripts/run_all_chains.py` | Full pipeline for all 27 chains (batch Twitter, divide & conquer) |
-| `scripts/run_stored_reanalysis.py` | Twitter-centric v2.0 stored re-analysis → events → analyze → digest) |
+| `scripts/run_stored_reanalysis.py` | Twitter-centric v2.0 stored data re-analysis → events → analyze → digest) |
 | `scripts/run_weekly_digest.py` | Weekly event-driven synthesizer (7 days → thematic sections) |
