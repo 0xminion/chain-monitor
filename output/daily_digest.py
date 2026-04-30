@@ -13,36 +13,7 @@ from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
 
-# ── Issue #6: Chain emoji mapping ────────────────────────────────────────────
-_CHAIN_EMOJIS = {
-    "solana": "⚡",
-    "base": "🔵",
-    "ethereum": "⬡",
-    "bitcoin": "🟠",
-    "sui": "💧",
-    "aptos": "🅰️",
-    "arbitrum": "🔷",
-    "optimism": "🔴",
-    "hyperliquid": "⚗️",
-    "monad": "🔮",
-    "xlayer": "❌",
-    "bsc": "🟡",
-    "polkadot": "🔘",
-    "cosmos": "🌌",
-    "cardano": "🔷",
-    "algorand": "△",
-    "near": "🌑",
-    "starknet": "🦁",
-    "zksync": "💎",
-    "mantle": "🟤",
-}
-
 _EXPECTED_COLLECTOR_COUNT = 10  # total collectors in pipeline
-
-
-def _chain_emoji(chain: str) -> str:
-    """Return emoji prefix for a chain name."""
-    return _CHAIN_EMOJIS.get(chain.lower(), "🔗")
 
 
 def _ensure_collector_health_slots(health: dict):
@@ -265,21 +236,19 @@ class DailyDigestFormatter:
         return count >= 3
 
     def _format_signal(self, signal: Signal) -> str:
-        """Format a single signal with chain emoji, click link, consistent Score (Issues #3, #6, #7)."""
+        """Format a single signal with click link and consistent Score (Issues #3, #7)."""
         chain = signal.chain.capitalize()
-        emoji = _chain_emoji(signal.chain)
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
-        # Issue #3: Consistent capitalized "Score" across all tiers
         score_label = f"Score: {signal.priority_score}"
 
         if url:
-            title = f"[{desc_clean} 📝]({url})"
+            title = f"[{desc_clean}]({url})"
         else:
             title = desc_clean
 
-        return f"• {emoji} {chain}: {title} ({score_label}) [{sources_str}]"
+        return f"• {chain}: {title} ({score_label}) [{sources_str}]"
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""
