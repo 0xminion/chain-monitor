@@ -155,7 +155,7 @@ async def run_all_chains_pipeline() -> PipelineContext:
 
         batch_events = []
         try:
-            batch_events = twitter.collect()
+            batch_events = await asyncio.to_thread(twitter.collect)
             ctx.raw_events.extend(batch_events)
             total_tweets += len(batch_events)
             print(f"  [OK] Batch {i}: {len(batch_events)} tweets")
