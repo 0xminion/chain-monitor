@@ -1,12 +1,12 @@
-"""Chain Monitor v3.0 — Main entry point.
+"""Chain Monitor v2.0 — Main entry point.
 
-6-stage pipeline (agent-native):
-  1. Parallel collect
-  2. Dedup (O(n))
-  3. Categorize pass-through (agent assigns categories)
-  4. Chain analysis group (agent merges + synthesizes)
-  5. Agent synthesis (delegated to running agent)
-  6. Deliver (Telegram or prompt) + cleanup
+6-stage pipeline:
+  1. Parallel collect (async gather across all collectors)
+  2. Dedup (O(n) hash-based)
+  3. Categorize + score + reinforce (per-event, backward compat)
+  4. Per-chain LLM analyze (27 parallel calls, semantic synthesis)
+  5. Final digest synthesize (LLM prose for ≥5, bullets for <5)
+  6. Deliver (Telegram) + cleanup
 """
 
 import asyncio
@@ -24,9 +24,10 @@ from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.chain_analyzer import analyze_all_chains
 from processors.summary_engine import synthesize_digest
-from processors.agent_bridge import save_agent_input, agent_synthesize
 from output.telegram_sender import TelegramSender
+from processors.llm_client import LLMClient
 
+# Import all collectors
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.github_collector import GitHubCollector
@@ -46,28 +47,46 @@ logger = logging.getLogger("chain-monitor")
 
 
 async def run_pipeline() -> PipelineContext:
+    """Execute the full 6-stage pipeline.
+
+    Returns a PipelineContext with all intermediate and final data.
+    """
     reload_configs()
     ctx = PipelineContext()
     logger.info("=" * 50)
-    logger.info("Chain Monitor v3.0 — Starting agent-native pipeline")
+    logger.info("Chain Monitor v2.0 — Starting pipeline")
     logger.info(f"Active chains: {len(get_active_chains())}")
     logger.info("=" * 50)
 
-    # ── Stage 1: Collect ────────────────────────────────────────
+    # ── Stage 1: Parallel Collect ──────────────────────────────
     collectors = [
-        DefiLlamaCollector(), CoinGeckoCollector(), GitHubCollector(),
-        RSSCollector(), TwitterCollector(standalone_mode=False),
-        RegulatoryCollector(), RiskAlertCollector(), TradingViewCollector(),
-        EventsCollector(), HackathonOutcomesCollector(),
+        DefiLlamaCollector(),
+        CoinGeckoCollector(),
+        GitHubCollector(),
+        RSSCollector(),
+        TwitterCollector(standalone_mode=False),
+        RegulatoryCollector(),
+        RiskAlertCollector(),
+        TradingViewCollector(),
+        EventsCollector(),
+        HackathonOutcomesCollector(),
     ]
+
     ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(collectors)
-    logger.info(f"Stage 1 complete: {len(ctx.raw_events)} raw events")
+    logger.info(
+        f"Stage 1 complete: {len(ctx.raw_events)} raw events from "
+        f"{len([c for c in collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy collectors"
+    )
 
-    # ── Stage 2: Dedup ──────────────────────────────────────────
+    # ── Stage 2: Dedup (O(n)) ──────────────────────────────────
     ctx.unique_events = deduplicate_events(ctx.raw_events)
-    logger.info(f"Stage 2 complete: {len(ctx.unique_events)} unique events")
+    logger.info(
+        f"Stage 2 complete: {len(ctx.unique_events)} unique events "
+        f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
+    )
 
-    # ── Stage 3: Categorize pass-through ────────────────────────
+    # ── Stage 3: Categorize + Score + Reinforce ────────────────
+    # 3a. Categorize + score
     categorizer = EventCategorizer()
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
@@ -76,59 +95,81 @@ async def run_pipeline() -> PipelineContext:
     signals_for_storage: list = []
 
     for ev in ctx.unique_events:
+        # Categorize (keyword + optional semantic)
         ev_dict = {
-            "chain": ev.chain, "category": ev.category, "subcategory": ev.subcategory,
-            "description": ev.description, "source": ev.source, "reliability": ev.reliability,
-            "evidence": ev.evidence, "semantic": ev.semantic,
+            "chain": ev.chain,
+            "category": ev.category,
+            "subcategory": ev.subcategory,
+            "description": ev.description,
+            "source": ev.source,
+            "reliability": ev.reliability,
+            "evidence": ev.evidence,
+            "semantic": ev.semantic,
         }
-        categorizer.categorize(ev_dict)
-        ev.category = ev_dict["category"]
-        ev.subcategory = ev_dict["subcategory"]
-        ev.semantic = ev_dict.get("semantic")
+        categorized = categorizer.categorize(ev_dict)
+        ev.category = categorized.get("category", ev.category)
+        ev.subcategory = categorized.get("subcategory", ev.subcategory)
+        ev.semantic = categorized.get("semantic")
         enriched_events.append(ev)
 
+        # Score into Signal (backward compat with storage)
         try:
-            signal = scorer.score(ev_dict)
+            signal = scorer.score(categorized)
             signals_for_storage.append(signal)
         except Exception as exc:
             logger.warning(f"Scoring failed for {ev.chain}: {exc}")
 
     ctx.signals = signals_for_storage
-    logger.info(f"Stage 3 complete: {len(ctx.signals)} signals (stub scores)")
+    logger.info(f"Stage 3a complete: {len(ctx.signals)} signals scored")
 
-    # 3b. Reinforce (persist for historical tracking)
-    reinforced = []
+    # 3b. Reinforce (persist to storage)
+    reinforced_signals: list = []
     for sig in signals_for_storage:
         try:
-            proc, action = reinforcer.process(sig)
-            reinforced.append(proc)
+            processed_signal, action = reinforcer.process(sig)
+            reinforced_signals.append(processed_signal)
+            if action == "created":
+                logger.info(f"  NEW: [{sig.chain}] {sig.description[:60]} (score {sig.priority_score})")
+            elif action == "reinforced":
+                logger.info(f"  REINFORCED ({sig.source_count}x): [{sig.chain}] {sig.description[:60]}")
         except Exception as exc:
-            logger.warning(f"Reinforcement failed: {exc}")
-    ctx.signals = reinforced
+            logger.warning(f"Reinforcement failed for signal [{sig.chain}]: {exc}")
 
-    # ── Stage 4: Chain grouping + agent input ──────────────────
+    ctx.signals = reinforced_signals
+    logger.info(f"Stage 3b complete: {len(ctx.signals)} signals reinforced")
+
+    # ── Stage 4: Per-chain LLM analyze ───────────────────────────
+    # Group enriched events by chain (pass the UNIQUE events, not reinforced signals,
+    # so the LLM sees all distinct raw observations to merge them properly)
     events_by_chain: dict[str, list[RawEvent]] = {}
     for ev in enriched_events:
         events_by_chain.setdefault(ev.chain, []).append(ev)
+
+    # Ensure every configured chain has an entry (even empty)
     for chain_name in get_active_chains():
         events_by_chain.setdefault(chain_name, [])
 
-    ctx.chain_digests = await analyze_all_chains(events_by_chain, client=None)
-    sig = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
-    logger.info(f"Stage 4 complete: {len(ctx.chain_digests)} chain digests, {sig} with activity")
+    # Shared LLM client for all chain analyses
+    llm_client = LLMClient.from_env()
+    ctx.chain_digests = await analyze_all_chains(
+        events_by_chain,
+        client=llm_client,
+        max_concurrent=int(get_env("LLM_MAX_CONCURRENT_CHAINS", "5")),
+    )
+    significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
+    logger.info(
+        f"Stage 4 complete: {len(ctx.chain_digests)} chain digests, "
+        f"{significant} with significant activity"
+    )
 
-    # ── Stage 4b: Save agent input ─────────────────────────────
-    agent_input_path = save_agent_input(ctx)
-    logger.info(f"Stage 4b complete: agent input saved to {agent_input_path}")
-
-    # ── Stage 5: Agent synthesis ───────────────────────────────
+    # ── Stage 5: Final digest synthesize ───────────────────────
     ctx.final_digest = await synthesize_digest(
         ctx.chain_digests,
         source_health=ctx.health,
         source_health_detail=ctx.feed_health,
-        client=None,
+        client=llm_client,
     )
-    logger.info(f"Stage 5 complete: agent digest stub {len(ctx.final_digest)} chars")
+    logger.info(f"Stage 5 complete: digest {len(ctx.final_digest)} chars")
 
     # ── Stage 6: Deliver + cleanup ─────────────────────────────
     sender = TelegramSender()
@@ -140,54 +181,65 @@ async def run_pipeline() -> PipelineContext:
         except Exception as exc:
             logger.error(f"Telegram delivery failed: {exc}")
     else:
-        logger.info("Digest not sent — low activity threshold")
+        logger.info("Digest not sent — fewer than 3 chains with significant activity")
 
+    # Save run log
     _save_run_log(ctx, sent)
+
+    # Persist daily digest for weekly rollup
     _persist_daily_digest(ctx.final_digest)
 
+    # Cleanup old signals
     try:
         retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
         reinforcer.cleanup_old(retention_days)
-    except Exception:
+    except (ValueError, Exception):
         logger.warning("Failed to cleanup old signals")
 
     logger.info("Pipeline complete")
     return ctx
 
 
-def _should_send(digests: list) -> bool:
-    significant = [d for d in digests if d.has_significant_activity()]
-    high = [d for d in digests if d.priority_score >= 5]
+def _should_send(chain_digests: list) -> bool:
+    """Send digest if ≥2 chains have significant activity or ≥1 high-priority (≥5)."""
+    significant = [d for d in chain_digests if d.has_significant_activity()]
+    high = [d for d in chain_digests if d.priority_score >= 5]
     return len(significant) >= 2 or len(high) >= 1
 
 
-def _save_run_log(ctx, sent):
+def _save_run_log(ctx: PipelineContext, sent: bool):
+    """Write run statistics to storage/health/."""
     log_dir = Path(__file__).parent / "storage" / "health"
     log_dir.mkdir(parents=True, exist_ok=True)
+
     stats = ctx.stats()
     stats["timestamp"] = datetime.now(timezone.utc).isoformat()
     stats["digest_sent"] = sent
     stats["source_health"] = ctx.health
-    path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    log_path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     try:
-        with open(path, "w") as f:
+        with open(log_path, "w") as f:
             json.dump(stats, f, indent=2)
     except Exception as exc:
         logger.warning(f"Failed to write run log: {exc}")
 
 
-def _persist_daily_digest(digest_text):
+def _persist_daily_digest(digest_text: str):
+    """Write daily digest to storage/twitter/summaries for weekly rollup."""
     digest_dir = Path(__file__).parent / "storage" / "twitter" / "summaries"
     digest_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = digest_dir / f"daily_digest_{ts}.txt"
     try:
         path.write_text(digest_text, encoding="utf-8")
+        logger.info(f"Daily digest persisted: {path}")
     except Exception as exc:
         logger.warning(f"Failed to persist daily digest: {exc}")
 
 
 async def main():
+    """Main entry — run pipeline."""
     await run_pipeline()
 
 

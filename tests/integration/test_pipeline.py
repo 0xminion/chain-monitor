@@ -1,13 +1,10 @@
-"""Integration test for full signal pipeline — agent-native.
-
-The running agent performs semantic classification, scoring, and synthesis.
-"""
+"""Integration test for full signal pipeline."""
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 
 from processors.categorizer import EventCategorizer
-from processors.scoring import SignalScorer, AgentStubSignal
+from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.signal import Signal
 from output.daily_digest import DailyDigestFormatter
@@ -15,100 +12,186 @@ from output.daily_digest import DailyDigestFormatter
 
 @pytest.fixture
 def pipeline_components(tmp_path, monkeypatch, mock_config):
+    """Set up all pipeline components."""
     import processors.reinforcement as rein_mod
     monkeypatch.setattr(rein_mod, "STORAGE_DIR", tmp_path / "events")
 
+    categorizer = EventCategorizer()
+    scorer = SignalScorer()
+    reinforcer = SignalReinforcer()
+    formatter = DailyDigestFormatter()
+
     return {
-        "categorizer": EventCategorizer(),
-        "scorer": SignalScorer(),
-        "reinforcer": SignalReinforcer(),
-        "formatter": DailyDigestFormatter(),
+        "categorizer": categorizer,
+        "scorer": scorer,
+        "reinforcer": reinforcer,
+        "formatter": formatter,
     }
 
 
 class TestFullPipeline:
-    def test_preserved_category(self, pipeline_components):
+    """Test end-to-end signal flow."""
+
+    def test_categorize_to_score_flow(self, pipeline_components):
+        """Raw event → categorizer → scorer → Signal."""
         cat = pipeline_components["categorizer"]
         scorer = pipeline_components["scorer"]
 
         raw_event = {
             "chain": "ethereum",
-            "category": "FINANCIAL",
-            "description": "TVL crosses $65B",
+            "description": "Ethereum TVL crosses $65B milestone",
             "source": "DefiLlama",
             "reliability": 0.9,
-            "evidence": {"metric": "tvl_milestone"},
+            "evidence": {"metric": "tvl_milestone", "tvl": 65_000_000_000},
         }
 
         categorized = cat.categorize(raw_event)
         assert categorized["category"] == "FINANCIAL"
+        assert categorized["subcategory"] == "tvl_milestone"
 
         signal = scorer.score(categorized)
         assert signal.chain == "ethereum"
         assert signal.category == "FINANCIAL"
-        assert signal.impact == AgentStubSignal.default_impact
-        assert signal.priority_score == AgentStubSignal.default_priority
+        assert signal.impact == 4  # tvl_milestone = 4
+        assert signal.priority_score == signal.impact * signal.urgency
 
-    def test_reinforcement_same_description(self, pipeline_components):
-        """Two events with the SAME description should trigger reinforcement."""
+    def test_full_pipeline_with_reinforcement(self, pipeline_components):
+        """Raw events → categorizer → scorer → reinforcer → digest."""
         cat = pipeline_components["categorizer"]
         scorer = pipeline_components["scorer"]
         reinforcer = pipeline_components["reinforcer"]
+        formatter = pipeline_components["formatter"]
 
-        raw1 = {"chain": "ethereum", "category": "TECH_EVENT", "description": "Mainnet upgrade goes live", "source": "GitHub", "reliability": 0.95, "evidence": {}}
-        cat1 = cat.categorize(dict(raw1))
+        # First event
+        raw1 = {
+            "chain": "ethereum",
+            "description": "Ethereum mainnet upgrade Pectra goes live",
+            "source": "GitHub",
+            "reliability": 0.95,
+            "evidence": {"metric": "new_release"},
+        }
+        cat1 = cat.categorize(raw1)
         sig1 = scorer.score(cat1)
         result1, action1 = reinforcer.process(sig1)
         assert action1 == "created"
 
-        # Same description, different source → should be reinforced
-        raw2 = {"chain": "ethereum", "category": "TECH_EVENT", "description": "Mainnet upgrade goes live", "source": "RSS", "reliability": 0.7, "evidence": {}}
-        cat2 = cat.categorize(dict(raw2))
+        # Similar event (should reinforce)
+        raw2 = {
+            "chain": "ethereum",
+            "description": "Ethereum mainnet upgrade Pectra goes live now",
+            "source": "RSS",
+            "reliability": 0.7,
+            "evidence": {"metric": "rss_post"},
+        }
+        cat2 = cat.categorize(raw2)
         sig2 = scorer.score(cat2)
         result2, action2 = reinforcer.process(sig2)
+        assert action2 == "reinforced"
         assert result2.source_count == 2
 
-    def test_reinforcement_different_description(self, pipeline_components):
-        """Different descriptions should create separate signals."""
+        # Different chain event (should create new)
+        raw3 = {
+            "chain": "solana",
+            "description": "Solana TVL surges 35% in 7 days",
+            "source": "DefiLlama",
+            "reliability": 0.85,
+            "evidence": {"metric": "tvl_7d_change", "pct_change": 35},
+        }
+        cat3 = cat.categorize(raw3)
+        sig3 = scorer.score(cat3)
+        result3, action3 = reinforcer.process(sig3)
+        assert action3 == "created"
+
+        # Format digest
+        all_signals = list(reinforcer.signals.values())
+        digest = formatter.format(all_signals)
+        assert "Chain Monitor" in digest
+        assert "Ethereum" in digest
+
+    def test_risk_alert_high_priority(self, pipeline_components):
+        """Hack event should produce high-priority signal."""
+        cat = pipeline_components["categorizer"]
+        scorer = pipeline_components["scorer"]
+
+        raw = {
+            "chain": "ethereum",
+            "description": "Hack drained $15M from bridge protocol",
+            "source": "DefiLlama",
+            "reliability": 0.95,
+            "evidence": {"amount": 15_000_000},
+            "value": 15_000_000,
+        }
+        categorized = cat.categorize(raw)
+        assert categorized["category"] == "RISK_ALERT"
+        assert categorized["subcategory"] == "hack"
+
+        signal = scorer.score(categorized)
+        assert signal.impact == 5  # hack >$10M = 5
+        assert signal.urgency == 3  # hack urgency = 3
+        assert signal.priority_score == 15
+
+    def test_regulatory_enforcement_urgent(self, pipeline_components):
+        """Enforcement action should be high impact + high urgency."""
+        cat = pipeline_components["categorizer"]
+        scorer = pipeline_components["scorer"]
+
+        raw = {
+            "chain": "hyperliquid",
+            "description": "SEC enforcement action filed against protocol",
+            "source": "RSS",
+            "reliability": 0.8,
+            "evidence": {},
+        }
+        categorized = cat.categorize(raw)
+        signal = scorer.score(categorized)
+        assert signal.impact == 5  # hyperliquid regulatory override
+        assert signal.urgency == 3  # enforcement urgency = 3
+        assert signal.priority_score == 15
+
+    def test_digest_should_send(self, pipeline_components):
+        """Verify should_send logic with real signals."""
+        cat = pipeline_components["categorizer"]
+        scorer = pipeline_components["scorer"]
+        formatter = pipeline_components["formatter"]
+
+        events = [
+            {"chain": "ethereum", "description": "TVL crosses milestone", "source": "DL", "reliability": 0.9, "evidence": {}},
+            {"chain": "solana", "description": "Funding raised $50M", "source": "RSS", "reliability": 0.7, "evidence": {}},
+            {"chain": "arbitrum", "description": "New upgrade released", "source": "GH", "reliability": 0.9, "evidence": {}},
+        ]
+
+        signals = []
+        for evt in events:
+            c = cat.categorize(evt)
+            s = scorer.score(c)
+            signals.append(s)
+
+        # Depending on scores, may or may not send
+        count_ge_3 = sum(1 for s in signals if s.priority_score >= 3)
+        assert formatter.should_send(signals) == (count_ge_3 >= 3)
+
+    def test_echo_detection_in_pipeline(self, pipeline_components):
+        """Repeated similar events should be detected as echoes."""
         cat = pipeline_components["categorizer"]
         scorer = pipeline_components["scorer"]
         reinforcer = pipeline_components["reinforcer"]
 
-        raw1 = {"chain": "ethereum", "category": "TECH_EVENT", "description": "Upgrade live now", "source": "GitHub", "reliability": 0.95, "evidence": {}}
-        cat1 = cat.categorize(dict(raw1))
-        sig1 = scorer.score(cat1)
-        result1, action1 = reinforcer.process(sig1)
-        assert action1 == "created"
+        raw = {
+            "chain": "ethereum",
+            "description": "Vitalik speaking at conference keynote event",
+            "source": "RSS",
+            "reliability": 0.6,
+            "evidence": {},
+        }
 
-        raw2 = {"chain": "ethereum", "category": "TECH_EVENT", "description": "Mainnet upgrade complete", "source": "RSS", "reliability": 0.7, "evidence": {}}
-        cat2 = cat.categorize(dict(raw2))
-        sig2 = scorer.score(cat2)
-        result2, action2 = reinforcer.process(sig2)
-        assert action2 == "created"  # different description = new signal
+        # Process 3 times to build up source_count
+        for _ in range(3):
+            c = cat.categorize(dict(raw))
+            s = scorer.score(c)
+            reinforcer.process(s)
 
-    def test_risk_stub(self, pipeline_components):
-        cat = pipeline_components["categorizer"]
-        scorer = pipeline_components["scorer"]
-
-        raw = {"chain": "ethereum", "category": "RISK_ALERT", "description": "Hack", "source": "DL", "reliability": 0.95, "subcategory": "hack"}
-        categorized = cat.categorize(raw)
-        assert categorized["category"] == "RISK_ALERT"
-
-        signal = scorer.score(categorized)
-        assert signal.impact == AgentStubSignal.default_impact
-        assert signal.priority_score == AgentStubSignal.default_priority
-
-    def test_digest_deferred(self, pipeline_components):
-        formatter = pipeline_components["formatter"]
-        signals = [Signal(id="t", chain="eth", category="TECH_EVENT", description="Test", impact=3, urgency=2, priority_score=6)]
-        for s in signals:
-            s.add_activity("test", 0.8, "test")
-
-        digest = formatter.format(signals)
-        assert "Chain Monitor" in digest
-        assert "agent" in digest.lower() or "deferred" in digest.lower()
-
-    def test_should_send(self, pipeline_components):
-        formatter = pipeline_components["formatter"]
-        signals = [Signal(id="t", chain="eth", category="TECH_EVENT", description="Test", impact=1, urgency=1, priority_score=1, trader_context="")]
-        assert formatter.should_send(signals) is True
+        # 4th time should be echo
+        c = cat.categorize(dict(raw))
+        s = scorer.score(c)
+        _, action = reinforcer.process(s)
+        assert action == "echo"

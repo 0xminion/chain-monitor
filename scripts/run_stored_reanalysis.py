@@ -13,6 +13,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from processors.pipeline_types import RawEvent, ChainDigest
 from processors.chain_analyzer import analyze_chain
 from processors.summary_engine import synthesize_digest
+from processors.llm_client import LLMClient
 
 
 def tweet_to_raw_event(tweet: dict) -> RawEvent:
@@ -110,11 +111,13 @@ async def main():
 
     print(f"Events grouped into {len(by_chain)} chains: {sorted(by_chain.keys())}\n")
 
-    # Stage 4: Chain analysis — agent-native deterministic heuristics (no LLM)
-    print("Running chain-level analysis (agent-native deterministic)...")
+    # Stage 4: Chain analysis — parallel with semaphore
+    print("Running chain-level LLM analysis (parallel, max 5 concurrent)...")
+    # Cloud-hosted 31B model needs generous timeout
+    client = LLMClient(model='gemma4:31b-cloud', timeout=300.0)
 
     from processors.chain_analyzer import analyze_all_chains
-    digests = await analyze_all_chains(by_chain, client=None, max_concurrent=5)
+    digests = await analyze_all_chains(by_chain, client=client, max_concurrent=5)
 
     for d in sorted(digests, key=lambda x: -x.priority_score):
         print(f"  {d.chain}: priority={d.priority_score}, topic={d.dominant_topic[:50]}")
@@ -124,7 +127,7 @@ async def main():
     print("Synthesizing final digest via v2.0 summary engine...\n")
     digest = await synthesize_digest(
         digests=digests,
-        client=None,
+        client=client,
         source_health={"twitter": {"status": "healthy", "tweets": len(all_tweets)}},
     )
 

@@ -1,58 +1,412 @@
-"""Event categorizer — agent-native semantic layer.
+"""Event categorizer — classifies raw events into categories.
 
-Provides the taxonomy and validation helpers for the running agent.
-Semantic classification is performed by the agent reading the events.
+Uses keyword matching as baseline. For Twitter sources, uses LLM semantic enrichment
+as primary (high confidence) or tiebreaker (medium confidence). Falls back to keyword
+on LLM failure or for non-Twitter sources.
 
-No keyword matching. No external LLM API calls.
+Author: 0xminion
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-CATEGORY_TAXONOMY = {
-    "RISK_ALERT": "Security incidents, hacks, exploits, breaches, outages, critical bugs",
-    "REGULATORY": "SEC actions, lawsuits, licensing, compliance, bans, comment periods",
-    "FINANCIAL": "TVL shifts, funding rounds, airdrops, grants, token launches, treasury",
-    "PARTNERSHIP": "Integrations, deployments, collaborations, ecosystem expansions",
-    "TECH_EVENT": "Upgrades, mainnet launches, testnets, audits, releases, governance",
-    "VISIBILITY": "Conferences, AMAs, key hirings, keynotes, community calls, podcasts",
-    "NEWS": "General ecosystem news not fitting above categories",
-    "NOISE": "Low-value content (price predictions, engagement bait, GM threads)",
-    "PRICE_NOISE": "Trading commentary, technical analysis, bullish/bearish sentiment",
+# Keywords mapping to categories (order matters — first match wins)
+CATEGORY_KEYWORDS = {
+    "RISK_ALERT": [
+        "hack", "exploit", "vulnerability", "outage", "downtime", "halt",
+        "critical bug", "drained", "stolen", "attack", "compromised",
+        "bridge hack", "rug pull", "scam", "breach", "incident",
+        "emergency", "paused", "frozen", "blackhat", "whitehat",
+        "bug bounty", "responsible disclosure",
+    ],
+    "REGULATORY": [
+        "sec enforcement", "sec charges", "sec sues", "sec filing",
+        "enforcement", "lawsuit", "ban", "prohibition", "license",
+        "approval", "regulation", "compliance", "fine", "penalty",
+        "wells notice", "subpoena", "mica", "fatf", "sfc",
+        "broker registration", "cftc", "doj", "treasury",
+        "stablecoin bill", "crypto bill", "executive order",
+        "comment period", "proposed rule",
+    ],
+    "FINANCIAL": [
+        "tvl", "volume", "funding", "raised", "grant", "airdrop",
+        "tge", "token launch", "token sale", "milestone", "$",
+        "million", "billion", "inflows", "outflows",
+        "buyback", "treasury", "yield", "revenue",
+    ],
+    "PARTNERSHIP": [
+        # Explicit partnership language
+        "partnership", "partners with", "in partnership", "partnered",
+        "integration", "integrate with", "integrated into",
+        "collaboration", "collaborates with", "co-launch",
+        "joint", "together with", "teams up", "joins forces",
+        # Deployment / availability language (implies integration)
+        "deployed on", "live on", "launches on", "available on",
+        "adds support for", "now on", "now live on", "goes live on",
+        "expands to", "enters", "comes to", "migrates to",
+        "built on", "powered by", "powered on",
+        # Business development language
+        "alliance", "consortium", "works with", "works alongside",
+        "signs mou", "memorandum", "strategic", "cooperation",
+        "ecosystem partner", "joins ecosystem", "joins network",
+    ],
+    "TECH_EVENT": [
+        "upgrade", "mainnet", "testnet", "launch", "release",
+        "audit", "eip", "bip", "simd", "mip", "aip", "pip",
+        "hard fork", "soft fork", "deploy", "proposal", "vote",
+        "governance", "feature", "update", "version",
+        "devnet", "canary", "release candidate", "rc1", "rc2",
+    ],
+    "VISIBILITY": [
+        "conference", "hackathon", "ama", "interview", "keynote",
+        "hired", "joined", "departed", "appointed", "podcast",
+        "speaker", "panel", "summit", "workshop", "demo day",
+        "live stream", "community call", "town hall",
+        "new ceo", "new cto", "new coo", "new head of",
+        "resigned", "stepped down", "leaving", "replacement",
+    ],
 }
 
-VALID_CATEGORIES = frozenset(CATEGORY_TAXONOMY.keys())
+# ---------------------------------------------------------------------------
+# Twitter-specific keyword expansions (additive to existing keywords)
+# ---------------------------------------------------------------------------
+TWITTER_KEYWORD_EXPANSIONS = {
+    "TECH_EVENT": [
+        "mainnet soon", "mainnet live tomorrow", "mainnet live next",
+        "devnet live", "devnet reset", "devnet deployed",
+        "upgrade tomorrow", "upgrade going live", "upgrade going out",
+        "release thread", "v2 is here", "v2 is live", "v3 is here",
+        "eip discussion", "eip draft", "eip proposed",
+        "testnet reset", "testnet upgrade", "testnet live",
+        "shipped", "shipping", "rolling out", "rolled out",
+        "audit complete", "audit report", "security review",
+        "smart contract deployed", "contract deployed",
+    ],
+    "PARTNERSHIP": [
+        "excited to partner with", "thrilled to announce integration",
+        "welcomes", "welcome to the ecosystem", "join the ecosystem",
+        "now live on", "live on", "部署在", "goes live on",
+        "announce partnership", "partnering with",
+        "integrates with", "integrated into", "integration with",
+        "join forces with", "joins forces with",
+        "cross-chain integration", "bridge to", "bridging to",
+    ],
+    "VISIBILITY": [
+        "ama tomorrow", "ama today", "ama at", "ama with",
+        "keynote at", "keynote on", "speaking at", "speaking on",
+        "hackathon", "hackathon at", "ethglobal", "demo day",
+        "podcast with", "podcast episode", "on the pod",
+        "joined the team", "new role", "excited to join",
+        "new head of", "new vp of", "new director of",
+        "ask me anything", "community call tomorrow", "town hall",
+        "fireside chat", "panel at",
+    ],
+    "REGULATORY": [
+        "regulatory update", "compliance update", "legal update",
+        "licensed by", "authorised by", "authorised to",
+        "sec suit", "cftc suit", "doj investigation",
+        "policy update", "regulatory clarity", "regulatory framework",
+    ],
+    "FINANCIAL": [
+        "$ million", "$ billion",
+        "funding round", "seed round", "series a", "series b",
+        "public sale", "community sale", "launch token", "token live",
+    ],
+}
 
-VALID_SUBCATEGORIES = frozenset({
-    "hack", "exploit", "outage", "critical_bug", "scam",
-    "enforcement", "license", "approval", "comment_period", "lawsuit",
-    "tvl_milestone", "tvl_spike", "funding_round", "airdrop", "tge",
-    "integration", "collaboration", "deployment",
-    "mainnet_launch", "upgrade", "release", "governance_passed", "audit",
-    "keynote", "ama", "hire", "departure", "podcast",
-    "general",
-})
+# Merge Twitter expansions into CATEGORY_KEYWORDS
+for _cat, _kws in TWITTER_KEYWORD_EXPANSIONS.items():
+    if _cat in CATEGORY_KEYWORDS:
+        CATEGORY_KEYWORDS[_cat].extend(_kws)
+    else:
+        CATEGORY_KEYWORDS[_cat] = _kws
+
+# ---------------------------------------------------------------------------
+# Twitter noise filter — phrases that signal low-value tweets
+# ---------------------------------------------------------------------------
+TWITTER_NOISE_PHRASES = [
+    "gm ", "gm!", "gn ", "gn!", "wagmi", "ngmi",
+    "number go up", "number go down", "buy the dip", "sell the top",
+    "to the moon", "moon soon", "lambo", "wen lambo",
+    "threadooor", "threadoor", "1/ 🧵", "1/ thread", "1/\n🧵",
+    "like + rt", "like and rt", "like and retweet", "like + retweet",
+    "follow for", "follow me", "follow us", "don't miss", "don't skip",
+    "drop a", "comment below", "let us know", "what do you think",
+    "rate this", "top 10", "top 5", "list thread", "mini thread",
+    "alpha inside", "free alpha", "here is alpha",
+]
+
+TWITTER_HIGH_VALUE_INDICATORS = [
+    "mainnet", "testnet", "upgrade", "launch", "partnership",
+    "integration", "deployed", "audit", "funding", "airdrop",
+    "tge", "token generation", "eip", "bip", "governance",
+    "hack", "exploit", "outage", "sec ", "regulatory",
+    # Visibility
+    "keynote", "conference", "hackathon", "speaker", "panel",
+    "ama", "community call", "join the team", "hired", "appointed",
+]
+
+# Subcategory detection
+SUBCATEGORY_MAP = {
+    "RISK_ALERT": {
+        "hack": ["hack", "exploit", "drained", "stolen", "attack"],
+        "outage": ["outage", "downtime", "halt", "offline"],
+        "critical_bug": ["critical bug", "vulnerability", "cve"],
+    },
+    "REGULATORY": {
+        "enforcement": ["enforcement", "lawsuit", "subpoena", "wells notice", "fine", "penalty"],
+        "license": ["license", "approval", "authorized"],
+        "comment_period": ["comment period", "proposed rule", "consultation"],
+    },
+    "FINANCIAL": {
+        "tvl_milestone": ["tvl", "crosses", "reaches", "milestone"],
+        "tvl_spike": ["tvl", "up", "increase", "surge"],
+        "volume_breakout": ["volume", "ath", "record", "breakout"],
+        "funding_round": ["funding", "raised", "series", "round"],
+        "airdrop": ["airdrop", "token distribution"],
+        "tge": ["tge", "token launch", "token generation"],
+    },
+    "TECH_EVENT": {
+        "mainnet_launch": ["mainnet launch", "mainnet live", "genesis"],
+        "upgrade": ["upgrade", "hard fork", "eip", "bip", "simd"],
+        "release": ["release", "version", "v0", "v1", "v2"],
+        "governance_submitted": ["proposal submitted", "draft", "rfc"],
+        "governance_passed": ["proposal passed", "approved", "accepted"],
+        "audit": ["audit", "audited", "security review"],
+    },
+    "PARTNERSHIP": {
+        "integration": ["integration", "integrate", "deploy on"],
+        "collaboration": ["partnership", "collaboration", "teams up"],
+    },
+    "VISIBILITY": {
+        "keynote": ["keynote", "conference talk", "speaker"],
+        "ama": ["ama", "ask me anything", "community call"],
+        "hire": ["hired", "joined", "appointed", "new cto", "new ceo"],
+        "departure": ["departed", "left", "stepped down", "resigned"],
+        "podcast": ["podcast", "interview", "episode"],
+    },
+}
 
 
-def validate_category(cat: str) -> str:
-    cat = str(cat).upper().strip()
-    return cat if cat in VALID_CATEGORIES else "NEWS"
+# Price/trading noise to filter out of FINANCIAL category
+PRICE_NOISE_KEYWORDS = [
+    # Price predictions and analysis
+    "price prediction", "price forecast", "price target", "price analysis",
+    "technical analysis", "chart pattern", "support level", "resistance level",
+    "bull case", "bear case", "bullish", "bearish", "rally", "selloff",
+    "bottom", "top signal", "breakout", "consolidation", "pullback",
+    "correction", "dip", "surge", "plunge", "soars", "tumbles",
+    "slides", "falls", "rises", "drops", "jumps", "gains", "loses",
+    # Market commentary
+    "what the", "here's what", "what you should", "what to",
+    "should you buy", "should you sell", "is it time to",
+    "analysts say", "traders bet", "market sentiment",
+    "funding rate", "open interest", "long position", "short position",
+    "liquidation", "leverage", "margin call",
+    # Speculative content
+    "could hit", "could reach", "might", "set to", "poised to",
+    "what's next for", "where", "headed", "outlook",
+    "relief rally", "selling pressure", "buying pressure",
+    "whale transaction", "whale moves", "whale transfers",
+    # Price defense/milestone rhetoric
+    "can .* defend", "can .* survive", "can .* hold",
+    "defend $", "survive $", "hold $", "above $", "below $",
+    "support test", "resistance test", "price falls", "price slides",
+    "price drops", "price jumps", "price surges",
+]
 
 
-def validate_subcat(sub: str) -> str:
-    sub = str(sub).lower().strip()
-    return sub if sub in VALID_SUBCATEGORIES else "general"
+def _has_semantic_override(event: dict) -> tuple[bool, str, str]:
+    """Check if event has high-confidence semantic enrichment that should override keywords.
+
+    Returns (has_override, category, subcategory).
+    """
+    semantic = event.get("semantic")
+    if not semantic or not isinstance(semantic, dict):
+        return False, "", ""
+
+    confidence = float(semantic.get("confidence", 0.0))
+    category = semantic.get("category", "")
+    subcategory = semantic.get("subcategory", "")
+    is_noise = bool(semantic.get("is_noise", False))
+
+    if is_noise and confidence >= 0.50:
+        return True, "NOISE", "noise_phrase"
+
+    if confidence >= 0.75 and category and category in CATEGORY_KEYWORDS:
+        return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
+
+    return False, "", ""
+
+
+def _has_semantic_vote(event: dict, keyword_category: str) -> tuple[bool, str, str]:
+    """Check if medium-confidence semantic should act as tiebreaker.
+
+    Returns (use_semantic, category, subcategory).
+    """
+    semantic = event.get("semantic")
+    if not semantic or not isinstance(semantic, dict):
+        return False, "", ""
+
+    confidence = float(semantic.get("confidence", 0.0))
+    category = semantic.get("category", "")
+    subcategory = semantic.get("subcategory", "")
+    is_noise = bool(semantic.get("is_noise", False))
+
+    # Low confidence — ignore
+    if confidence < 0.50:
+        return False, "", ""
+
+    # Noise flag from LLM — honour it even at medium confidence
+    if is_noise:
+        return True, "NOISE", "noise_phrase"
+
+    # Medium confidence with explicit reasoning that contradicts keyword
+    # Only override if keyword is generic (NEWS, TECH_EVENT) and LLM is specific
+    if 0.50 <= confidence < 0.75:
+        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
+        if keyword_category in GENERIC_CATEGORIES and category not in GENERIC_CATEGORIES:
+            return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
+
+    return False, "", ""
+
+
+def _detect_subcategory_keyword(text: str, category: str) -> str:
+    """Detect subcategory using keyword matching."""
+    subcats = SUBCATEGORY_MAP.get(category, {})
+    for subcat, keywords in subcats.items():
+        for keyword in keywords:
+            if keyword in text.lower():
+                return subcat
+    return "general"
 
 
 class EventCategorizer:
-    """Agent-native categorizer. No auto-classification."""
+    """Classifies raw events into categories and subcategories."""
 
     def __init__(self):
-        logger.info("[categorizer] Agent-native mode — taxonomy loaded, classification deferred to agent")
+        # Optional: external semantic enricher for pre-processing
+        self.semantic_enricher = None
+        self._preprocess_twitter = False
+        try:
+            from processors.semantic_enricher import SemanticEnricher
+            self.semantic_enricher = SemanticEnricher()
+            self._preprocess_twitter = True
+            logger.info("[categorizer] Semantic enrichment loaded for Twitter sources")
+        except Exception as e:
+            logger.warning(f"[categorizer] Semantic enrichment not available: {e}")
 
     def categorize(self, event: dict) -> dict:
-        event["category"] = validate_category(event.get("category", "NEWS"))
-        event["subcategory"] = validate_subcat(event.get("subcategory", "general"))
-        event.setdefault("semantic", None)  # reserved for agent reasoning output
+        """Add category and subcategory to event dict."""
+        source = event.get("source", "") or event.get("source_name", "")
+
+        # --- 1. Pre-process Twitter with semantic enrichment if available ---
+        if self._preprocess_twitter and "twitter" in source.lower():
+            try:
+                event = self.semantic_enricher.enrich(event)
+            except Exception as e:
+                logger.warning(f"[categorizer] Semantic enrichment failed: {e}")
+
+        # Build text for matching from all available fields
+        text_parts = [event.get("description", "")]
+        evidence = event.get("evidence", "")
+        if isinstance(evidence, dict):
+            text_parts.append(evidence.get("title", ""))
+            text_parts.append(evidence.get("summary", ""))
+            text_parts.append(evidence.get("pr_title", ""))
+            text_parts.append(evidence.get("link", ""))
+        else:
+            text_parts.append(str(evidence))
+
+        text = " ".join(str(p) for p in text_parts if p).lower()
+
+        # --- 2. Check LLM semantic result for override ---
+        has_override, override_cat, override_sub = _has_semantic_override(event)
+        if has_override:
+            event["category"] = override_cat
+            event["subcategory"] = override_sub
+            if override_cat == "NOISE":
+                event["_filtered_twitter_noise"] = True
+            return event
+
+        # Filter out price/trading noise from FINANCIAL
+        is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
+        existing = event.get("category", "")
+        if (existing == "FINANCIAL" or existing == "NEWS") and not is_defillama:
+            for noise_kw in PRICE_NOISE_KEYWORDS:
+                if noise_kw in text:
+                    event["_filtered_price_noise"] = True
+                    event["category"] = "PRICE_NOISE"
+                    event["subcategory"] = "price_commentary"
+                    return event
+
+        # Check Twitter noise keywords
+        if "twitter" in source.lower() or "twitter" in str(event.get("source_name", "")).lower():
+            noise, reason = self._is_twitter_noise(text)
+            if noise:
+                event["_filtered_twitter_noise"] = True
+                event["category"] = "NOISE"
+                event["subcategory"] = reason
+                return event
+
+        # --- 3. Keyword-based categorization ---
+        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
+        if existing and existing not in GENERIC_CATEGORIES:
+            keyword_category = existing
+        else:
+            keyword_category = self._detect_category(text)
+
+        keyword_subcategory = self._detect_subcategory(text, keyword_category)
+
+        # --- 4. LLM semantic as tiebreaker (medium confidence) ---
+        has_sem_vote, sem_cat, sem_sub = _has_semantic_vote(event, keyword_category)
+        if has_sem_vote:
+            event["category"] = sem_cat
+            event["subcategory"] = sem_sub
+            return event
+
+        # Result: keyword category
+        event["category"] = keyword_category
+        event["subcategory"] = keyword_subcategory
         return event
+
+    def _is_twitter_noise(self, text: str) -> tuple[bool, str]:
+        """Check if a tweet is low-value noise. Returns (is_noise, reason)."""
+        t = text.lower()
+
+        for phrase in TWITTER_NOISE_PHRASES:
+            if phrase in t:
+                return True, f"noise_phrase:{phrase.strip()}"
+
+        if len(t) < 30 and ("🚀" in t or "🔥" in t or "💰" in t):
+            return True, "short_emoji_bait"
+
+        if len(t) < 60:
+            has_indicator = any(hv in t for hv in TWITTER_HIGH_VALUE_INDICATORS)
+            if not has_indicator:
+                return True, "short_no_substance"
+
+        return False, ""
+
+    def _detect_category(self, text: str) -> str:
+        """Detect primary category from text using keywords."""
+        tech_overrides = [
+            "live on mainnet", "live on testnet", "goes live on mainnet",
+            "is live on mainnet", "is live on testnet",
+            "upgrade is live", "upgrade went live", "upgrade live",
+            "hard fork", "soft fork", "mainnet launch",
+        ]
+        for phrase in tech_overrides:
+            if phrase in text:
+                return "TECH_EVENT"
+
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in text:
+                    return category
+        return "TECH_EVENT"  # default
+
+    def _detect_subcategory(self, text: str, category: str) -> str:
+        """Detect subcategory within a category using keywords."""
+        return _detect_subcategory_keyword(text, category)
