@@ -1,12 +1,12 @@
-"""Per-chain semantic analyzer — LLM synthesis of what's happening per chain.
+"""Per-chain semantic analyzer — agent-native heuristic synthesis.
 
-For each chain, batches all collected events and asks the LLM to:
+For each chain, batches all collected events and uses deterministic heuristics to:
   1. Merge related signals into coherent observations
   2. Classify each observation
   3. Assign chain-level priority score
   4. Generate narrative summary explaining WHY things matter
 
-Parallelizes across all chains with a semaphore to respect rate limits.
+Fully agent-native: no LLM calls, no external API keys needed.
 """
 
 import asyncio
@@ -14,55 +14,217 @@ import logging
 from typing import Optional
 
 from processors.pipeline_types import RawEvent, ChainDigest
-from processors.llm_client import LLMClient, LLMError
 from config.loader import get_chain
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Prompt templates
+# Severity weight table (used for scoring)
 # ---------------------------------------------------------------------------
 
-_CHAIN_ANALYSIS_SYSTEM = """You are a senior crypto market intelligence analyst.
-You synthesize raw signals across multiple data sources into coherent chain-level observations.
-Be precise. Merge signals only when they clearly describe the same event or closely related events.
-When in doubt, report separately.
+CATEGORY_PRIORITY = {
+    "RISK_ALERT": 15,
+    "REGULATORY": 12,
+    "FINANCIAL": 10,
+    "PARTNERSHIP": 7,
+    "TECH_EVENT": 6,
+    "VISIBILITY": 3,
+    "NEWS": 1,
+    "NOISE": 0,
+}
 
-For each key event, you MUST extract the best URL from the raw signals (tweet_url, url, html_url, etc.) and include it as 'url' in your JSON output.
-"""
+SUBCATEGORY_PRIORITY = {
+    "hack": 15,
+    "exploit": 15,
+    "critical_bug": 14,
+    "outage": 13,
+    "enforcement": 13,
+    "license": 10,
+    "tvl_spike": 9,
+    "tvl_milestone": 8,
+    "funding_round": 9,
+    "airdrop": 7,
+    "tge": 7,
+    "mainnet_launch": 6,
+    "upgrade": 5,
+    "audit": 5,
+    "release": 4,
+    "integration": 6,
+    "collaboration": 6,
+    "keynote": 3,
+    "ama": 3,
+    "hire": 3,
+    "podcast": 2,
+    "general": 1,
+}
 
-_CHAIN_ANALYSIS_PROMPT = """## Chain: {chain}
-Tier: {tier} | Category: {category}
+_TRADING_NOISE_KEYS = [
+    "price prediction", "price target", "price analysis",
+    "technical analysis", "bullish", "bearish", "to the moon",
+]
 
-## Signals collected in past 24h ({event_count} total):
-{signals_block}
+# ---------------------------------------------------------------------------
+# Heuristic analysis
+# ---------------------------------------------------------------------------
 
-## Instructions
-Produce a JSON object with these keys:
+def _is_trading_noise(text: str) -> bool:
+    """True if the event description sounds like trading noise rather than news."""
+    t = text.lower()
+    return any(k in t for k in _TRADING_NOISE_KEYS)
 
-1. **priority_score** (int 0-15): Overall importance for traders today. 0 = nothing notable, 15 = market-moving.
-2. **dominant_topic** (string): One phrase summarizing the most important thing happening.
-3. **confidence** (float 0.0-1.0): How certain you are in this assessment. Higher when multiple independent sources agree.
-4. **summary** (string, 2-4 sentences): Narrative of what's happening and why it matters to traders. Be specific, not generic.
-5. **key_events** (list): Each merged observation as an object with:
-   - topic: concise title
-   - category: one of TECH_EVENT, PARTNERSHIP, FINANCIAL, RISK_ALERT, REGULATORY, VISIBILITY, NOISE
-   - sources: list of source names (e.g., ["GitHub", "RSS"])
-   - priority: int 1-15
-   - confidence: float 0.0-1.0
-   - detail: 1 sentence what happened
-   - why_it_matters: 1 sentence trader significance
-   - url: the exact tweet/article URL from the signals, if available (check evidence.url, evidence.link, evidence.html_url, evidence.tweet_url, evidence.pr_url, evidence.feed_url - use ONLY the first one found, never make up URLs)
 
-## Rules
-- Merge signals only when they clearly reference the same event (e.g., GitHub release + blog post about same version = ONE event).
-- If signals are independent (e.g., a hack + a partnership), report SEPARATE events.
-- Use evidence-backed detail. Don't invent facts.
-- 'why_it_matters' should mention timeline or downstream effect when possible.
-- CRITICAL: For EACH key event, extract the best URL from the signal evidence (look for url, tweet_url, html_url fields) and include it as 'url'.
+def _event_priority(ev: RawEvent) -> float:
+    """Compute a single-event priority score (0–15)."""
+    cat_score = CATEGORY_PRIORITY.get(ev.category, 1)
+    subcat_score = SUBCATEGORY_PRIORITY.get(ev.subcategory, cat_score)
+    # Blend subcategory into category score if available
+    score = max(cat_score, subcat_score)
+    # Scale by reliability
+    score *= ev.reliability
+    # Small penalty for trading noise
+    if _is_trading_noise(ev.description):
+        score *= 0.3
+    return score
 
-## Output: STRICT JSON. No markdown fences. No prose outside JSON.
-"""
+
+def _merge_similar_events(events: list[RawEvent]) -> list[dict]:
+    """Merge events that describe the same thing across sources.
+
+    Two events are merged when they share:
+      - same subcategory
+      - OR a significant amount of overlapping trigrams
+    """
+    merged: list[dict] = []
+    seen: set[int] = set()
+
+    def _trigrams(ev: RawEvent) -> set[str]:
+        words = ev.description.lower().split()
+        return {" ".join(words[i:i + 3]) for i in range(len(words) - 2)}
+
+    for i, ev in enumerate(events):
+        if i in seen:
+            continue
+        group = [ev]
+        tgi = _trigrams(ev)
+        for j in range(i + 1, len(events)):
+            if j in seen:
+                continue
+            evj = events[j]
+            # Merge on same subcategory OR >=2 trigrams overlap
+            if ev.subcategory == evj.subcategory and ev.subcategory != "general":
+                group.append(evj)
+                seen.add(j)
+            else:
+                tgj = _trigrams(evj)
+                if len(tgi & tgj) >= 2:
+                    group.append(evj)
+                    seen.add(j)
+
+        # Build merged key event
+        best = max(group, key=lambda e: e.reliability)
+        sources = sorted(set(e.source for e in group if e.source))
+        priority = _event_priority(best)
+
+        # Extract best URL from the group
+        url = ""
+        for e in group:
+            if e.raw_url and isinstance(e.raw_url, str) and e.raw_url.startswith("http"):
+                url = e.raw_url
+                break
+
+        # Create a concise topic from the best event
+        topic = best.description[:80] if best.description else "Activity"
+
+        # Build detail
+        detail = best.description[:200] if best.description else "No description"
+
+        # Build why_it_matters from category
+        why_map = {
+            "RISK_ALERT": "Could impact token prices or user funds. Monitor for official patch.",
+            "REGULATORY": "Regulatory developments often move markets and affect protocol viability.",
+            "FINANCIAL": "Capital flow signals often precede price action.",
+            "PARTNERSHIP": "Real integrations drive adoption and usually correlate with price.",
+            "TECH_EVENT": "Technical milestones can unlock new use cases and attract builders.",
+            "VISIBILITY": "Community engagement and team changes affect long-term trust.",
+        }
+        why = why_map.get(best.category, "Worth monitoring for ecosystem momentum.")
+
+        merged.append({
+            "topic": topic,
+            "category": best.category,
+            "sources": sources,
+            "priority": _clamp_priority(int(priority)),
+            "confidence": round(min(1.0, 0.5 + 0.15 * len(sources) + 0.1 * best.reliability), 2),
+            "detail": detail,
+            "why_it_matters": why,
+            "url": url,
+            # internal bookkeeping not serialized
+            "_best_rel": best.reliability,
+        })
+
+        seen.add(i)
+
+    # Sort by priority desc
+    merged.sort(key=lambda x: -x.get("priority", 0))
+    return merged
+
+
+def _chain_priority_score(merged_events: list[dict], event_count: int, source_count: int) -> int:
+    """Compute overall chain priority (0–15) from merged events."""
+    if not merged_events:
+        return 0
+    # Base = highest priority event
+    best = max(merged_events, key=lambda e: e.get("priority", 0))
+    score = _clamp_priority(best.get("priority", 0))
+    # Bonus for number of distinct events (up to +3)
+    score += min(3, len(merged_events) // 3)
+    # Bonus for multi-source confirmation (up to +2)
+    score += min(2, max(0, source_count - 1))
+    return _clamp_priority(score)
+
+
+def _dominant_topic(merged_events: list[dict]) -> str:
+    """Pick the dominant topic from merged events."""
+    if not merged_events:
+        return "Quiet"
+    top = merged_events[0]
+    return top["topic"][:100] if top["topic"] else "Activity"
+
+
+def _generate_summary(merged_events: list[dict], chain: str) -> str:
+    """Create a 2–4 sentence narrative summary."""
+    if not merged_events:
+        return "No significant activity detected today."
+
+    sentences = []
+    # First 2–3 key events as sentences
+    for ev in merged_events[:3]:
+        detail = ev["detail"][:150]
+        why = ev["why_it_matters"][:120]
+        if detail and why:
+            sentences.append(f"{_chain_name(chain)}: {detail}. {why}")
+        else:
+            sentences.append(f"{_chain_name(chain)}: {detail or 'Activity reported'}.")
+
+    if len(sentences) > 2:
+        return " ".join(sentences[:3]) + f" (+{len(merged_events) - 3} more events)"
+    return " ".join(sentences)
+
+
+def _chain_name(chain: str) -> str:
+    """Capitalize chain name for display."""
+    return chain.capitalize() if chain else "Chain"
+
+
+def _clamp_priority(val: int) -> int:
+    return max(0, min(15, val))
+
+
+def _chain_cfg_summary(chain: str) -> tuple[int, str]:
+    """Get tier & category from chain config."""
+    cfg = get_chain(chain) or {}
+    return int(cfg.get("tier", 3)), str(cfg.get("category", "unknown"))
+
 
 _EMPTY_DIGEST_TEMPLATE = {
     "chain_tier": 3,
@@ -88,90 +250,26 @@ def _empty_digest(chain: str) -> ChainDigest:
     )
 
 
-def _build_signals_block(events: list[RawEvent]) -> str:
-    """Format events for the LLM prompt."""
-    if not events:
-        return "  (No signals today)"
-    lines = []
-    for ev in events:
-        src = f"[{ev.source}]" if ev.source else "[unknown]"
-        cat = f"{ev.category}/{ev.subcategory}"
-        desc = ev.description[:180] if ev.description else "(no description)"
-        url_hint = f" | URL: {ev.raw_url}" if ev.raw_url else ""
-        lines.append(f"- {src} {cat}: {desc}{url_hint}")
-    return "\n".join(lines)
-
-
-def _chain_cfg_summary(chain: str) -> tuple[int, str]:
-    """Get tier & category from chain config."""
-    cfg = get_chain(chain) or {}
-    return int(cfg.get("tier", 3)), str(cfg.get("category", "unknown"))
-
-
-def _clamp_priority(val: int) -> int:
-    return max(0, min(15, val))
-
-
-def _parse_llm_chain_result(raw: dict, chain: str, events: list[RawEvent]) -> ChainDigest:
-    """Sanitize and construct ChainDigest from LLM JSON response."""
-    tier, category = _chain_cfg_summary(chain)
-
-    key_events = raw.get("key_events") or []
-    if not isinstance(key_events, list):
-        key_events = []
-
-    # Normalize key events
-    normalized_events = []
-    for idx, ke in enumerate(key_events[:20]):  # cap at 20
-        if not isinstance(ke, dict):
-            continue
-        url = ""
-        for key in ("url", "html_url", "pr_url", "link", "feed_url"):
-            val = ke.get(key)
-            if val and isinstance(val, str) and val.startswith("http"):
-                url = val
-                break
-        normalized_events.append({
-            "topic": str(ke.get("topic", f"Event {idx+1}")),
-            "category": str(ke.get("category", "TECH_EVENT")).upper(),
-            "sources": ke.get("sources", ["unknown"]),
-            "priority": _clamp_priority(int(ke.get("priority") or 0)),
-            "confidence": max(0.0, min(1.0, float(ke.get("confidence") or 0.0))),
-            "detail": str(ke.get("detail", "")),
-            "why_it_matters": str(ke.get("why_it_matters", "")),
-            "url": url,
-        })
-
-    return ChainDigest(
-        chain=chain,
-        chain_tier=tier,
-        chain_category=category,
-        summary=str(raw.get("summary", "No summary available.")),
-        key_events=normalized_events,
-        priority_score=_clamp_priority(int(raw.get("priority_score") or 0)),
-        dominant_topic=str(raw.get("dominant_topic", "")),
-        sources_seen=len(set(e.source for e in events)),
-        event_count=len(events),
-        confidence=max(0.0, min(1.0, float(raw.get("confidence") or 0.0))),
-    )
-
+# ===========================================================================
+# Public API
+# ===========================================================================
 
 async def analyze_chain(
     chain: str,
     events: list[RawEvent],
-    client: Optional[LLMClient] = None,
+    client=None,
     max_events_in_prompt: int = 40,
 ) -> ChainDigest:
-    """Analyze all events for a single chain via LLM.
+    """Analyze all events for a single chain via deterministic heuristics.
 
     Args:
         chain: Chain name.
         events: Raw events for this chain.
-        client: Optional LLMClient (creates from env if None).
-        max_events_in_prompt: Cap events in prompt to fit context window.
+        client: Ignored (agent-native, no LLM required).
+        max_events_in_prompt: Kept for backward compat, ignored.
 
     Returns:
-        ChainDigest. Never returns None — falls back to empty digest on failure.
+        ChainDigest. Deterministic, no external calls.
     """
     if not events:
         tier, category = _chain_cfg_summary(chain)
@@ -188,95 +286,55 @@ async def analyze_chain(
         )
 
     tier, category = _chain_cfg_summary(chain)
-    client = client or LLMClient.from_env()
 
-    # If too many events, retain highest-reliability subset
-    if len(events) > max_events_in_prompt:
-        events = sorted(events, key=lambda e: (-e.reliability, -len(e.evidence)))[:max_events_in_prompt]
-        logger.info(f"[{chain}] Truncated to {max_events_in_prompt} events for LLM context")
+    # Score and sort events
+    scored = sorted(events, key=_event_priority, reverse=True)
 
-    prompt = _CHAIN_ANALYSIS_PROMPT.format(
+    # Merge similar events
+    merged = _merge_similar_events(scored)
+
+    # Compute chain-level stats
+    source_count = len(set(e.source for e in events if e.source))
+    event_count = len(events)
+    priority_score = _chain_priority_score(merged, event_count, source_count)
+    dominant_topic = _dominant_topic(merged)
+    summary = _generate_summary(merged, chain)
+
+    # Confidence based on number of sources and top event confidence
+    avg_conf = sum(e["_best_rel"] for e in merged) / len(merged) if merged else 0.0
+    multi_source_bonus = min(0.3, (source_count - 1) * 0.1)
+    confidence = round(min(1.0, avg_conf + multi_source_bonus), 2)
+
+    return ChainDigest(
         chain=chain,
-        tier=tier,
-        category=category,
-        event_count=len(events),
-        signals_block=_build_signals_block(events),
+        chain_tier=tier,
+        chain_category=category,
+        summary=summary,
+        key_events=merged,
+        priority_score=priority_score,
+        dominant_topic=dominant_topic,
+        sources_seen=source_count,
+        event_count=event_count,
+        confidence=confidence,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            client.generate_json_with_retry, prompt, system_prompt=_CHAIN_ANALYSIS_SYSTEM
-        )
-    except LLMError as exc:
-        logger.warning(f"[{chain}] Chain analysis LLM failed: {exc}")
-        return ChainDigest(
-            chain=chain,
-            chain_tier=tier,
-            chain_category=category,
-            summary="LLM analysis unavailable — see raw signals.",
-            key_events=[],
-            priority_score=0,
-            dominant_topic="Unavailable",
-            sources_seen=0,
-            event_count=len(events),
-            confidence=0.0,
-        )
-    except Exception as exc:
-        logger.error(f"[{chain}] Unexpected error in chain analysis: {exc}")
-        return _empty_digest(chain)
-
-    return _parse_llm_chain_result(result, chain, events)
 
 
 async def analyze_all_chains(
     events_by_chain: dict[str, list[RawEvent]],
-    client: Optional[LLMClient] = None,
+    client=None,
     max_concurrent: int = 5,
 ) -> list[ChainDigest]:
     """Analyze all chains in parallel.
 
     Args:
         events_by_chain: {chain_name: [RawEvent, ...]}
-        client: Shared LLMClient.
-        max_concurrent: Max simultaneous LLM calls.
+        client: Ignored (agent-native).
+        max_concurrent: Kept for backward compat, ignored.
 
     Returns:
         List of ChainDigest objects (one per chain, even if empty).
     """
-    client = client or LLMClient.from_env()
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def _analyze(chain: str, events: list[RawEvent]) -> ChainDigest:
-        async with semaphore:
-            return await analyze_chain(chain, events, client)
-
-    tasks = [_analyze(c, evs) for c, evs in events_by_chain.items()]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    digests: list[ChainDigest] = []
-    failures = 0
-    for chain, result in zip(events_by_chain.keys(), results):
-        if isinstance(result, Exception):
-            logger.error(f"[{chain}] Chain analysis task crashed: {result}")
-            failures += 1
-            tier, category = _chain_cfg_summary(chain)
-            digests.append(ChainDigest(
-                chain=chain,
-                chain_tier=tier,
-                chain_category=category,
-                summary="Analysis failed due to pipeline error.",
-                key_events=[],
-                priority_score=0,
-                dominant_topic="Error",
-                sources_seen=0,
-                event_count=len(events_by_chain.get(chain, [])),
-                confidence=0.0,
-            ))
-        else:
-            digests.append(result)
-
-    logger.info(
-        f"Chain analysis complete: {len(digests)} chains, "
-        f"{failures} failures"
-    )
+    digests = []
+    for chain, events in events_by_chain.items():
+        digests.append(await analyze_chain(chain, events, client=client))
     return digests

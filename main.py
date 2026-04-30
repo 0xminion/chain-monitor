@@ -25,7 +25,6 @@ from processors.reinforcement import SignalReinforcer
 from processors.chain_analyzer import analyze_all_chains
 from processors.summary_engine import synthesize_digest
 from output.telegram_sender import TelegramSender
-from processors.llm_client import LLMClient
 
 # Import all collectors
 from collectors.defillama import DefiLlamaCollector
@@ -149,12 +148,11 @@ async def run_pipeline() -> PipelineContext:
     for chain_name in get_active_chains():
         events_by_chain.setdefault(chain_name, [])
 
-    # Shared LLM client for all chain analyses
-    llm_client = LLMClient.from_env()
+    # Agent-native: no LLM client needed
     ctx.chain_digests = await analyze_all_chains(
         events_by_chain,
-        client=llm_client,
-        max_concurrent=int(get_env("LLM_MAX_CONCURRENT_CHAINS", "5")),
+        client=None,
+        max_concurrent=5,
     )
     significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
     logger.info(
@@ -167,7 +165,7 @@ async def run_pipeline() -> PipelineContext:
         ctx.chain_digests,
         source_health=ctx.health,
         source_health_detail=ctx.feed_health,
-        client=llm_client,
+        client=None,
     )
     logger.info(f"Stage 5 complete: digest {len(ctx.final_digest)} chars")
 

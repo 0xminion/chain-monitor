@@ -103,7 +103,7 @@ class SignalReinforcer:
         if new_url and new_url in self._url_index:
             existing_id = self._url_index[new_url]
             existing = self.signals.get(existing_id)
-            if existing and existing.chain == new_signal.chain:
+            if existing is not None and existing.chain == new_signal.chain and existing.category == new_signal.category:
                 logger.info(f"URL match: '{existing.description[:50]}' = '{new_signal.description[:50]}'")
                 return existing
 
@@ -137,8 +137,10 @@ class SignalReinforcer:
             return True
         # URL echo: same URL, already has 2+ sources
         new_url = _extract_evidence_url(new_signal.activity)
-        if new_url and new_url in self._url_index and existing.source_count >= 2:
-            return True
+        if new_url:
+            existing_signal_id = self._url_index.get(new_url)
+            if existing_signal_id and existing.id == existing_signal_id and existing.source_count >= 2:
+                return True
         return False
 
     def _save_signal(self, signal: Signal):

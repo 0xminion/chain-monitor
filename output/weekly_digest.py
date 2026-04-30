@@ -1,20 +1,15 @@
 """Weekly digest formatter — generates the weekly strategic report.
 
-v1.0: Replaced chain-driven format with LLM event-driven thematic sections.
-v1.1: Reads 7 days of persisted daily digests, feeds them to LLM for
-thematic synthesis (up to 10 sections, not chain sections).
+v2.0: Fully agent-native. Reads 7 days of persisted daily digests and produces
+a deterministic weekly summary via template-based formatting. No LLM calls, no
+external APIs, no tokens required.
 """
 
-import json
 import logging
 import re
-from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
-
-from config.loader import get_env
-from processors.llm_client import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -22,75 +17,11 @@ REPO_ROOT = Path(__file__).parent.parent
 DAILY_DIGEST_DIR = REPO_ROOT / "storage" / "twitter" / "summaries"
 
 
-# ── LLM prompt for weekly synthesis ──────────────────────────────────────────
-
-_WEEKLY_SYSTEM_PROMPT = """You are a senior crypto market strategist writing a weekly intelligence brief.
-Your audience is traders, analysts, and builders who need to understand cross-chain themes in under 90 seconds.
-
-Rules:
-- Use Telegram Markdown: **bold** for emphasis. No # headers. No HTML tags.
-- Never print raw URLs as plain text — use [title](url) markdown links.
-- Group insights into **thematic sections**, NOT per-chain sections.
-- Each section heading MUST start with a single relevant emoji and a space before the theme name. Example: "**🏦 Institutional Payment Rails**" or "**🔒 Privacy Infrastructure**". Never use generic numbering like "Section 1:".
-- Section names should reflect market themes (e.g., "Liquidity & Infrastructure", "Political & Ecosystem Visibility", "Regulatory & Macro Sentiment", "ZK & Scaling Developments", "DeFi & Institutional Adoption").
-- The LLM decides the section names AND the emoji (up to 10 sections). Be creative but precise.
-- NEVER force a low-relevance item into a section where it does not belong just to fill space.
-- If an item does not strongly match the core theme of any existing section, give it its own separate section with an accurate emoji, or omit it entirely. Do NOT aggregate loosely-related items.
-- Within each section, mention specific chains, numbers, and evidence.
-- Total length: 600-1200 words.
-- Begin with a 2-sentence "🧠 Theme of the Week" summary.
-- NO "👀 Watch" section at the end.
-- ABSOLUTE RULE: If a URL is NOT explicitly present in the input daily digests, you MUST write the sentence WITHOUT any markdown link. Never fabricate URLs.
-"""
-
-_WEEKLY_PROMPT = """## Daily Digests from Past 7 Days
-
-{daily_digests_text}
-
-## Instructions
-Synthesize the above daily digests into a single weekly intelligence brief.
-
-Format:
-📈 Weekly Intelligence Brief — {week_range}
-
-🧠 Theme of the Week
-[2-sentence summary of the single most important cross-chain theme]
-
-**[Emoji] [Thematic Name]**
-🔖 Chains: Chain1, Chain2, Chain3
-
-- Chain1 [action](https://...) specific detail with numbers. Why it matters.
-
-- Chain2 [action](https://...) specific detail with numbers. Why it matters.
-
-[Continue for each chain that belongs to this theme, with one bullet per chain and a blank line between bullets.]
-
-**[Emoji] [Thematic Name]**
-[Same format: chain list on one line, then bullet-per-chain with blank lines between.]
-
-[Continue up to 10 sections as appropriate. If fewer themes exist, use fewer sections.]
-
-Rules:
-- MAX 10 thematic sections.
-- DO NOT create per-chain sections.
-- Each section heading MUST start with a single relevant emoji followed by a space and the thematic name. Example: "**🏦 Institutional Payment Rails**" or "**🔒 Privacy Infrastructure**". Never use plain "Section 1:" labels.
-- NEVER force a low-relevance item into a section where it does not belong just to fill space.
-- If an item does not strongly match the core theme of any existing section, give it its own separate section with an accurate emoji, or omit it entirely. Do NOT aggregate loosely-related items.
-- After each section heading, list ALL chains that appear in that section on one line: "Chains: Chain1, Chain2, Chain3".
-- Each chain in a section gets its OWN bullet point starting with "- ChainName ...".
-- Put a BLANK LINE between each bullet point.
-- Every insight MUST trace back to a source with markdown links where the FIRST content-bearing word of the sentence is the link. Example: "Visa [activated](https://...) Polygon rails..."
-- Never invent events not in the input.
-- NO "👀 Watch" section at the end.
-"""
-
-
 def _load_last_7_days() -> list[str]:
     """Read the 7 most recent daily digest files."""
     if not DAILY_DIGEST_DIR.exists():
         return []
 
-    # Accept both v2_digest_*.txt and daily_digest_*.txt, and standalone_summary JSONs
     files = sorted(
         list(DAILY_DIGEST_DIR.glob("v2_digest_*.txt"))
         + list(DAILY_DIGEST_DIR.glob("daily_digest_*.txt"))
@@ -100,6 +31,7 @@ def _load_last_7_days() -> list[str]:
     )
     last_7 = files[:7]
     contents = []
+    import json
     for p in last_7:
         try:
             if p.suffix == ".json":
@@ -113,8 +45,8 @@ def _load_last_7_days() -> list[str]:
 
             date_match = re.search(r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})", p.name)
             if date_match:
-                y, m, d, H, M, S = date_match.groups()
-                header = f"--- Daily Digest: {y}-{m}-{d} ---"
+                y, m, day, H, M, S = date_match.groups()
+                header = f"--- Daily Digest: {y}-{m}-{day} ---"
             else:
                 header = f"--- {p.name} ---"
             if text.strip():
@@ -126,7 +58,7 @@ def _load_last_7_days() -> list[str]:
 
 
 def _format_daily_digests(contents: list[str]) -> str:
-    """Join daily digests for the LLM prompt. Truncate if too long."""
+    """Join daily digests. Truncate if too long."""
     full_text = "\n".join(contents)
     max_chars = 200_000
     if len(full_text) > max_chars:
@@ -135,8 +67,84 @@ def _format_daily_digests(contents: list[str]) -> str:
     return full_text
 
 
+def _extract_chain_signals(daily_text: str) -> dict[str, list[dict]]:
+    """Extract chain signal lines from daily digest text. Agent-native parser."""
+    chain_signals: dict[str, list[dict]] = {}
+    current_chain = None
+    for line in daily_text.splitlines():
+        # Detect chain headers like "**SOLANA (Score: 5)**"
+        m = re.search(r"^\*\*\s*(?:[\U0001F300-\U0001F9FF]\s*)?(\w+)\s*\(Score:\s*(\d+)\)\*\*", line)
+        if m:
+            current_chain = m.group(1).lower()
+            continue
+        # Detect bullet lines like "• something" while in a chain section
+        if current_chain and line.startswith("•"):
+            chain_signals.setdefault(current_chain, []).append({"text": line.strip(), "url": ""})
+            # Try to extract URL
+            url_match = re.search(r'\[([^\]]+)\]\((https?://[^\s)]+)\)', line)
+            if url_match:
+                chain_signals[current_chain][-1]["url"] = url_match.group(2)
+    return chain_signals
+
+
+def _build_weekly_digest(daily_text: str, week_range: str) -> str:
+    """Build weekly digest from daily digest text — fully agent-native."""
+    lines = [
+        f"📈 Weekly Intelligence Brief — {week_range}",
+        "",
+        "🧠 Theme of the Week",
+    ]
+
+    if not daily_text.strip():
+        lines.append("No daily digests found for the past 7 days. Run the pipeline first.")
+        return "\n".join(lines)
+
+    # Extract all unique chain mentions
+    chain_signals = _extract_chain_signals(daily_text)
+    if not chain_signals:
+        lines.append("Signals collected but no chain-level activity parsed. Monitor next week.")
+        return "\n".join(lines)
+
+    # Theme: most mentioned chain
+    top_chain = max(chain_signals, key=lambda c: len(chain_signals[c]))
+    lines.append(f"Most active chain: {top_chain.capitalize()} with {len(chain_signals[top_chain])} signal(s).")
+    lines.append("")
+
+    # Section 1: Top chains by activity
+    lines.append("**🔥 Chain Activity Summary**")
+    sorted_chains = sorted(chain_signals.items(), key=lambda kv: -len(kv[1]))
+    for chain, sigs in sorted_chains[:10]:
+        lines.append(f"\n{chain.capitalize()}: {len(sigs)} signal(s)")
+        for s in sigs[:3]:
+            text = s.get("text", "Activity")
+            url = s.get("url", "")
+            if url:
+                # Rebuild with markdown link on first word
+                words = text.lstrip("• ").split()
+                if words:
+                    linked = f"[{words[0]}]({url}) {' '.join(words[1:])}".strip()
+                    lines.append(f"  • {linked}")
+                else:
+                    lines.append(f"  • {text}")
+            else:
+                lines.append(f"  • {text}")
+    lines.append("")
+
+    # Section 2: Any chain with 4+ signals
+    hot_chains = [c for c, s in sorted_chains if len(s) >= 4]
+    if hot_chains:
+        lines.append("**🔥 Hot Chains This Week**")
+        for chain in hot_chains[:5]:
+            count = len(chain_signals[chain])
+            lines.append(f"• {chain.capitalize()}: {count} signals — sustained activity.")
+        lines.append("")
+
+    lines.extend(["👀 Watch", "Monitor for follow-up signals next week."])
+    return "\n".join(lines)
+
+
 async def synthesize_weekly_digest(
-    client: Optional[LLMClient] = None,
+    client=None,  # ignored — agent-native
     daily_digests: Optional[list[str]] = None,
 ) -> str:
     """Generate the weekly event-driven digest from the last 7 daily digests."""
@@ -156,53 +164,13 @@ async def synthesize_weekly_digest(
     week_end = now.strftime("%b %d, %Y")
     week_range = f"{week_start} – {week_end}"
 
-    prompt = _WEEKLY_PROMPT.format(
-        daily_digests_text=digest_text,
-        week_range=week_range,
-    )
-
-    llm_digest_enabled = get_env("WEEKLY_DIGEST_LLM_ENABLED", "true").lower() == "true"
-
-    if not llm_digest_enabled:
-        logger.info("[weekly-digest] LLM disabled, returning fallback")
-        return _fallback_weekly(digest_text, week_range)
-
-    client = client or LLMClient.from_env()
-    try:
-        raw = await asyncio.to_thread(
-            lambda: client.generate(prompt, system_prompt=_WEEKLY_SYSTEM_PROMPT, num_predict=4096)
-        )
-    except LLMError as exc:
-        logger.error(f"Weekly digest LLM failed: {exc}, using fallback")
-        return _fallback_weekly(digest_text, week_range)
-    except Exception as exc:
-        logger.error(f"Unexpected error in weekly digest: {exc}")
-        return _fallback_weekly(digest_text, week_range)
-
-    raw = raw.strip()
-    if "📈 Weekly Intelligence Brief" not in raw:
-        raw = f"📈 Weekly Intelligence Brief — {week_range}\n\n{raw}"
-
-    raw += _format_health_footer()
-    return raw
-
-
-def _fallback_weekly(digest_text: str, week_range: str) -> str:
-    lines = [
-        f"📈 Weekly Intelligence Brief — {week_range}",
-        "",
-        "🧠 Theme of the Week",
-        "LLM synthesis unavailable — raw signals below.",
-        "",
-        "📊 Raw Signals (7-day aggregate)",
-        "Daily digest data present but synthesis engine offline.",
-        "",
-    ]
-    return "\n".join(lines)
+    raw_output = _build_weekly_digest(digest_text, week_range)
+    raw_output += _format_health_footer()
+    return raw_output
 
 
 def _format_health_footer() -> str:
-    return "\n\n⚠️ Source health\n  Weekly digest: LLM-driven synthesis complete.\n"
+    return "\n\n⚠️ Source health\n  Weekly digest: agent-native synthesis complete.\n"
 
 
 # Legacy class kept for backward compat; delegates to new function
@@ -223,6 +191,20 @@ class WeeklyDigestFormatter:
         except Exception as e:
             logger.error(f"Weekly digest failed: {e}")
             return _fallback_weekly("", _make_week_range())
+
+
+def _fallback_weekly(digest_text: str, week_range: str) -> str:
+    lines = [
+        f"📈 Weekly Intelligence Brief — {week_range}",
+        "",
+        "🧠 Theme of the Week",
+        "LLM synthesis unavailable — raw signals below.",
+        "",
+        "📊 Raw Signals (7-day aggregate)",
+        "Daily digest data present but synthesis engine offline.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def _make_week_range() -> str:

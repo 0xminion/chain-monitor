@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Chain Monitor — Health check and auto-fix doctor.
+"""End-to-end health check for Chain Monitor v2.0.
 
-Checks .env, Python deps, LLM connectivity, storage dirs, Telegram bot.
-Attempts automated fixes where safe.
+Checks .env, Python deps, storage dirs, Telegram bot.
+No LLM connectivity checks needed -- v2.0 is fully agent-native.
 
 Usage:
     python3 scripts/doctor.py
@@ -21,19 +21,18 @@ def check_env() -> list[tuple[str, bool, str]]:
     results = []
     env_path = REPO_ROOT / ".env"
     if not env_path.exists():
-        results.append(("env_file", False, ".env missing — run: python3 scripts/setup.py"))
+        results.append(("env_file", False, ".env missing -- run: python3 scripts/setup.py"))
         return results
 
     content = env_path.read_text()
     required_keys = [
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
-        "LLM_MODEL",
     ]
     for key in required_keys:
         if f"{key}=" not in content:
             results.append((key, False, f"{key} not configured in .env"))
-        elif f"{key}=" in content and (f"{key}=***" in content or f"{key}=your_" in content):
+        elif f"{key}=***" in content or f"{key}=your_" in content:
             results.append((key, False, f"{key} has placeholder value"))
         else:
             results.append((key, True, f"{key} configured"))
@@ -56,47 +55,7 @@ def check_python_deps() -> list[tuple[str, bool, str]]:
             __import__(import_name)
             results.append((f"pkg:{pkg_name}", True, f"{pkg_name} installed"))
         except ImportError:
-            results.append((f"pkg:{pkg_name}", False, f"Missing {pkg_name} — run: pip install -r requirements.txt"))
-    return results
-
-
-def check_llm() -> list[tuple[str, bool, str]]:
-    """Check LLM connectivity."""
-    results = []
-    from config.loader import get_env
-    provider = get_env("LLM_PROVIDER", "ollama")
-
-    if provider != "ollama":
-        results.append(("llm_provider", True, f"Provider={provider}, skipping Ollama check"))
-        return results
-
-    host = get_env("OLLAMA_HOST", "http://localhost:11434")
-    try:
-        import requests
-        resp = requests.get(f"{host}/api/tags", timeout=5)
-        if resp.status_code != 200:
-            results.append(("llm_connect", False, f"Ollama returned HTTP {resp.status_code}"))
-            return results
-
-        data = resp.json()
-        models = {m.get("name", "") for m in data.get("models", [])}
-        model = get_env("LLM_MODEL", "")
-        fallback = get_env("LLM_FALLBACK_MODEL", "")
-
-        if model:
-            if model in models:
-                results.append(("llm_primary", True, f"Model '{model}' available"))
-            else:
-                results.append(("llm_primary", False, f"Model '{model}' not pulled — run: ollama pull {model}"))
-        if fallback:
-            if fallback in models:
-                results.append(("llm_fallback", True, f"Fallback '{fallback}' available"))
-            else:
-                results.append(("llm_fallback", False, f"Fallback '{fallback}' not pulled — run: ollama pull {fallback}"))
-    except requests.exceptions.ConnectionError:
-        results.append(("llm_connect", False, f"Cannot connect to Ollama at {host} — is it running?"))
-    except Exception as exc:
-        results.append(("llm_connect", False, f"LLM check error: {exc}"))
+            results.append((f"pkg:{pkg_name}", False, f"Missing {pkg_name} -- run: pip install -r requirements.txt"))
     return results
 
 
@@ -163,13 +122,13 @@ def check_config_files() -> list[tuple[str, bool, str]]:
 def _run_checks() -> list[tuple[str, bool, str]]:
     """Run all check groups and flatten."""
     results = []
-    for fn in (check_env, check_python_deps, check_llm, check_storage, check_telegram, check_config_files):
+    for fn in (check_env, check_python_deps, check_storage, check_telegram, check_config_files):
         results.extend(fn())
     return results
 
 
 def main():
-    print("🏥 Chain Monitor Doctor")
+    print("🏥 Chain Monitor Doctor v2.0")
     print("=" * 50)
 
     results = _run_checks()

@@ -1,6 +1,8 @@
 """Daily digest formatter — generates the daily Telegram digest.
 
 v0.2: Added LLM-powered digest generation with template fallback.
+v2.0: Fully agent-native. Uses template-based formatting — no LLM calls,
+no external APIs, no tokens required. Anyone can clone and run this without any API keys.
 """
 
 import logging
@@ -8,9 +10,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-
-from config.loader import get_env
-from output.llm_digest_generator import LLMDigestGenerator
 from processors.signal import Signal
 
 logger = logging.getLogger(__name__)
@@ -129,7 +128,7 @@ time-sensitive ecosystem signals.
             if metric not in ("major_release", "new_release"):
                 desc_lower = desc.lower()
                 # Skip routine fix/feat/build PRs
-                routine = ("fix:", "fix(", "feat:", "feat(", "build:", "build(",
+                routine = ("fix:", "fix(", "feat:", "feat(", "build:", " build(",
                            "backport ", "update ", "core/vm:", "core/eth:",
                            "core/p2p:", "core/state:", "release rlock",
                            "confidential asset")
@@ -172,8 +171,7 @@ class DailyDigestFormatter:
     def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
         """Format signals into daily digest text.
 
-        v0.2: Routes to LLM generator if LLM_DIGEST_ENABLED=true and LLM available,
-        otherwise falls back to template-based formatting.
+        v2.0: Agent-native — template-based formatting only. No LLM required.
         """
         signals = [s for s in signals if not _is_noise(s)]
 
@@ -197,29 +195,7 @@ class DailyDigestFormatter:
         else:
             fixed_health = None
 
-        # ── v0.2: LLM Digest Generation (default, with template fallback) ────
-        llm_digest_enabled = get_env("LLM_DIGEST_ENABLED", "true").lower() == "true"
-        if llm_digest_enabled:
-            try:
-                llm_gen = LLMDigestGenerator()
-                llm_output = llm_gen.generate(
-                    signals=signals,
-                    source_health=fixed_health,
-                    source_health_detail=source_health_detail,
-                )
-                if llm_output and llm_output.strip():
-                    logger.info("[digest] LLM digest generated successfully")
-                    # Still append source health footer
-                    if fixed_health:
-                        llm_output += "\n" + "\n".join(self._format_health(fixed_health, detail=source_health_detail))
-                    return llm_output
-                else:
-                    logger.warning("[digest] LLM digest returned empty — falling back to template")
-            except Exception as e:
-                logger.warning(f"[digest] LLM digest generation failed: {e}")
-
-        # ── Template-based formatting (fallback) ────────────────────────────
-        # Issue #3: Consistent score capitalization
+        # ── Template-based formatting (agent-native only) ───────────────────
         critical = [s for s in signals if s.priority_score >= 8]
         high = [s for s in signals if 5 <= s.priority_score < 8]
         notable = [s for s in signals if 2 <= s.priority_score < 5]
@@ -385,5 +361,4 @@ class DailyDigestFormatter:
             for name, h in issues[:3]:
                 lines.append(f"  {name}: {h.get('status', 'unknown')} ({h.get('failures_24h', 0)} failures)")
 
-        lines.append("")
         return lines

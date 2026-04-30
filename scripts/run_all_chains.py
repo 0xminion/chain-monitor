@@ -4,7 +4,7 @@ Full pipeline for ALL 27 chains using divide-and-conquer.
 
 Phase 1: Non-Twitter collectors (run once)
 Phase 2: Twitter in 3 batches (~9 chains per batch) with zombie cleanup
-Phase 3: LLM synthesize digest from all saved signals
+Phase 3: Synthesize digest from all saved signals (agent-native)
 
 Run with: timeout 1800 python3 run_all_chains.py
 """
@@ -83,9 +83,8 @@ ALL_CHAINS = list(get_chains().keys())
 TIER_1_2 = [c for c, cfg in get_chains().items() if cfg.get("tier") in (1, 2)]
 
 print("=" * 60)
-print(f"Chain Monitor — All {len(ALL_CHAINS)} Chains (Divide & Conquer)")
+print(f"Chain Monitor — All {len(ALL_CHAINS)} Chains (Agent-Native Pipeline)")
 print(f"Time: {datetime.now(timezone.utc).isoformat()}")
-print(f"LLM model: {get_env('LLM_DIGEST_MODEL', 'gemma4:31b-cloud')}")
 print(f"Tier 1+2 focus: {len(TIER_1_2)} chains")
 print("=" * 60)
 
@@ -156,7 +155,7 @@ print(f"[Phase 2] Total events: {len(events)}")
 
 # ── Phase 3: Process + digest ───────────────────────────────────────────
 print("\n[Phase 3] Processing events → digest")
-print("  Cleaning stale Chrome before LLM...")
+print("  Cleaning stale Chrome before synthesis...")
 _sweep_stale_chromes(min_age_sec=5)
 
 categorizer = EventCategorizer()

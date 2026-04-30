@@ -217,61 +217,6 @@ PRICE_NOISE_KEYWORDS = [
 ]
 
 
-def _has_semantic_override(event: dict) -> tuple[bool, str, str]:
-    """Check if event has high-confidence semantic enrichment that should override keywords.
-
-    Returns (has_override, category, subcategory).
-    """
-    semantic = event.get("semantic")
-    if not semantic or not isinstance(semantic, dict):
-        return False, "", ""
-
-    confidence = float(semantic.get("confidence", 0.0))
-    category = semantic.get("category", "")
-    subcategory = semantic.get("subcategory", "")
-    is_noise = bool(semantic.get("is_noise", False))
-
-    if is_noise and confidence >= 0.50:
-        return True, "NOISE", "noise_phrase"
-
-    if confidence >= 0.75 and category and category in CATEGORY_KEYWORDS:
-        return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
-
-    return False, "", ""
-
-
-def _has_semantic_vote(event: dict, keyword_category: str) -> tuple[bool, str, str]:
-    """Check if medium-confidence semantic should act as tiebreaker.
-
-    Returns (use_semantic, category, subcategory).
-    """
-    semantic = event.get("semantic")
-    if not semantic or not isinstance(semantic, dict):
-        return False, "", ""
-
-    confidence = float(semantic.get("confidence", 0.0))
-    category = semantic.get("category", "")
-    subcategory = semantic.get("subcategory", "")
-    is_noise = bool(semantic.get("is_noise", False))
-
-    # Low confidence — ignore
-    if confidence < 0.50:
-        return False, "", ""
-
-    # Noise flag from LLM — honour it even at medium confidence
-    if is_noise:
-        return True, "NOISE", "noise_phrase"
-
-    # Medium confidence with explicit reasoning that contradicts keyword
-    # Only override if keyword is generic (NEWS, TECH_EVENT) and LLM is specific
-    if 0.50 <= confidence < 0.75:
-        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
-        if keyword_category in GENERIC_CATEGORIES and category not in GENERIC_CATEGORIES:
-            return True, category, subcategory or _detect_subcategory_keyword(semantic.get("reasoning", ""), category)
-
-    return False, "", ""
-
-
 def _detect_subcategory_keyword(text: str, category: str) -> str:
     """Detect subcategory using keyword matching."""
     subcats = SUBCATEGORY_MAP.get(category, {})
@@ -283,30 +228,21 @@ def _detect_subcategory_keyword(text: str, category: str) -> str:
 
 
 class EventCategorizer:
-    """Classifies raw events into categories and subcategories."""
+    """Classifies raw events into categories and subcategories.
+
+    v2.0: Fully agent-native. Uses deterministic keyword matching only.
+    No LLM calls, no external APIs, no tokens required.
+    """
 
     def __init__(self):
-        # Optional: external semantic enricher for pre-processing
+        # Agent-native: no semantic enricher needed
         self.semantic_enricher = None
         self._preprocess_twitter = False
-        try:
-            from processors.semantic_enricher import SemanticEnricher
-            self.semantic_enricher = SemanticEnricher()
-            self._preprocess_twitter = True
-            logger.info("[categorizer] Semantic enrichment loaded for Twitter sources")
-        except Exception as e:
-            logger.warning(f"[categorizer] Semantic enrichment not available: {e}")
+        logger.info("[categorizer] Agent-native keyword categorizer ready")
 
     def categorize(self, event: dict) -> dict:
-        """Add category and subcategory to event dict."""
+        """Add category and subcategory to event dict via keyword matching."""
         source = event.get("source", "") or event.get("source_name", "")
-
-        # --- 1. Pre-process Twitter with semantic enrichment if available ---
-        if self._preprocess_twitter and "twitter" in source.lower():
-            try:
-                event = self.semantic_enricher.enrich(event)
-            except Exception as e:
-                logger.warning(f"[categorizer] Semantic enrichment failed: {e}")
 
         # Build text for matching from all available fields
         text_parts = [event.get("description", "")]
@@ -320,15 +256,6 @@ class EventCategorizer:
             text_parts.append(str(evidence))
 
         text = " ".join(str(p) for p in text_parts if p).lower()
-
-        # --- 2. Check LLM semantic result for override ---
-        has_override, override_cat, override_sub = _has_semantic_override(event)
-        if has_override:
-            event["category"] = override_cat
-            event["subcategory"] = override_sub
-            if override_cat == "NOISE":
-                event["_filtered_twitter_noise"] = True
-            return event
 
         # Filter out price/trading noise from FINANCIAL
         is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
@@ -350,7 +277,7 @@ class EventCategorizer:
                 event["subcategory"] = reason
                 return event
 
-        # --- 3. Keyword-based categorization ---
+        # Keyword-based categorization
         GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
         if existing and existing not in GENERIC_CATEGORIES:
             keyword_category = existing
@@ -359,14 +286,7 @@ class EventCategorizer:
 
         keyword_subcategory = self._detect_subcategory(text, keyword_category)
 
-        # --- 4. LLM semantic as tiebreaker (medium confidence) ---
-        has_sem_vote, sem_cat, sem_sub = _has_semantic_vote(event, keyword_category)
-        if has_sem_vote:
-            event["category"] = sem_cat
-            event["subcategory"] = sem_sub
-            return event
-
-        # Result: keyword category
+        # Result: keyword category only (agent-native)
         event["category"] = keyword_category
         event["subcategory"] = keyword_subcategory
         return event

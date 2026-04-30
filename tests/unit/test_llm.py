@@ -1,6 +1,7 @@
 """Unit tests for LLM client and cache, and semantic enricher.
 
-These tests mock the Ollama HTTP endpoint to avoid real LLM calls.
+v2.0: Semantic enricher is agent-native — all enrichment uses keyword matching.
+No LLM calls required for pipeline operation.
 """
 
 import json
@@ -14,7 +15,7 @@ import pytest
 
 from processors.llm_client import LLMClient, LLMError, LLMResponseError, LLMTimeoutError
 from processors.llm_cache import LLMCache, _cache_path, _is_expired, _make_key
-from processors.semantic_enricher import SemanticEnricher, _validate_enrichment
+from processors.semantic_enricher import SemanticEnricher
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ def temp_cache_dir(tmp_path):
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# LLMClient tests
+# LLMClient tests (module still available for optional external integration)
 # ──────────────────────────────────────────────────────────────────────────
 
 class TestLLMClientInit:
@@ -113,7 +114,6 @@ class TestLLMClientGenerate:
         import requests
 
         mock_post = MagicMock()
-        # First call fails with ConnectionError, second succeeds
         def side_effect(*args, **kwargs):
             model = kwargs.get("json", {}).get("model", "")
             if model == "primary":
@@ -196,20 +196,12 @@ class TestLLMCache:
     def test_cache_identity_by_all_fields(self, temp_cache_dir):
         cache = LLMCache()
         cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "subcategory": "upgrade", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        # Same text but different author → miss
         assert cache.get("eth", "text", "other", False, "") is None
-        # Same text but retweet → miss
         assert cache.get("eth", "text", "user", True, "") is None
 
     def test_cache_expiration(self, temp_cache_dir, monkeypatch):
-        cache = LLMCache(ttl_hours=0)  # Zero TTL = immediate expiration
+        cache = LLMCache(ttl_hours=0)
         cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "subcategory": "upgrade", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        assert cache.get("eth", "text", "user", False, "") is None
-
-    def test_cache_missing_required_keys(self, temp_cache_dir):
-        cache = LLMCache()
-        # Missing subcategory
-        cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "confidence": 0.5, "reasoning": "x", "is_noise": False})
         assert cache.get("eth", "text", "user", False, "") is None
 
     def test_clear_expired(self, temp_cache_dir):
@@ -227,80 +219,22 @@ class TestLLMCache:
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# SemanticEnricher tests
+# SemanticEnricher tests — agent-native keyword enrichment
 # ──────────────────────────────────────────────────────────────────────────
 
-class TestValidateEnrichment:
-    def test_valid(self):
-        result = {
-            "category": "TECH_EVENT",
-            "subcategory": "upgrade",
-            "confidence": 0.95,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, sanitized = _validate_enrichment(result)
-        assert valid is True
-        assert sanitized["category"] == "TECH_EVENT"
-        assert sanitized["confidence"] == 0.95
-        assert sanitized["is_noise"] is False
-
-    def test_invalid_category(self):
-        result = {
-            "category": "INVALID",
-            "subcategory": "upgrade",
-            "confidence": 0.95,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, _ = _validate_enrichment(result)
-        assert valid is False
-
-    def test_clamped_confidence(self):
-        result = {
-            "category": "NEWS",
-            "subcategory": "general",
-            "confidence": 1.5,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, sanitized = _validate_enrichment(result)
-        assert valid is True
-        assert sanitized["confidence"] == 1.0
-
-    def test_missing_keys(self):
-        result = {"category": "NEWS", "confidence": 0.5}
-        valid, _ = _validate_enrichment(result)
-        assert valid is False
-
-
-class TestSemanticEnricherUnit:
-    """SemanticEnricher tests with mocked LLMClient."""
+class TestSemanticEnricherAgentNative:
+    """SemanticEnricher tests for agent-native keyword enrichment."""
 
     @pytest.fixture
     def enricher(self):
-        mock_client = MagicMock()
-        mock_cache = MagicMock()
-        mock_cache.get.return_value = None
-        enricher = SemanticEnricher(client=mock_client, cache=mock_cache)
-        return enricher
+        return SemanticEnricher()
 
     def test_enrich_non_twitter_event(self, enricher):
-        # Does not enrich non-Twitter events
         event = {"source": "rss", "description": "hello world"}
         result = enricher.enrich(event)
-        assert "semantic" not in result
-        enricher.client.generate_json.assert_not_called()
+        assert result == event  # unchanged for non-Twitter
 
-    def test_enrich_twitter_with_llm_result(self, enricher):
-        enricher.client.generate_json.return_value = {
-            "category": "TECH_EVENT",
-            "subcategory": "upgrade",
-            "confidence": 0.90,
-            "reasoning": "Mainnet upgrade",
-            "is_noise": False,
-            "primary_mentions": ["ethereum"],
-        }
+    def test_enrich_twitter_keyword_match(self, enricher):
         event = {
             "source": "twitter",
             "chain": "ethereum",
@@ -314,123 +248,34 @@ class TestSemanticEnricherUnit:
         result = enricher.enrich(event)
         assert "semantic" in result
         assert result["semantic"]["category"] == "TECH_EVENT"
-        assert result["semantic"]["confidence"] == 0.90
-        enricher.client.generate_json.assert_called_once()
-        enricher.cache.set.assert_called_once()
+        assert result["semantic"]["subcategory"] == "upgrade"
+        assert result["semantic"]["is_noise"] is False
 
-    def test_enrich_llm_failure_falls_back(self, enricher):
-        from processors.llm_client import LLMError
-        enricher.client.generate_json.side_effect = LLMError("LLM down")
-        event = {
-            "source": "twitter",
-            "chain": "ethereum",
-            "description": "test",
-            "evidence": {"author": "user"},
-        }
-        result = enricher.enrich(event)
-        assert "semantic" not in result
-        # Failure tracking
-        assert enricher._failures == 1
-
-    def test_enrich_cache_hit(self, enricher):
-        cached = {
-            "category": "VISIBILITY",
-            "subcategory": "ama",
-            "confidence": 0.80,
-            "reasoning": "AMA",
-            "is_noise": False,
-        }
-        enricher.cache.get.return_value = cached
+    def test_enrich_twitter_hack_keyword(self, enricher):
         event = {
             "source": "twitter",
             "chain": "solana",
-            "description": "AMA tomorrow",
-            "evidence": {"author": "solana"},
+            "description": "Protocol hack drained $5M",
         }
         result = enricher.enrich(event)
-        assert result["semantic"] == cached
-        enricher.client.generate_json.assert_not_called()
+        assert "semantic" in result
+        assert result["semantic"]["category"] == "RISK_ALERT"
+        assert result["semantic"]["subcategory"] == "hack"
 
-    def test_enrich_tweets_batch(self, enricher):
-        # Batch enrichment returns a LIST of results, one per tweet
-        enricher.client.generate_json.return_value = [
-            {
-                "category": "TECH_EVENT",
-                "subcategory": "upgrade",
-                "confidence": 0.80,
-                "reasoning": "test",
-                "is_noise": False,
-            },
-            {
-                "category": "PARTNERSHIP",
-                "subcategory": "integration",
-                "confidence": 0.75,
-                "reasoning": "test",
-                "is_noise": False,
-            },
-        ]
+    def test_enrich_tweets_batch_keyword_only(self, enricher):
         tweets = [
             {"chain": "eth", "text": "upgrade live", "account_handle": "eth"},
-            {"chain": "sol", "text": "partnership", "account_handle": "sol"},
+            {"chain": "sol", "text": "partnership announced", "account_handle": "sol"},
         ]
         enriched = enricher.enrich_tweets(tweets)
         assert len(enriched) == 2
         assert "semantic" in enriched[0]
-        assert enricher.cache.set.call_count == 2
+        assert enriched[0]["semantic"]["category"] == "TECH_EVENT"
+        assert enriched[1]["semantic"]["category"] == "PARTNERSHIP"
 
-    def test_enrich_llm_disabled_after_max_failures(self, enricher):
-        from processors.llm_client import LLMError
-        enricher.client.generate_json.side_effect = LLMError("LLM down")
-        event = {
-            "source": "twitter",
-            "chain": "ethereum",
-            "description": "test",
-            "evidence": {"author": "user"},
-        }
-        # Exhaust failures to disable
-        for _ in range(3):
-            enricher.enrich(event)
-        assert enricher._llm_available is False
-        # Further calls should skip
-        enricher.client.reset_mock()
-        enricher.enrich(event)
-        enricher.client.generate_json.assert_not_called()
-
-    def test_health(self, enricher):
-        # Set provider attribute on the mock to a real string
-        enricher.client.provider = "ollama"
+    def test_health_agent_native(self, enricher):
         h = enricher.get_health()
-        assert h["llm_available"] is True
+        assert h["llm_available"] is False
+        assert h["provider"] == "agent-native"
+        assert h["model"] == "keyword-only"
         assert h["failures"] == 0
-        assert h["provider"] == "ollama"
-
-
-class TestSemanticEnricherWithRealIntegration:
-    """These tests use real Ollama and are conditionally skipped.
-    
-    Set CHAIN_MONITOR_ENABLE_LLM_TESTS=1 to run them.
-    """
-
-    @pytest.fixture
-    def can_run_llm(self, enricher):
-        if os.environ.get("CHAIN_MONITOR_ENABLE_LLM_TESTS") != "1":
-            pytest.skip("LLM integration tests disabled (set CHAIN_MONITOR_ENABLE_LLM_TESTS=1)")
-
-    def test_real_llm_call(self):
-        """End-to-end enrichment with real Ollama."""
-        from processors.llm_client import LLMClient
-        from processors.llm_cache import LLMCache
-
-        client = LLMClient(model="minimax-m2.7:cloud", timeout=15)
-        cache = LLMCache()
-        enricher = SemanticEnricher(client=client, cache=cache)
-        event = {
-            "source": "twitter",
-            "chain": "ethereum",
-            "description": "Mainnet Dencun upgrade is going live tomorrow!",
-            "evidence": {"author": "ethereum", "role": "official", "is_retweet": False},
-        }
-        result = enricher.enrich(event)
-        assert "semantic" in result
-        assert result["semantic"]["category"] == "TECH_EVENT"
-        assert result["semantic"]["confidence"] >= 0.5

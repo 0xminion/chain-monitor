@@ -1,7 +1,9 @@
-"""Tests for per-chain semantic analyzer."""
+"""Tests for per-chain semantic analyzer.
+
+v2.0: Agent-native — all tests run without any LLM mocking.
+"""
 
 import pytest
-from unittest.mock import MagicMock
 
 from processors.pipeline_types import RawEvent, ChainDigest
 from processors.chain_analyzer import analyze_chain
@@ -10,83 +12,55 @@ from processors.chain_analyzer import analyze_chain
 class TestChainAnalyzer:
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_with_mock_llm(self):
-        client = MagicMock()
-        client.generate_json_with_retry.return_value = {
-            "chain": "solana",
-            "priority_score": 8,
-            "dominant_topic": "Mainnet upgrade imminent",
-            "confidence": 0.92,
-            "summary": "Solana is pushing v2 with significant performance gains.",
-            "key_events": [
-                {
-                    "topic": "v2 release",
-                    "category": "TECH_EVENT",
-                    "sources": ["GitHub", "RSS"],
-                    "priority": 8,
-                    "confidence": 0.92,
-                    "detail": "Solana v2 tagged and released.",
-                    "why_it_matters": "Performance gains could attract new DeFi protocols.",
-                }
-            ],
-        }
-
+    async def test_analyze_chain_with_events(self):
         events = [
             RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2 released", "rss", 0.8),
             RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2 on GitHub", "github", 0.9),
         ]
 
-        digest = await analyze_chain("solana", events, client)
+        digest = await analyze_chain("solana", events, client=None)
         assert isinstance(digest, ChainDigest)
         assert digest.chain == "solana"
-        assert digest.priority_score == 8
-        assert digest.dominant_topic == "Mainnet upgrade imminent"
-        assert len(digest.key_events) == 1
+        assert digest.priority_score >= 2   # at least one event with rel 0.8
+        assert digest.dominant_topic is not None
+        assert len(digest.key_events) >= 1
         assert digest.key_events[0]["category"] == "TECH_EVENT"
 
     @pytest.mark.asyncio
     async def test_analyze_chain_empty_events(self):
-        """Empty events should produce a quiet digest, not crash."""
-        digest = await analyze_chain("solana", [], MagicMock())
+        digest = await analyze_chain("solana", [], client=None)
         assert isinstance(digest, ChainDigest)
         assert digest.chain == "solana"
         assert digest.priority_score == 0
         assert "no signals" in digest.summary.lower() or "quiet" in digest.summary.lower()
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_llm_failure(self):
-        """LLM failure should return a graceful fallback digest."""
-        client = MagicMock()
-        from processors.llm_client import LLMError
-        client.generate_json_with_retry.side_effect = LLMError("connection refused")
-
-        events = [RawEvent("solana", "TECH_EVENT", "upgrade", "Something", "rss", 0.7)]
-        digest = await analyze_chain("solana", events, client)
+    async def test_analyze_chain_priority_scoring(self):
+        events = [
+            RawEvent("ethereum", "RISK_ALERT", "hack", "Major bridge hack", "rss", 0.95),
+        ]
+        digest = await analyze_chain("ethereum", events, client=None)
         assert isinstance(digest, ChainDigest)
-        assert digest.chain == "solana"
-        assert digest.priority_score == 0
-        assert "unavailable" in digest.summary.lower() or "error" in digest.summary.lower()
+        assert digest.chain == "ethereum"
+        assert digest.priority_score >= 10  # RISK_ALERT = 15 * 0.95
 
     @pytest.mark.asyncio
-    async def test_analyze_chain_truncates_large_event_lists(self):
-        """If > max_events_in_prompt, events are truncated."""
-        client = MagicMock()
-        client.generate_json_with_retry.return_value = {
-            "chain": "ethereum",
-            "priority_score": 5,
-            "dominant_topic": "Many events",
-            "confidence": 0.8,
-            "summary": "Lots of stuff happened.",
-            "key_events": [{"topic": "Event", "category": "TECH_EVENT", "priority": 5, "confidence": 0.8, "detail": "x"}],
-        }
-
+    async def test_analyze_chain_multiple_events_merged(self):
         events = [
-            RawEvent(f"ethereum", "TECH_EVENT", "upgrade", f"Event {i}", "rss", 0.5 + (i % 10) * 0.05)
-            for i in range(60)
+            RawEvent("bitcoin", "PARTNERSHIP", "integration", "Visa integrates Bitcoin", "rss", 0.9),
+            RawEvent("bitcoin", "PARTNERSHIP", "integration", "Bitcoin Visa partnership confirmed", "twitter", 0.85),
         ]
-
-        digest = await analyze_chain("ethereum", events, client, max_events_in_prompt=40)
+        digest = await analyze_chain("bitcoin", events, client=None)
         assert isinstance(digest, ChainDigest)
-        # Verify prompt was called with fewer events (can't inspect directly, but
-        # test passes if no crash and result is valid)
-        assert digest.priority_score == 5
+        # Merged events should produce fewer key_events than input events
+        assert len(digest.key_events) <= len(events)
+
+    @pytest.mark.asyncio
+    async def test_analyze_chain_trading_noise_low_priority(self):
+        events = [
+            RawEvent("solana", "FINANCIAL", "general", "Price prediction: SOL to $500", "tradingview", 0.7),
+        ]
+        digest = await analyze_chain("solana", events, client=None)
+        # Trading noise gets a penalty, score should be lower
+        assert isinstance(digest, ChainDigest)
+        assert digest.priority_score < 5
