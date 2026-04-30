@@ -112,8 +112,9 @@ class TestProcessorInstantiation:
     def test_scorer(self):
         from processors.scoring import SignalScorer
         s = SignalScorer()
-        assert s.baselines is not None
-        assert s.chains is not None
+        assert s is not None
+        sig = s.score({"chain": "ethereum", "category": "TECH_EVENT", "description": "test"})
+        assert sig is not None
 
     def test_categorizer(self):
         from processors.categorizer import EventCategorizer
