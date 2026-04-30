@@ -1,223 +1,168 @@
-"""Unit tests for LLM cache and deterministic semantic enricher.
+"""Tests for agent-native SemanticEnricher.
 
-No real LLM calls. All enrichment is keyword-based deterministic.
+No LLM calls. No keyword matching. The agent provides all enrichment reasoning.
+These tests verify task preparation, result application, and checkpoint mechanics.
 """
 
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
+import json
 import pytest
+from pathlib import Path
 
-from processors.llm_cache import LLMCache, _cache_path, _is_expired, _make_key
-from processors.semantic_enricher import (
-    SemanticEnricher,
-    _validate_enrichment,
-    _keyword_enrich_tweets,
-    _is_twitter_noise,
-)
+from processors.semantic_enricher import SemanticEnricher
 
-
-# ──────────────────────────────────────────────────────────────
-# Fixtures
-# ──────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def temp_cache_dir(tmp_path):
-    """Override cache dir to a temp path."""
-    with patch("processors.llm_cache.CACHE_DIR", tmp_path):
-        yield tmp_path
+def enricher():
+    return SemanticEnricher()
 
 
-# ──────────────────────────────────────────────────────────────
-# LLMCache tests
-# ──────────────────────────────────────────────────────────────
-
-class TestLLMCache:
-    def test_get_miss(self, temp_cache_dir):
-        cache = LLMCache()
-        assert cache.get("ethereum", "test tweet", "user", False, "") is None
-
-    def test_set_and_get(self, temp_cache_dir):
-        cache = LLMCache()
-        result = {
-            "category": "TECH_EVENT",
-            "subcategory": "upgrade",
-            "confidence": 0.95,
-            "reasoning": "Mainnet upgrade",
-            "is_noise": False,
-        }
-        cache.set("ethereum", "test tweet", "user", False, "", result)
-
-        cached = cache.get("ethereum", "test tweet", "user", False, "")
-        assert cached is not None
-        assert cached["category"] == "TECH_EVENT"
-        assert cached["confidence"] == 0.95
-
-    def test_cache_identity_by_all_fields(self, temp_cache_dir):
-        cache = LLMCache()
-        cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "subcategory": "upgrade", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        # Same text but different author → miss
-        assert cache.get("eth", "text", "other", False, "") is None
-        # Same text but retweet → miss
-        assert cache.get("eth", "text", "user", True, "") is None
-
-    def test_cache_expiration(self, temp_cache_dir, monkeypatch):
-        cache = LLMCache(ttl_hours=0)  # Zero TTL = immediate expiration
-        cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "subcategory": "upgrade", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        assert cache.get("eth", "text", "user", False, "") is None
-
-    def test_cache_missing_required_keys(self, temp_cache_dir):
-        cache = LLMCache()
-        # Missing subcategory
-        cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        assert cache.get("eth", "text", "user", False, "") is None
-
-    def test_clear_expired(self, temp_cache_dir):
-        cache = LLMCache(ttl_hours=0)
-        cache.set("eth", "text", "user", False, "", {"category": "TECH_EVENT", "subcategory": "upgrade", "confidence": 0.5, "reasoning": "x", "is_noise": False})
-        removed = cache.clear_expired()
-        assert removed == 1
-        assert cache.get_stats()["total_entries"] == 0
-
-    def test_stats(self, temp_cache_dir):
-        cache = LLMCache()
-        stats = cache.get_stats()
-        assert "total_entries" in stats
-        assert "ttl_hours" in stats
-
-
-# ──────────────────────────────────────────────────────────────
-# SemanticEnricher tests (deterministic, no LLM)
-# ──────────────────────────────────────────────────────────────
-
-class TestValidateEnrichment:
-    def test_valid(self):
-        result = {
-            "category": "TECH_EVENT",
-            "subcategory": "upgrade",
-            "confidence": 0.95,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, sanitized = _validate_enrichment(result)
-        assert valid is True
-        assert sanitized["category"] == "TECH_EVENT"
-        assert sanitized["confidence"] == 0.95
-        assert sanitized["is_noise"] is False
-
-    def test_invalid_category(self):
-        result = {
-            "category": "INVALID",
-            "subcategory": "upgrade",
-            "confidence": 0.95,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, _ = _validate_enrichment(result)
-        assert valid is False
-
-    def test_clamped_confidence(self):
-        result = {
-            "category": "NEWS",
-            "subcategory": "general",
-            "confidence": 1.5,
-            "reasoning": "reason",
-            "is_noise": False,
-        }
-        valid, sanitized = _validate_enrichment(result)
-        assert valid is True
-        assert sanitized["confidence"] == 1.0
-
-    def test_missing_keys(self):
-        result = {"category": "NEWS", "confidence": 0.5}
-        valid, _ = _validate_enrichment(result)
-        assert valid is False
-
-
-class TestKeywordEnrichTweets:
-    def test_hack_tweet(self):
-        tweets = [{"text": "Bridge hack drained $15M from protocol", "chain": "ethereum"}]
-        enriched = _keyword_enrich_tweets(tweets)
-        assert enriched[0]["semantic"]["category"] == "RISK_ALERT"
-        assert "hack" in enriched[0]["semantic"]["subcategory"]
-
-    def test_partnership_tweet(self):
-        tweets = [{"text": "Thrilled to announce our partnership with Polygon for L2 scaling deployment", "chain": "base"}]
-        enriched = _keyword_enrich_tweets(tweets)
-        assert enriched[0]["semantic"]["category"] == "PARTNERSHIP"
-
-    def test_noise_tweet(self):
-        tweets = [{"text": "gm everyone! wagmi 🚀", "chain": "solana"}]
-        enriched = _keyword_enrich_tweets(tweets)
-        assert enriched[0]["semantic"]["category"] == "NOISE"
-        assert enriched[0]["semantic"]["is_noise"] is True
-
-    def test_tech_event_tweet(self):
-        tweets = [{"text": "Mainnet upgrade goes live tomorrow with EIP-4844", "chain": "ethereum"}]
-        enriched = _keyword_enrich_tweets(tweets)
-        assert enriched[0]["semantic"]["category"] == "TECH_EVENT"
-
-
-class TestSemanticEnricherUnit:
-    """SemanticEnricher tests — deterministic, no LLM."""
-
-    @pytest.fixture
-    def enricher(self):
-        mock_cache = MagicMock()
-        mock_cache.get.return_value = None
-        return SemanticEnricher(cache=mock_cache)
-
-    def test_enrich_non_twitter_event(self, enricher):
-        event = {"source": "rss", "description": "hello world"}
-        result = enricher.enrich(event)
-        assert "semantic" not in result
-
-    def test_enrich_twitter_with_keyword_result(self, enricher):
-        event = {
-            "source": "twitter",
+@pytest.fixture
+def sample_tweets():
+    return [
+        {
             "chain": "ethereum",
-            "description": "Mainnet Dencun upgrade is going live tomorrow!",
-            "evidence": {"author": "ethereum", "role": "official", "is_retweet": False},
-        }
-        result = enricher.enrich(event)
-        assert "semantic" in result
-        assert result["semantic"]["category"] == "TECH_EVENT"
-        enricher.cache.set.assert_called_once()
-
-    def test_enrich_cache_hit(self, enricher):
-        cached = {
-            "category": "VISIBILITY",
-            "subcategory": "ama",
-            "confidence": 0.80,
-            "reasoning": "AMA",
-            "is_noise": False,
-        }
-        enricher.cache.get.return_value = cached
-        event = {
-            "source": "twitter",
+            "text": "Mainnet upgrade goes live tomorrow",
+            "account_handle": "@ethereum",
+            "account_role": "official",
+            "is_retweet": False,
+            "original_author": "",
+            "is_quote_tweet": False,
+            "quoted_text": "",
+            "likes": 1200,
+            "retweets": 450,
+            "url": "https://x.com/ethereum/status/123",
+        },
+        {
             "chain": "solana",
-            "description": "AMA tomorrow",
-            "evidence": {"author": "solana"},
-        }
-        result = enricher.enrich(event)
-        assert result["semantic"] == cached
-        enricher.cache.set.assert_not_called()
+            "text": "gm frens, wen lambo? 🚀🚀🚀",
+            "account_handle": "@solana_memes",
+            "account_role": "contributor",
+            "is_retweet": False,
+            "original_author": "",
+            "is_quote_tweet": False,
+            "quoted_text": "",
+            "likes": 12,
+            "retweets": 3,
+            "url": "https://x.com/solana_memes/status/456",
+        },
+    ]
 
-    def test_enrich_tweets_batch(self, enricher):
-        tweets = [
-            {"chain": "eth", "text": "upgrade live", "account_handle": "eth"},
-            {"chain": "sol", "text": "partnership announced", "account_handle": "sol"},
+
+class TestAgentTaskPreparation:
+    """Test that prepare_agent_task creates valid checkpoint files for tweets."""
+
+    def test_task_file_created(self, enricher, sample_tweets, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
+
+        path = enricher.prepare_agent_task(sample_tweets)
+        assert path.exists()
+        assert path.suffix == ".json"
+        assert "semantic_enrich_task_" in path.name
+
+    def test_task_contains_tweets(self, enricher, sample_tweets, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
+
+        path = enricher.prepare_agent_task(sample_tweets)
+        data = json.loads(path.read_text())
+        assert data["task_type"] == "semantic_enrich"
+        assert len(data["tweets"]) == 2
+        assert data["tweets"][0]["id"] == 0
+        assert data["tweets"][0]["chain"] == "ethereum"
+        assert data["tweets"][0]["author"] == "@ethereum"
+        assert data["tweets"][0]["likes"] == 1200
+
+    def test_task_contains_instructions(self, enricher, sample_tweets, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
+
+        path = enricher.prepare_agent_task(sample_tweets)
+        data = json.loads(path.read_text())
+        assert "instructions" in data
+        assert "RISK_ALERT" in data["instructions"]
+        assert "output_format" in data
+
+
+class TestApplyEnrichment:
+    """Test that apply_enrichment correctly merges agent results into tweets."""
+
+    def test_apply_single_enrichment(self, enricher, sample_tweets):
+        agent_results = [
+            {"id": 0, "category": "TECH_EVENT", "subcategory": "upgrade", "reasoning": "Mainnet upgrade", "is_noise": False, "primary_mentions": ["ethereum"]},
         ]
-        enriched = enricher.enrich_tweets(tweets)
-        assert len(enriched) == 2
-        assert "semantic" in enriched[0]
-        assert "semantic" in enriched[1]
-        assert enricher.cache.set.call_count == 2
+        enriched = enricher.apply_enrichment(sample_tweets[:1], agent_results)
+        assert enriched[0]["semantic"]["category"] == "TECH_EVENT"
+        assert enriched[0]["semantic"]["subcategory"] == "upgrade"
+        assert enriched[0]["semantic"]["confidence"] == 0.85
 
-    def test_health(self, enricher):
-        h = enricher.get_health()
-        assert h["llm_available"] is False
-        assert h["failures"] == 0
-        assert h["provider"] == "deterministic"
+    def test_apply_noise_enrichment(self, enricher, sample_tweets):
+        agent_results = [
+            {"id": 1, "category": "NOISE", "subcategory": "general", "reasoning": "Engagement bait", "is_noise": True, "primary_mentions": []},
+        ]
+        enriched = enricher.apply_enrichment(sample_tweets, agent_results)
+        assert enriched[1]["semantic"]["category"] == "NOISE"
+        assert enriched[1]["semantic"]["is_noise"] is True
+
+    def test_missing_result_defaults(self, enricher, sample_tweets):
+        agent_results = [
+            {"id": 0, "category": "TECH_EVENT", "subcategory": "upgrade", "reasoning": "Upgrade", "is_noise": False, "primary_mentions": []},
+            # Missing id 1
+        ]
+        enriched = enricher.apply_enrichment(sample_tweets, agent_results)
+        assert enriched[0]["semantic"]["category"] == "TECH_EVENT"
+        assert enriched[1]["semantic"]["category"] == "NEWS"
+        assert enriched[1]["semantic"]["confidence"] == 0.0
+
+
+class TestTryLoadResults:
+    """Test loading agent enrichment output from disk."""
+
+    def test_load_existing_output(self, enricher, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_OUTPUT_DIR", tmp_path / "agent_output")
+
+        output_dir = tmp_path / "agent_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "semantic_enrich_output_20260430_120000.json"
+        output_path.write_text(json.dumps({
+            "task_type": "semantic_enrich",
+            "task_id": "20260430_120000",
+            "results": [
+                {"id": 0, "category": "FINANCIAL", "subcategory": "funding_round", "reasoning": "$50M raised", "is_noise": False, "primary_mentions": []},
+            ],
+        }))
+
+        results = enricher.try_load_results()
+        assert results is not None
+        assert len(results) == 1
+        assert results[0]["category"] == "FINANCIAL"
+
+    def test_load_no_output_returns_none(self, enricher, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_OUTPUT_DIR", tmp_path / "agent_output")
+
+        results = enricher.try_load_results()
+        assert results is None
+
+
+class TestDeprecatedMethods:
+    """Test that old automated enrichment APIs are disabled."""
+
+    def test_enrich_tweets_raises_runtime_error(self, enricher):
+        with pytest.raises(RuntimeError, match="agent-native"):
+            enricher.enrich_tweets([{"text": "test"}])
+
+    def test_enrich_raises_runtime_error(self, enricher):
+        with pytest.raises(RuntimeError, match="agent-native"):
+            enricher.enrich({"description": "test"})
+
+
+class TestHealth:
+    """Test health reporting."""
+
+    def test_get_health(self, enricher):
+        health = enricher.get_health()
+        assert health["mode"] == "agent-native"
+        assert health["requires_checkpoint"] is True
+        assert health["available"] is True

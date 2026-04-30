@@ -1,14 +1,16 @@
 """Chain Monitor v0.1.0 — Agent-native pipeline.
 
-6-stage pipeline:
+7-stage pipeline:
   1. Parallel collect (async gather across all collectors)
   2. Dedup (O(n) hash-based)
-  3. Categorize + score + reinforce (deterministic heuristics)
-  4. Per-chain deterministic analyze (builds ChainDigest for agent review)
-  5. Agent prompt synthesis (rich markdown prompt saved for running agent)
-  6. Deliver (Telegram) + cleanup
+  3. Agent categorization checkpoint (running agent provides all categories)
+  4. Score + Reinforce (deterministic heuristics)
+  5. Per-chain deterministic analyze (builds ChainDigest for agent review)
+  6. Agent prompt synthesis (rich markdown prompt saved for running agent)
+  7. Deliver (Telegram) + cleanup
 
-No external LLM calls. The running agent is the synthesis engine.
+No external LLM calls. No keyword matching. The running agent is the only
+semantic reasoning engine in the pipeline.
 """
 
 import asyncio
@@ -88,16 +90,37 @@ async def run_pipeline() -> PipelineContext:
         f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
     )
 
-    # ── Stage 3: Categorize + Score + Reinforce ───────────────────────
+    # ── Stage 3: Agent Categorization Checkpoint ───────────────────────────
     categorizer = EventCategorizer()
-    scorer = SignalScorer()
-    reinforcer = SignalReinforcer()
 
-    enriched_events: list[RawEvent] = []
-    signals_for_storage: list = []
+    # Try to load existing agent categorization results
+    agent_results = categorizer.try_load_results()
+    if agent_results is None:
+        task_path = categorizer.prepare_agent_task([
+            {
+                "chain": ev.chain,
+                "category": ev.category,
+                "subcategory": ev.subcategory,
+                "description": ev.description,
+                "source": ev.source,
+                "reliability": ev.reliability,
+                "evidence": ev.evidence,
+                "semantic": ev.semantic,
+            }
+            for ev in ctx.unique_events
+        ])
+        logger.info(f"Agent checkpoint: categorize events at {task_path}")
+        ctx.final_digest = (
+            f"🤖 Agent categorization required\n\n"
+            f"Task saved to: {task_path}\n\n"
+            f"Please categorize events and save output to storage/agent_output/categorize_output_*.json"
+        )
+        _save_run_log(ctx, sent=False)
+        return ctx
 
-    for ev in ctx.unique_events:
-        ev_dict = {
+    # Apply agent categories to raw events
+    event_dicts = [
+        {
             "chain": ev.chain,
             "category": ev.category,
             "subcategory": ev.subcategory,
@@ -107,22 +130,32 @@ async def run_pipeline() -> PipelineContext:
             "evidence": ev.evidence,
             "semantic": ev.semantic,
         }
-        categorized = categorizer.categorize(ev_dict)
-        ev.category = categorized.get("category", ev.category)
-        ev.subcategory = categorized.get("subcategory", ev.subcategory)
-        ev.semantic = categorized.get("semantic")
-        enriched_events.append(ev)
+        for ev in ctx.unique_events
+    ]
+    categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
 
+    for ev, cat_dict in zip(ctx.unique_events, categorized_dicts):
+        ev.category = cat_dict.get("category", ev.category)
+        ev.subcategory = cat_dict.get("subcategory", ev.subcategory)
+        ev.semantic = cat_dict.get("semantic")
+
+    logger.info(f"Stage 3 complete: {len(categorized_dicts)} events categorized by agent")
+
+    # ── Stage 4: Score + Reinforce ─────────────────────────────────────────
+    scorer = SignalScorer()
+    reinforcer = SignalReinforcer()
+
+    signals_for_storage: list = []
+    for ev_dict in categorized_dicts:
         try:
-            signal = scorer.score(categorized)
+            signal = scorer.score(ev_dict)
             signals_for_storage.append(signal)
         except Exception as exc:
-            logger.warning(f"Scoring failed for {ev.chain}: {exc}")
+            logger.warning(f"Scoring failed for {ev_dict.get('chain')}: {exc}")
 
     ctx.signals = signals_for_storage
-    logger.info(f"Stage 3a complete: {len(ctx.signals)} signals scored")
+    logger.info(f"Stage 4a complete: {len(ctx.signals)} signals scored")
 
-    # 3b. Reinforce (persist to storage)
     reinforced_signals: list = []
     for sig in signals_for_storage:
         try:
@@ -136,9 +169,9 @@ async def run_pipeline() -> PipelineContext:
             logger.warning(f"Reinforcement failed for signal [{sig.chain}]: {exc}")
 
     ctx.signals = reinforced_signals
-    logger.info(f"Stage 3b complete: {len(ctx.signals)} signals reinforced")
+    logger.info(f"Stage 4b complete: {len(ctx.signals)} signals reinforced")
 
-    # ── Stage 4: Per-chain deterministic analyze ─────────────────────────────
+    # ── Stage 5: Per-chain deterministic analyze ─────────────────────────────
     signals_by_chain: dict[str, list] = {}
     for sig in ctx.signals:
         signals_by_chain.setdefault(sig.chain, []).append(sig)
@@ -150,19 +183,19 @@ async def run_pipeline() -> PipelineContext:
     ctx.chain_digests = await analyze_all_chains(signals_by_chain)
     significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
     logger.info(
-        f"Stage 4 complete: {len(ctx.chain_digests)} chain digests, "
+        f"Stage 5 complete: {len(ctx.chain_digests)} chain digests, "
         f"{significant} with significant activity"
     )
 
-    # ── Stage 5: Agent prompt synthesis ──────────────────────────────────
+    # ── Stage 6: Agent prompt synthesis ──────────────────────────────────────
     ctx.final_digest = await synthesize_digest(
         ctx.chain_digests,
         source_health=ctx.health,
         source_health_detail=ctx.feed_health,
     )
-    logger.info(f"Stage 5 complete: agent prompt built ({len(ctx.final_digest)} chars)")
+    logger.info(f"Stage 6 complete: agent prompt built ({len(ctx.final_digest)} chars)")
 
-    # ── Stage 6: Deliver + cleanup ─────────────────────────────────────
+    # ── Stage 7: Deliver + cleanup ───────────────────────────────────────────
     sender = TelegramSender()
     sent = False
     if _should_send(ctx.chain_digests):

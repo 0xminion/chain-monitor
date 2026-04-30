@@ -168,7 +168,7 @@ class TestTwitterCollector:
         assert "monad_xyz" in events[0]["description"]
 
     def test_noise_filter(self, sample_tweets):
-        """The categorizer should filter 'gm builders' as noise."""
+        """The agent should categorize 'gm builders' as noise."""
         c = EventCategorizer()
         gm_event = {
             "chain": "monad",
@@ -178,12 +178,16 @@ class TestTwitterCollector:
             "source_name": "Twitter (@keoneHD)",
             "evidence": {"text": "gm builders"},
         }
-        result = c.categorize(gm_event)
-        assert result["category"] == "NOISE"
-        assert result.get("_filtered_twitter_noise") is True
+        # Simulate agent having categorized this as NOISE
+        agent_results = [
+            {"id": 0, "category": "NOISE", "subcategory": "general", "reasoning": "Low-value greeting", "is_noise": True, "primary_mentions": []},
+        ]
+        enriched = c.apply_categories([gm_event], agent_results)
+        assert enriched[0]["category"] == "NOISE"
+        assert enriched[0]["semantic"]["is_noise"] is True
 
     def test_tech_event_detection(self, sample_tweets):
-        """Mainnet launch tweet should be categorized as TECH_EVENT."""
+        """Mainnet launch tweet should be categorized as TECH_EVENT by agent."""
         c = EventCategorizer()
         event = {
             "chain": "monad",
@@ -193,11 +197,14 @@ class TestTwitterCollector:
             "source_name": "Twitter (@monad_xyz)",
             "evidence": {"text": "Mainnet launch is next week! Exciting times for Monad."},
         }
-        result = c.categorize(event)
-        assert result["category"] == "TECH_EVENT"
+        agent_results = [
+            {"id": 0, "category": "TECH_EVENT", "subcategory": "mainnet_launch", "reasoning": "Mainnet announcement", "is_noise": False, "primary_mentions": ["monad"]},
+        ]
+        enriched = c.apply_categories([event], agent_results)
+        assert enriched[0]["category"] == "TECH_EVENT"
 
     def test_partnership_detection(self, sample_tweets):
-        """Partnership tweet should be categorized as PARTNERSHIP."""
+        """Partnership tweet should be categorized as PARTNERSHIP by agent."""
         c = EventCategorizer()
         event = {
             "chain": "monad",
@@ -207,11 +214,14 @@ class TestTwitterCollector:
             "source_name": "Twitter (@monad_xyz)",
             "evidence": {"text": "Big news: we're partnering with Protocol X for cross-chain integration."},
         }
-        result = c.categorize(event)
-        assert result["category"] == "PARTNERSHIP"
+        agent_results = [
+            {"id": 0, "category": "PARTNERSHIP", "subcategory": "collaboration", "reasoning": "Partnership announcement", "is_noise": False, "primary_mentions": ["monad"]},
+        ]
+        enriched = c.apply_categories([event], agent_results)
+        assert enriched[0]["category"] == "PARTNERSHIP"
 
     def test_visibility_detection(self, sample_tweets):
-        """Keynote tweet should be categorized as VISIBILITY."""
+        """Keynote tweet should be categorized as VISIBILITY by agent."""
         c = EventCategorizer()
         event = {
             "chain": "solana",
@@ -221,8 +231,11 @@ class TestTwitterCollector:
             "source_name": "Twitter (@solana)",
             "evidence": {"text": "Excited to keynote at Breakpoint 2026! See you there."},
         }
-        result = c.categorize(event)
-        assert result["category"] == "VISIBILITY"
+        agent_results = [
+            {"id": 0, "category": "VISIBILITY", "subcategory": "keynote", "reasoning": "Conference keynote announcement", "is_noise": False, "primary_mentions": ["solana"]},
+        ]
+        enriched = c.apply_categories([event], agent_results)
+        assert enriched[0]["category"] == "VISIBILITY"
 
 
 def test_load_accounts():

@@ -18,7 +18,6 @@ from typing import Optional
 
 from collectors.base import BaseCollector
 from config.loader import get_env
-from processors.semantic_enricher import SemanticEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -159,14 +158,6 @@ class TwitterCollector(BaseCollector):
         RAW_OUT_DIR.mkdir(parents=True, exist_ok=True)
         SUMMARY_OUT_DIR.mkdir(parents=True, exist_ok=True)
         ENRICHED_OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-        # v0.2: Semantic enricher for LLM-powered tweet categorization
-        self._semantic_enricher: SemanticEnricher | None = None
-        try:
-            self._semantic_enricher = SemanticEnricher()
-            logger.info("[twitter] Semantic enricher loaded")
-        except Exception as e:
-            logger.warning(f"[twitter] Semantic enricher unavailable: {e}")
 
     def _load_accounts(self):
         """Load twitter_accounts.yaml."""
@@ -344,11 +335,6 @@ class TwitterCollector(BaseCollector):
 
         # Persist raw tweets for historical/trending analysis
         self._persist_raw(all_tweets)
-
-        # ── v0.2: Semantic enrichment ─────────────────────────────────────
-        if self._semantic_enricher is not None:
-            all_tweets = self._semantic_enricher.enrich_tweets(all_tweets)
-            self._persist_enriched(all_tweets)
 
         # Convert to event dicts for pipeline
         events = self._tweets_to_events(all_tweets)

@@ -1,7 +1,14 @@
-"""Tests for EventCategorizer."""
+"""Tests for agent-native EventCategorizer.
 
+No keyword matching is tested here — the agent provides all categorization reasoning.
+These tests verify task preparation, result application, and checkpoint mechanics.
+"""
+
+import json
 import pytest
-from processors.categorizer import EventCategorizer, CATEGORY_KEYWORDS, SUBCATEGORY_MAP
+from pathlib import Path
+
+from processors.categorizer import EventCategorizer
 
 
 @pytest.fixture
@@ -9,216 +16,148 @@ def categorizer():
     return EventCategorizer()
 
 
-class TestCategoryDetection:
-    """Test primary category detection."""
-
-    def test_hack_to_risk_alert(self, categorizer):
-        event = {"description": "Protocol hack drained $5M", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
-
-    def test_exploit_to_risk_alert(self, categorizer):
-        event = {"description": "Exploit found in bridge contract", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
-
-    def test_outage_to_risk_alert(self, categorizer):
-        event = {"description": "Network outage halts transactions", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
-
-    def test_vulnerability_to_risk_alert(self, categorizer):
-        event = {"description": "Critical vulnerability disclosed", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
-
-    def test_partnership_detected(self, categorizer):
-        event = {"description": "Partnership announced with Chainlink", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "PARTNERSHIP"
-
-    def test_integration_to_partnership(self, categorizer):
-        event = {"description": "New integration with Uniswap", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "PARTNERSHIP"
-
-    def test_sec_to_regulatory(self, categorizer):
-        event = {"description": "SEC issues wells notice", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "REGULATORY"
-
-    def test_enforcement_to_regulatory(self, categorizer):
-        event = {"description": "Enforcement action filed by SEC", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "REGULATORY"
-
-    def test_tvl_to_financial(self, categorizer):
-        event = {"description": "TVL crosses $1B milestone", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "FINANCIAL"
-
-    def test_funding_to_financial(self, categorizer):
-        event = {"description": "Project raised $50M in Series B", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "FINANCIAL"
-
-    def test_airdrop_to_financial(self, categorizer):
-        event = {"description": "Airdrop announced for early users", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "FINANCIAL"
-
-    def test_upgrade_to_tech_event(self, categorizer):
-        event = {"description": "Mainnet upgrade scheduled", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "TECH_EVENT"
-
-    def test_release_to_tech_event(self, categorizer):
-        event = {"description": "New version v2.0 release", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "TECH_EVENT"
-
-    def test_conference_to_visibility(self, categorizer):
-        event = {"description": "Conference keynote at ETHDenver", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "VISIBILITY"
-
-    def test_hired_to_visibility(self, categorizer):
-        event = {"description": "New CTO hired for protocol", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "VISIBILITY"
-
-    def test_podcast_to_visibility(self, categorizer):
-        event = {"description": "Founder joins podcast interview panel", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "VISIBILITY"
+@pytest.fixture
+def sample_events():
+    return [
+        {"chain": "ethereum", "description": "Protocol hack drained $5M", "source": "RSS", "reliability": 0.9, "evidence": {}},
+        {"chain": "polygon", "description": "Partnership announced with Chainlink", "source": "twitter", "reliability": 0.8, "evidence": {"author": "@polygon", "is_retweet": False}},
+        {"chain": "solana", "description": "SEC issues wells notice", "source": "RSS", "reliability": 0.85, "evidence": {}},
+    ]
 
 
-class TestDefaultFallback:
-    """Test default fallback to TECH_EVENT."""
+class TestAgentTaskPreparation:
+    """Test that prepare_agent_task creates valid checkpoint files."""
 
-    def test_unknown_event_defaults_to_tech(self, categorizer):
-        event = {"description": "Something happened with the network", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "TECH_EVENT"
+    def test_task_file_created(self, categorizer, sample_events, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
 
-    def test_empty_description_defaults_to_tech(self, categorizer):
-        event = {"description": "", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "TECH_EVENT"
+        path = categorizer.prepare_agent_task(sample_events)
+        assert path.exists()
+        assert path.suffix == ".json"
+        assert "categorize_task_" in path.name
 
-    def test_missing_description_defaults_to_tech(self, categorizer):
-        event = {}
-        result = categorizer.categorize(event)
-        assert result["category"] == "TECH_EVENT"
+    def test_task_contains_events(self, categorizer, sample_events, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
 
+        path = categorizer.prepare_agent_task(sample_events)
+        data = json.loads(path.read_text())
+        assert data["task_type"] == "categorize"
+        assert "task_id" in data
+        assert len(data["events"]) == 3
+        assert data["events"][0]["id"] == 0
+        assert data["events"][0]["chain"] == "ethereum"
+        assert data["events"][1]["is_twitter"] is True
 
-class TestSubcategoryDetection:
-    """Test subcategory detection."""
+    def test_task_contains_instructions(self, categorizer, sample_events, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
 
-    def test_hack_subcategory(self, categorizer):
-        event = {"description": "Protocol hack drained funds", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "hack"
+        path = categorizer.prepare_agent_task(sample_events)
+        data = json.loads(path.read_text())
+        assert "instructions" in data
+        assert "RISK_ALERT" in data["instructions"]
+        assert "output_format" in data
 
-    def test_outage_subcategory(self, categorizer):
-        event = {"description": "Network outage for 2 hours", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "outage"
+    def test_twitter_metadata_included(self, categorizer, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_INPUT_DIR", tmp_path / "agent_input")
 
-    def test_critical_bug_subcategory(self, categorizer):
-        event = {"description": "Critical bug found in consensus", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "critical_bug"
-
-    def test_enforcement_subcategory(self, categorizer):
-        event = {"description": "SEC enforcement action filed", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "enforcement"
-
-    def test_license_subcategory(self, categorizer):
-        event = {"description": "License approved by regulator", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "license"
-
-    def test_tvl_milestone_subcategory(self, categorizer):
-        event = {"description": "TVL crosses $5B milestone", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "tvl_milestone"
-
-    def test_airdrop_subcategory(self, categorizer):
-        event = {"description": "Airdrop token distribution announced", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "airdrop"
-
-    def test_volume_breakout_subcategory(self, categorizer):
-        event = {"description": "Volume at all-time high record breakout", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "volume_breakout"
-
-    def test_funding_round_subcategory(self, categorizer):
-        event = {"description": "Funding raised $20M round", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "funding_round"
-
-    def test_upgrade_subcategory(self, categorizer):
-        event = {"description": "Hard fork upgrade scheduled", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "upgrade"
-
-    def test_governance_passed_subcategory(self, categorizer):
-        event = {"description": "Proposal passed governance vote", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "governance_passed"
-
-    def test_integration_subcategory(self, categorizer):
-        event = {"description": "Integration with Aave deployed", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "integration"
-
-    def test_keynote_subcategory(self, categorizer):
-        event = {"description": "Keynote speaker at conference", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "keynote"
-
-    def test_ama_subcategory(self, categorizer):
-        event = {"description": "AMA with community call", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "ama"
-
-    def test_hire_subcategory(self, categorizer):
-        event = {"description": "New CTO hired for team", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "hire"
-
-    def test_departure_subcategory(self, categorizer):
-        event = {"description": "Lead dev departed from project", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["subcategory"] == "departure"
-
-    def test_general_subcategory_fallback(self, categorizer):
-        event = {"description": "Something regulatory happened", "evidence": ""}
-        result = categorizer.categorize(event)
-        # No specific subcategory match in REGULATORY -> general
-        assert result["subcategory"] == "general"
-
-    def test_evidence_field_also_searched(self, categorizer):
-        event = {"description": "Update posted", "evidence": "Protocol hack confirmed by team"}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
-        assert result["subcategory"] == "hack"
+        events = [
+            {"chain": "polygon", "description": "Tweet text", "source": "twitter", "reliability": 0.8,
+             "evidence": {"author": "@polygon", "role": "official", "is_retweet": True, "original_author": "@partner"}},
+        ]
+        path = categorizer.prepare_agent_task(events)
+        data = json.loads(path.read_text())
+        meta = data["events"][0]["twitter_metadata"]
+        assert meta["author"] == "@polygon"
+        assert meta["role"] == "official"
+        assert meta["is_retweet"] is True
+        assert meta["original_author"] == "@partner"
 
 
-class TestCategoryKeywordOrder:
-    """Verify category keyword priority order."""
+class TestApplyCategories:
+    """Test that apply_categories correctly merges agent results into events."""
 
-    def test_risk_takes_priority_over_tech(self, categorizer):
-        # "halt" is RISK_ALERT, "upgrade" is TECH_EVENT
-        # RISK_ALERT comes first in CATEGORY_KEYWORDS
-        event = {"description": "Network halt during upgrade", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "RISK_ALERT"
+    def test_apply_single_category(self, categorizer, sample_events):
+        agent_results = [
+            {"id": 0, "category": "RISK_ALERT", "subcategory": "hack", "reasoning": "Security incident", "is_noise": False, "primary_mentions": ["ethereum"]},
+        ]
+        enriched = categorizer.apply_categories(sample_events[:1], agent_results)
+        assert enriched[0]["category"] == "RISK_ALERT"
+        assert enriched[0]["subcategory"] == "hack"
+        assert enriched[0]["semantic"]["reasoning"] == "Security incident"
+        assert enriched[0]["semantic"]["confidence"] == 0.85
 
-    def test_regulatory_takes_priority_over_financial(self, categorizer):
-        event = {"description": "SEC fine imposed on token sale", "evidence": ""}
-        result = categorizer.categorize(event)
-        assert result["category"] == "REGULATORY"
+    def test_apply_multiple_categories(self, categorizer, sample_events):
+        agent_results = [
+            {"id": 0, "category": "RISK_ALERT", "subcategory": "hack", "reasoning": "Hack", "is_noise": False, "primary_mentions": ["ethereum"]},
+            {"id": 1, "category": "PARTNERSHIP", "subcategory": "collaboration", "reasoning": "Business dev", "is_noise": False, "primary_mentions": ["polygon"]},
+            {"id": 2, "category": "REGULATORY", "subcategory": "enforcement", "reasoning": "SEC action", "is_noise": False, "primary_mentions": ["solana"]},
+        ]
+        enriched = categorizer.apply_categories(sample_events, agent_results)
+        assert enriched[0]["category"] == "RISK_ALERT"
+        assert enriched[1]["category"] == "PARTNERSHIP"
+        assert enriched[2]["category"] == "REGULATORY"
+        assert enriched[1]["semantic"]["subcategory"] == "collaboration"
+
+    def test_missing_result_defaults_to_news(self, categorizer, sample_events):
+        agent_results = [
+            {"id": 0, "category": "RISK_ALERT", "subcategory": "hack", "reasoning": "Hack", "is_noise": False, "primary_mentions": []},
+            # Missing id 1 and 2
+        ]
+        enriched = categorizer.apply_categories(sample_events, agent_results)
+        assert enriched[0]["category"] == "RISK_ALERT"
+        assert enriched[1]["category"] == "NEWS"
+        assert enriched[2]["category"] == "NEWS"
+        assert enriched[1]["semantic"]["confidence"] == 0.0
+
+    def test_noise_flag_propagated(self, categorizer):
+        events = [{"chain": "bitcoin", "description": "gm wagmi", "source": "twitter", "reliability": 0.5, "evidence": {}}]
+        agent_results = [
+            {"id": 0, "category": "NOISE", "subcategory": "general", "reasoning": "Low-value", "is_noise": True, "primary_mentions": []},
+        ]
+        enriched = categorizer.apply_categories(events, agent_results)
+        assert enriched[0]["category"] == "NOISE"
+        assert enriched[0]["semantic"]["is_noise"] is True
+
+
+class TryLoadResults:
+    """Test loading agent output from disk."""
+
+    def test_load_existing_output(self, categorizer, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_OUTPUT_DIR", tmp_path / "agent_output")
+
+        # Create a fake agent output file
+        output_dir = tmp_path / "agent_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "categorize_output_20260430_120000.json"
+        output_path.write_text(json.dumps({
+            "task_type": "categorize",
+            "task_id": "20260430_120000",
+            "results": [
+                {"id": 0, "category": "FINANCIAL", "subcategory": "tvl_milestone", "reasoning": "TVL hit $1B", "is_noise": False, "primary_mentions": []},
+            ],
+        }))
+
+        results = categorizer.try_load_results()
+        assert results is not None
+        assert len(results) == 1
+        assert results[0]["category"] == "FINANCIAL"
+
+    def test_load_no_output_returns_none(self, categorizer, tmp_path, monkeypatch):
+        from processors import agent_native as an
+        monkeypatch.setattr(an, "AGENT_OUTPUT_DIR", tmp_path / "agent_output")
+
+        results = categorizer.try_load_results()
+        assert results is None
+
+
+class TestDeprecatedCategorize:
+    """Test that the old keyword API is disabled."""
+
+    def test_categorize_raises_runtime_error(self, categorizer):
+        with pytest.raises(RuntimeError, match="agent-native"):
+            categorizer.categorize({"description": "something"})

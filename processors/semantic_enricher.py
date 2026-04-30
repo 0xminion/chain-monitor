@@ -1,215 +1,199 @@
-"""Semantic enricher — deterministic keyword-based categorization for tweets.
+"""Semantic enricher — agent-native.
 
-No LLM calls. Uses the same keyword dictionaries as EventCategorizer.
-Caches results per-tweet for 7 days.
+No LLM calls. No keyword matching. Prepares tweet enrichment tasks for the running agent.
+
+This module is kept for backward compatibility with standalone tweet enrichment workflows.
+For the main pipeline, EventCategorizer handles all events (including tweets) in a single
+agent checkpoint.
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
 
+from processors.agent_native import save_agent_task, find_agent_output, load_agent_output
 from processors.categorizer import (
-    CATEGORY_KEYWORDS,
+    CATEGORY_ORDER,
+    CATEGORY_DESCRIPTIONS,
     SUBCATEGORY_MAP,
     TWITTER_NOISE_PHRASES,
-    TWITTER_HIGH_VALUE_INDICATORS,
-    _detect_subcategory_keyword,
 )
-from processors.llm_cache import LLMCache
 
 logger = logging.getLogger(__name__)
 
 
-def _keyword_enrich_tweets(tweets: list[dict]) -> list[dict]:
-    """Apply deterministic keyword-based semantic enrichment to tweets."""
-    enriched = []
-    for t in tweets:
-        text = t.get("text", "").lower()
-        chain = t.get("chain", "unknown")
-        tweet_copy = dict(t)
-
-        # 1. Check noise first
-        is_noise, noise_reason = _is_twitter_noise(text)
-        if is_noise:
-            tweet_copy["semantic"] = {
-                "category": "NOISE",
-                "subcategory": noise_reason,
-                "confidence": 0.7,
-                "reasoning": f"Noise filter: {noise_reason}",
-                "is_noise": True,
-                "primary_mentions": [chain] if chain != "unknown" else [],
-            }
-            enriched.append(tweet_copy)
-            continue
-
-        # 2. Keyword-based category detection
-        category = "NEWS"
-        for cat, kws in CATEGORY_KEYWORDS.items():
-            if any(kw in text for kw in kws):
-                category = cat
-                break
-
-        # 3. Subcategory detection
-        subcat = _detect_subcategory_keyword(text, category)
-
-        tweet_copy["semantic"] = {
-            "category": category,
-            "subcategory": subcat,
-            "confidence": 0.6,
-            "reasoning": f"Keyword match: {category}/{subcat}",
-            "is_noise": False,
-            "primary_mentions": [chain] if chain != "unknown" else [],
-        }
-        enriched.append(tweet_copy)
-    return enriched
-
-
-def _is_twitter_noise(text: str) -> tuple[bool, str]:
-    """Check if a tweet is low-value noise. Returns (is_noise, reason)."""
-    t = text.lower()
-
-    for phrase in TWITTER_NOISE_PHRASES:
-        if phrase in t:
-            return True, f"noise_phrase:{phrase.strip()}"
-
-    if len(t) < 30 and ("🚀" in t or "🔥" in t or "💰" in t):
-        return True, "short_emoji_bait"
-
-    if len(t) < 60:
-        has_indicator = any(hv in t for hv in TWITTER_HIGH_VALUE_INDICATORS)
-        if not has_indicator:
-            return True, "short_no_substance"
-
-    return False, ""
-
-
-def _validate_enrichment(result: dict) -> tuple[bool, dict]:
-    """Validate enrichment result. Returns (is_valid, sanitized_result)."""
-    required = {"category", "subcategory", "confidence", "reasoning", "is_noise"}
-    if not required.issubset(result.keys()):
-        missing = required - result.keys()
-        logger.warning(f"Semantic enrichment missing keys: {missing}")
-        return False, {}
-
-    category = result.get("category", "")
-    valid_categories = set(CATEGORY_KEYWORDS.keys()) | {"NEWS", "NOISE", "PRICE_NOISE"}
-    if category not in valid_categories:
-        logger.warning(f"Unknown category: {category}")
-        return False, {}
-
-    try:
-        confidence = float(result.get("confidence", 0.0))
-        confidence = max(0.0, min(1.0, confidence))
-    except (TypeError, ValueError):
-        confidence = 0.0
-
-    is_noise = bool(result.get("is_noise", False))
-    primary_mentions = result.get("primary_mentions", [])
-    if not isinstance(primary_mentions, list):
-        primary_mentions = []
-
-    sanitized = {
-        "category": category,
-        "subcategory": result.get("subcategory", "general"),
-        "confidence": confidence,
-        "reasoning": str(result.get("reasoning", "")),
-        "is_noise": is_noise,
-        "primary_mentions": primary_mentions,
-    }
-    return True, sanitized
-
-
 class SemanticEnricher:
-    """Deterministic semantic categorization for tweets. No LLM calls."""
+    """Agent-native semantic enrichment for tweets.
 
-    def __init__(self, cache: Optional[LLMCache] = None):
-        self.cache = cache or LLMCache()
+    Usage (standalone):
+        enricher = SemanticEnricher()
+        task_path = enricher.prepare_agent_task(tweets)
+        # AGENT CHECKPOINT: running agent processes task and saves output
+        results = enricher.try_load_results()
+        enriched = enricher.apply_enrichment(tweets, results)
+    """
+
+    TASK_TYPE = "semantic_enrich"
 
     def enrich_tweets(self, tweets: list[dict]) -> list[dict]:
-        """Batch enrichment for scraped tweet dicts — deterministic keyword-based."""
-        enriched = []
-        for t in tweets:
-            text = t.get("text", "").strip()
-            author = t.get("account_handle", "")
-            is_retweet = t.get("is_retweet", False)
-            quoted_text = t.get("quoted_text", "")
-            chain = t.get("chain", "unknown")
+        """DEPRECATED — agent-native pipeline does not use automated enrichment.
 
-            cached = self.cache.get(
-                chain=chain, text=text, author=author,
-                is_retweet=is_retweet, quoted_text=quoted_text,
-            )
-            if cached:
-                t_copy = dict(t)
-                t_copy["semantic"] = cached
-                enriched.append(t_copy)
-                continue
-
-            # Deterministic keyword enrichment
-            result = _keyword_enrich_tweets([t])[0]
-            sem = result.get("semantic")
-            if sem:
-                is_valid, sanitized = _validate_enrichment(sem)
-                if is_valid:
-                    t_copy = dict(t)
-                    t_copy["semantic"] = sanitized
-                    self.cache.set(
-                        chain=chain, text=text, author=author,
-                        is_retweet=is_retweet, quoted_text=quoted_text,
-                        result=sanitized,
-                    )
-                    enriched.append(t_copy)
-                    continue
-
-            enriched.append(dict(t))
-
-        enriched_count = sum(1 for t in enriched if "semantic" in t)
-        logger.info(f"[semantic] Enriched {enriched_count}/{len(tweets)} tweets (deterministic)")
-        return enriched
+        Raises RuntimeError with instructions for the agent-native flow.
+        """
+        raise RuntimeError(
+            "SemanticEnricher is agent-native. Automated keyword/LLM enrichment has been removed.\n"
+            "Use: prepare_agent_task() → agent processes → try_load_results() → apply_enrichment()\n"
+            "For the main pipeline, EventCategorizer handles all events in a single checkpoint."
+        )
 
     def enrich(self, event: dict) -> dict:
-        """Enrich a single event dict (backward compat for pipeline events)."""
-        source = event.get("source", "") or event.get("source_name", "")
-        text = event.get("description", "").strip()
-
-        if not text or "twitter" not in source.lower():
-            return event
-
-        chain = event.get("chain", "unknown")
-        evidence = event.get("evidence", {}) or {}
-        author = evidence.get("author", "")
-        is_retweet = evidence.get("is_retweet", False)
-        quoted_text = evidence.get("quoted_text", "")
-
-        cached = self.cache.get(
-            chain=chain, text=text, author=author,
-            is_retweet=is_retweet, quoted_text=quoted_text,
+        """DEPRECATED — see enrich_tweets()."""
+        raise RuntimeError(
+            "SemanticEnricher is agent-native. Use prepare_agent_task() + try_load_results()."
         )
-        if cached:
-            event = dict(event)
-            event["semantic"] = cached
-            return event
 
-        # Deterministic keyword enrichment
-        result = _keyword_enrich_tweets([{"text": text, "chain": chain}])[0]
-        sem = result.get("semantic")
-        if sem:
-            is_valid, sanitized = _validate_enrichment(sem)
-            if is_valid:
-                event = dict(event)
-                event["semantic"] = sanitized
-                self.cache.set(
-                    chain=chain, text=text, author=author,
-                    is_retweet=is_retweet, quoted_text=quoted_text,
-                    result=sanitized,
-                )
+    # -- Agent task preparation ------------------------------------------------
 
-        return event
+    def prepare_agent_task(self, tweets: list[dict]) -> Path:
+        """Build and save a tweet enrichment task for the running agent.
+
+        Returns the path to the saved task file.
+        """
+        task_tweets = []
+        for i, t in enumerate(tweets):
+            task_tweets.append({
+                "id": i,
+                "chain": t.get("chain", "unknown"),
+                "text": t.get("text", ""),
+                "author": t.get("account_handle", ""),
+                "role": t.get("account_role", "unknown"),
+                "is_retweet": t.get("is_retweet", False),
+                "original_author": t.get("original_author", ""),
+                "is_quote_tweet": t.get("is_quote_tweet", False),
+                "quoted_text": t.get("quoted_text", ""),
+                "likes": t.get("likes", 0),
+                "retweets": t.get("retweets", 0),
+                "url": t.get("url", ""),
+            })
+
+        payload = {
+            "instructions": self._build_agent_instructions(),
+            "tweets": task_tweets,
+            "output_format": self._build_output_format(),
+        }
+        return save_agent_task(self.TASK_TYPE, payload)
+
+    def try_load_results(self, task_id: Optional[str] = None) -> Optional[list[dict]]:
+        """Attempt to load agent enrichment results.
+
+        Returns None if no output is available yet.
+        """
+        output_path = find_agent_output(self.TASK_TYPE, task_id=task_id)
+        if output_path is None:
+            return None
+        try:
+            data = load_agent_output(output_path)
+            results = data.get("results", [])
+            logger.info(f"[semantic] Loaded {len(results)} agent-enriched tweets from {output_path}")
+            return results
+        except Exception as exc:
+            logger.warning(f"[semantic] Failed to load agent output: {exc}")
+            return None
+
+    def apply_enrichment(self, tweets: list[dict], enrichment_results: list[dict]) -> list[dict]:
+        """Apply agent enrichment results to raw tweets.
+
+        Returns a new list of tweet dicts with semantic annotations.
+        """
+        result_map = {r["id"]: r for r in enrichment_results if "id" in r}
+        enriched = []
+
+        for i, t in enumerate(tweets):
+            t_copy = dict(t)
+            if i in result_map:
+                r = result_map[i]
+                cat = r.get("category", "NEWS")
+                sub = r.get("subcategory", "general")
+                t_copy["semantic"] = {
+                    "category": cat,
+                    "subcategory": sub,
+                    "confidence": 0.85,
+                    "reasoning": r.get("reasoning", ""),
+                    "is_noise": r.get("is_noise", False),
+                    "primary_mentions": r.get("primary_mentions", []),
+                }
+            else:
+                t_copy["semantic"] = {
+                    "category": "NEWS",
+                    "subcategory": "general",
+                    "confidence": 0.0,
+                    "reasoning": "Not enriched by agent",
+                    "is_noise": False,
+                    "primary_mentions": [],
+                }
+            enriched.append(t_copy)
+
+        enriched_count = sum(1 for t in enriched if t.get("semantic", {}).get("confidence", 0) > 0)
+        logger.info(f"[semantic] Applied agent enrichment to {enriched_count}/{len(tweets)} tweets")
+        return enriched
 
     def get_health(self) -> dict:
         """Return health status for observability."""
         return {
-            "llm_available": False,
-            "failures": 0,
-            "provider": "deterministic",
-            "model": "keyword-only",
+            "available": True,
+            "mode": "agent-native",
+            "provider": "running-agent",
+            "requires_checkpoint": True,
         }
+
+    # -- Instruction builders --------------------------------------------------
+
+    def _build_agent_instructions(self) -> str:
+        cat_lines = []
+        for cat in CATEGORY_ORDER:
+            desc = CATEGORY_DESCRIPTIONS.get(cat, "")
+            cat_lines.append(f"  - {cat}: {desc}")
+
+        subcat_lines = []
+        for cat, subcats in SUBCATEGORY_MAP.items():
+            subcat_lines.append(f"  {cat}:")
+            for sub, desc in subcats.items():
+                subcat_lines.append(f"    - {sub}: {desc}")
+
+        noise_lines = "\n    ".join(f"- '{phrase}'" for phrase in TWITTER_NOISE_PHRASES[:10])
+
+        return (
+            "You are an expert crypto-industry analyst. Classify each tweet into exactly one category and subcategory.\n\n"
+            "Categories (ordered by priority):\n"
+            f"{chr(10).join(cat_lines)}\n\n"
+            "Subcategories:\n"
+            f"{chr(10).join(subcat_lines)}\n\n"
+            "Rules:\n"
+            "1. Categorize by SEMANTIC CONTENT, not keyword presence.\n"
+            "2. A retweet of official news inherits the original's category.\n"
+            "3. Funding announcements with amounts >= $1M receive FINANCIAL.\n"
+            "4. 'Audit complete' without findings → TECH_EVENT. 'Audit finding' → RISK_ALERT.\n"
+            "5. Engagement bait, price predictions, memes → NOISE.\n"
+            "6. For retweets: categorize based on ORIGINAL content, not reposter commentary.\n"
+            "7. For quote tweets: categorize based on new commentary + quoted content combined.\n"
+            "8. Short tweets (<30 chars) with only emojis → NOISE unless they contain substantive news.\n\n"
+            "Common noise phrases (mark as NOISE if primarily these):\n"
+            f"    {noise_lines}\n"
+            "    ... and similar low-value phrases.\n"
+        )
+
+    def _build_output_format(self) -> str:
+        return (
+            "Return a JSON array of results, one per tweet, in the SAME ORDER as the input.\n"
+            "Each result must be:\n"
+            "{\n"
+            '  "id": <tweet id from input>,\n'
+            '  "category": "<CATEGORY>",\n'
+            '  "subcategory": "<subcategory>",\n'
+            '  "reasoning": "<1 sentence explaining the classification>",\n'
+            '  "is_noise": <true/false>,\n'
+            '  "primary_mentions": [<list of chain names mentioned, or []>]\n'
+            "}\n\n"
+            "CRITICAL: every tweet in the input must have a corresponding result with the correct id.\n"
+            "Do not skip tweets. Do not return markdown fences.\n"
+        )

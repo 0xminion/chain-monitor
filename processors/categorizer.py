@@ -1,17 +1,47 @@
-"""Event categorizer — classifies raw events into categories.
+"""Event categorizer — agent-native.
 
-Uses keyword matching as baseline. For Twitter sources, uses LLM semantic enrichment
-as primary (high confidence) or tiebreaker (medium confidence). Falls back to keyword
-on LLM failure or for non-Twitter sources.
+No keyword matching. No LLM calls. No deterministic rules.
+The running agent reads prepared tasks and provides all categorization reasoning.
 
-Author: 0xminion
+This module still exports CATEGORY_KEYWORDS, SUBCATEGORY_MAP, and related
+reference data — but ONLY for inclusion in agent prompts as guidance.
 """
 
+import json
 import logging
+from pathlib import Path
+from typing import Optional
+
+from processors.agent_native import save_agent_task, find_agent_output, load_agent_output
 
 logger = logging.getLogger(__name__)
 
-# Keywords mapping to categories (order matters — first match wins)
+# ---------------------------------------------------------------------------
+# Reference data — included in agent prompts, NOT used for code-side matching
+# ---------------------------------------------------------------------------
+
+CATEGORY_ORDER = [
+    "RISK_ALERT",
+    "REGULATORY",
+    "FINANCIAL",
+    "PARTNERSHIP",
+    "TECH_EVENT",
+    "VISIBILITY",
+    "NOISE",
+    "NEWS",
+]
+
+CATEGORY_DESCRIPTIONS = {
+    "RISK_ALERT": "Security incidents: hacks, exploits, vulnerabilities, outages, critical bugs, bridge compromises",
+    "REGULATORY": "Government actions: SEC/CFTC/DOJ enforcement, licensing, compliance, legislation, Wells notices",
+    "FINANCIAL": "Capital events: TVL milestones, funding rounds, token launches, airdrops, treasury, revenue, grants",
+    "PARTNERSHIP": "Business development: integrations, collaborations, deployments on chain, ecosystem joins, alliances",
+    "TECH_EVENT": "Protocol changes: mainnet launches, upgrades, hard forks, audits, governance proposals, EIP/BIP",
+    "VISIBILITY": "Community presence: conferences, AMAs, keynotes, hires, departures, podcasts, hackathons",
+    "NOISE": "Low-signal content: engagement bait, price predictions, memes, gm/gn, threadooors, follow-for-alpha",
+    "NEWS": "General news that does not fit the above categories",
+}
+
 CATEGORY_KEYWORDS = {
     "RISK_ALERT": [
         "hack", "exploit", "vulnerability", "outage", "downtime", "halt",
@@ -36,17 +66,14 @@ CATEGORY_KEYWORDS = {
         "buyback", "treasury", "yield", "revenue",
     ],
     "PARTNERSHIP": [
-        # Explicit partnership language
         "partnership", "partners with", "in partnership", "partnered",
         "integration", "integrate with", "integrated into",
         "collaboration", "collaborates with", "co-launch",
         "joint", "together with", "teams up", "joins forces",
-        # Deployment / availability language (implies integration)
         "deployed on", "live on", "launches on", "available on",
         "adds support for", "now on", "now live on", "goes live on",
         "expands to", "enters", "comes to", "migrates to",
         "built on", "powered by", "powered on",
-        # Business development language
         "alliance", "consortium", "works with", "works alongside",
         "signs mou", "memorandum", "strategic", "cooperation",
         "ecosystem partner", "joins ecosystem", "joins network",
@@ -68,63 +95,46 @@ CATEGORY_KEYWORDS = {
     ],
 }
 
-# ---------------------------------------------------------------------------
-# Twitter-specific keyword expansions (additive to existing keywords)
-# ---------------------------------------------------------------------------
-TWITTER_KEYWORD_EXPANSIONS = {
-    "TECH_EVENT": [
-        "mainnet soon", "mainnet live tomorrow", "mainnet live next",
-        "devnet live", "devnet reset", "devnet deployed",
-        "upgrade tomorrow", "upgrade going live", "upgrade going out",
-        "release thread", "v2 is here", "v2 is live", "v3 is here",
-        "eip discussion", "eip draft", "eip proposed",
-        "testnet reset", "testnet upgrade", "testnet live",
-        "shipped", "shipping", "rolling out", "rolled out",
-        "audit complete", "audit report", "security review",
-        "smart contract deployed", "contract deployed",
-    ],
-    "PARTNERSHIP": [
-        "excited to partner with", "thrilled to announce integration",
-        "welcomes", "welcome to the ecosystem", "join the ecosystem",
-        "now live on", "live on", "部署在", "goes live on",
-        "announce partnership", "partnering with",
-        "integrates with", "integrated into", "integration with",
-        "join forces with", "joins forces with",
-        "cross-chain integration", "bridge to", "bridging to",
-    ],
-    "VISIBILITY": [
-        "ama tomorrow", "ama today", "ama at", "ama with",
-        "keynote at", "keynote on", "speaking at", "speaking on",
-        "hackathon", "hackathon at", "ethglobal", "demo day",
-        "podcast with", "podcast episode", "on the pod",
-        "joined the team", "new role", "excited to join",
-        "new head of", "new vp of", "new director of",
-        "ask me anything", "community call tomorrow", "town hall",
-        "fireside chat", "panel at",
-    ],
-    "REGULATORY": [
-        "regulatory update", "compliance update", "legal update",
-        "licensed by", "authorised by", "authorised to",
-        "sec suit", "cftc suit", "doj investigation",
-        "policy update", "regulatory clarity", "regulatory framework",
-    ],
-    "FINANCIAL": [
-        "$ million", "$ billion",
-        "funding round", "seed round", "series a", "series b",
-        "public sale", "community sale", "launch token", "token live",
-    ],
+SUBCATEGORY_MAP = {
+    "RISK_ALERT": {
+        "hack": "hack, exploit, drained, stolen, attack",
+        "outage": "outage, downtime, halt, offline",
+        "critical_bug": "critical bug, vulnerability, cve",
+    },
+    "REGULATORY": {
+        "enforcement": "enforcement, lawsuit, subpoena, wells notice, fine, penalty",
+        "license": "license, approval, authorized",
+        "comment_period": "comment period, proposed rule, consultation",
+    },
+    "FINANCIAL": {
+        "tvl_milestone": "tvl crosses/reaches milestone",
+        "tvl_spike": "tvl up/increase/surge",
+        "volume_breakout": "volume ath/record/breakout",
+        "funding_round": "funding, raised, series, round",
+        "airdrop": "airdrop, token distribution",
+        "tge": "tge, token launch, token generation",
+    },
+    "TECH_EVENT": {
+        "mainnet_launch": "mainnet launch, mainnet live, genesis",
+        "upgrade": "upgrade, hard fork, eip, bip, simd",
+        "release": "release, version, v0, v1, v2",
+        "governance_submitted": "proposal submitted, draft, rfc",
+        "governance_passed": "proposal passed, approved, accepted",
+        "audit": "audit, audited, security review",
+    },
+    "PARTNERSHIP": {
+        "integration": "integration, integrate, deploy on",
+        "collaboration": "partnership, collaboration, teams up",
+    },
+    "VISIBILITY": {
+        "keynote": "keynote, conference talk, speaker",
+        "ama": "ama, ask me anything, community call",
+        "hire": "hired, joined, appointed, new cto, new ceo",
+        "departure": "departed, left, stepped down, resigned",
+        "podcast": "podcast, interview, episode",
+    },
 }
 
-# Merge Twitter expansions into CATEGORY_KEYWORDS
-for _cat, _kws in TWITTER_KEYWORD_EXPANSIONS.items():
-    if _cat in CATEGORY_KEYWORDS:
-        CATEGORY_KEYWORDS[_cat].extend(_kws)
-    else:
-        CATEGORY_KEYWORDS[_cat] = _kws
-
-# ---------------------------------------------------------------------------
-# Twitter noise filter — phrases that signal low-value tweets
-# ---------------------------------------------------------------------------
 TWITTER_NOISE_PHRASES = [
     "gm ", "gm!", "gn ", "gn!", "wagmi", "ngmi",
     "number go up", "number go down", "buy the dip", "sell the top",
@@ -137,185 +147,223 @@ TWITTER_NOISE_PHRASES = [
     "alpha inside", "free alpha", "here is alpha",
 ]
 
-TWITTER_HIGH_VALUE_INDICATORS = [
-    "mainnet", "testnet", "upgrade", "launch", "partnership",
-    "integration", "deployed", "audit", "funding", "airdrop",
-    "tge", "token generation", "eip", "bip", "governance",
-    "hack", "exploit", "outage", "sec ", "regulatory",
-    # Visibility
-    "keynote", "conference", "hackathon", "speaker", "panel",
-    "ama", "community call", "join the team", "hired", "appointed",
-]
-
-# Subcategory detection
-SUBCATEGORY_MAP = {
-    "RISK_ALERT": {
-        "hack": ["hack", "exploit", "drained", "stolen", "attack"],
-        "outage": ["outage", "downtime", "halt", "offline"],
-        "critical_bug": ["critical bug", "vulnerability", "cve"],
-    },
-    "REGULATORY": {
-        "enforcement": ["enforcement", "lawsuit", "subpoena", "wells notice", "fine", "penalty"],
-        "license": ["license", "approval", "authorized"],
-        "comment_period": ["comment period", "proposed rule", "consultation"],
-    },
-    "FINANCIAL": {
-        "tvl_milestone": ["tvl", "crosses", "reaches", "milestone"],
-        "tvl_spike": ["tvl", "up", "increase", "surge"],
-        "volume_breakout": ["volume", "ath", "record", "breakout"],
-        "funding_round": ["funding", "raised", "series", "round"],
-        "airdrop": ["airdrop", "token distribution"],
-        "tge": ["tge", "token launch", "token generation"],
-    },
-    "TECH_EVENT": {
-        "mainnet_launch": ["mainnet launch", "mainnet live", "genesis"],
-        "upgrade": ["upgrade", "hard fork", "eip", "bip", "simd"],
-        "release": ["release", "version", "v0", "v1", "v2"],
-        "governance_submitted": ["proposal submitted", "draft", "rfc"],
-        "governance_passed": ["proposal passed", "approved", "accepted"],
-        "audit": ["audit", "audited", "security review"],
-    },
-    "PARTNERSHIP": {
-        "integration": ["integration", "integrate", "deploy on"],
-        "collaboration": ["partnership", "collaboration", "teams up"],
-    },
-    "VISIBILITY": {
-        "keynote": ["keynote", "conference talk", "speaker"],
-        "ama": ["ama", "ask me anything", "community call"],
-        "hire": ["hired", "joined", "appointed", "new cto", "new ceo"],
-        "departure": ["departed", "left", "stepped down", "resigned"],
-        "podcast": ["podcast", "interview", "episode"],
-    },
-}
-
-
-# Price/trading noise to filter out of FINANCIAL category
 PRICE_NOISE_KEYWORDS = [
-    # Price predictions and analysis
     "price prediction", "price forecast", "price target", "price analysis",
     "technical analysis", "chart pattern", "support level", "resistance level",
     "bull case", "bear case", "bullish", "bearish", "rally", "selloff",
     "bottom", "top signal", "breakout", "consolidation", "pullback",
     "correction", "dip", "surge", "plunge", "soars", "tumbles",
     "slides", "falls", "rises", "drops", "jumps", "gains", "loses",
-    # Market commentary
     "what the", "here's what", "what you should", "what to",
     "should you buy", "should you sell", "is it time to",
     "analysts say", "traders bet", "market sentiment",
     "funding rate", "open interest", "long position", "short position",
     "liquidation", "leverage", "margin call",
-    # Speculative content
     "could hit", "could reach", "might", "set to", "poised to",
     "what's next for", "where", "headed", "outlook",
     "relief rally", "selling pressure", "buying pressure",
     "whale transaction", "whale moves", "whale transfers",
-    # Price defense/milestone rhetoric
     "can .* defend", "can .* survive", "can .* hold",
     "defend $", "survive $", "hold $", "above $", "below $",
     "support test", "resistance test", "price falls", "price slides",
     "price drops", "price jumps", "price surges",
 ]
 
-
-def _detect_subcategory_keyword(text: str, category: str) -> str:
-    """Detect subcategory using keyword matching."""
-    subcats = SUBCATEGORY_MAP.get(category, {})
-    for subcat, keywords in subcats.items():
-        for keyword in keywords:
-            if keyword in text.lower():
-                return subcat
-    return "general"
-
+# ---------------------------------------------------------------------------
+# Agent-native EventCategorizer
+# ---------------------------------------------------------------------------
 
 class EventCategorizer:
-    """Classifies raw events into categories and subcategories."""
+    """Agent-native event categorizer.
+
+    No keyword matching. Prepares structured tasks for the running agent,
+    loads agent-completed results, and applies them to raw events.
+
+    Usage (pipeline):
+        categorizer = EventCategorizer()
+        task_path = categorizer.prepare_agent_task(events)
+        # AGENT CHECKPOINT: running agent processes task and saves output
+        results = categorizer.try_load_results()
+        categorized_events = categorizer.apply_categories(events, results)
+    """
+
+    TASK_TYPE = "categorize"
 
     def categorize(self, event: dict) -> dict:
-        """Add category and subcategory to event dict."""
-        source = event.get("source", "") or event.get("source_name", "")
+        """DEPRECATED — agent-native pipeline does not use keyword categorization.
 
-        # Build text for matching from all available fields
-        text_parts = [event.get("description", "")]
-        evidence = event.get("evidence", "")
+        Raises RuntimeError with instructions for the agent-native flow.
+        """
+        raise RuntimeError(
+            "EventCategorizer is agent-native. Keyword categorization has been removed.\n"
+            "Use: prepare_agent_task() → agent processes → try_load_results() → apply_categories()\n"
+            "The running agent must provide all categorization reasoning."
+        )
+
+    # -- Agent task preparation ------------------------------------------------
+
+    def prepare_agent_task(self, events: list[dict]) -> Path:
+        """Build and save a categorization task for the running agent.
+
+        Returns the path to the saved task file.
+        """
+        task_events = []
+        for i, ev in enumerate(events):
+            task_ev = {
+                "id": i,
+                "chain": ev.get("chain", "unknown"),
+                "source": ev.get("source", "") or ev.get("source_name", ""),
+                "description": ev.get("description", ""),
+                "reliability": ev.get("reliability", 0.5),
+                "evidence": self._flatten_evidence(ev.get("evidence", {})),
+                "is_twitter": "twitter" in str(ev.get("source", "")).lower(),
+            }
+            # Include tweet-specific metadata when present
+            evidence = ev.get("evidence", {}) if isinstance(ev.get("evidence"), dict) else {}
+            if evidence.get("is_retweet"):
+                task_ev["twitter_metadata"] = {
+                    "is_retweet": True,
+                    "original_author": evidence.get("original_author", ""),
+                }
+            if evidence.get("is_quote"):
+                task_ev["twitter_metadata"] = task_ev.get("twitter_metadata", {})
+                task_ev["twitter_metadata"]["is_quote"] = True
+                task_ev["twitter_metadata"]["quoted_text"] = evidence.get("quoted_text", "")
+            if evidence.get("author"):
+                task_ev["twitter_metadata"] = task_ev.get("twitter_metadata", {})
+                task_ev["twitter_metadata"]["author"] = evidence.get("author", "")
+                task_ev["twitter_metadata"]["role"] = evidence.get("role", "unknown")
+
+            task_events.append(task_ev)
+
+        payload = {
+            "instructions": self._build_agent_instructions(),
+            "events": task_events,
+            "output_format": self._build_output_format(),
+        }
+        return save_agent_task(self.TASK_TYPE, payload)
+
+    def try_load_results(self, task_id: Optional[str] = None) -> Optional[list[dict]]:
+        """Attempt to load agent categorization results.
+
+        Returns None if no output is available yet.
+        """
+        output_path = find_agent_output(self.TASK_TYPE, task_id=task_id)
+        if output_path is None:
+            return None
+        try:
+            data = load_agent_output(output_path)
+            results = data.get("results", [])
+            logger.info(f"[categorizer] Loaded {len(results)} agent-categorized events from {output_path}")
+            return results
+        except Exception as exc:
+            logger.warning(f"[categorizer] Failed to load agent output: {exc}")
+            return None
+
+    def apply_categories(self, events: list[dict], categorized_results: list[dict]) -> list[dict]:
+        """Apply agent categorization results to raw events.
+
+        Returns a new list of event dicts with category, subcategory, and semantic fields.
+        """
+        result_map = {r["id"]: r for r in categorized_results if "id" in r}
+        enriched = []
+
+        for i, ev in enumerate(events):
+            ev_copy = dict(ev)
+            if i in result_map:
+                r = result_map[i]
+                cat = r.get("category", "NEWS")
+                sub = r.get("subcategory", "general")
+                ev_copy["category"] = cat
+                ev_copy["subcategory"] = sub
+                ev_copy["semantic"] = {
+                    "category": cat,
+                    "subcategory": sub,
+                    "confidence": 0.85,
+                    "reasoning": r.get("reasoning", ""),
+                    "is_noise": r.get("is_noise", False),
+                    "primary_mentions": r.get("primary_mentions", []),
+                }
+            else:
+                # Event was not categorized by agent — mark as NEWS/general
+                ev_copy["category"] = "NEWS"
+                ev_copy["subcategory"] = "general"
+                ev_copy["semantic"] = {
+                    "category": "NEWS",
+                    "subcategory": "general",
+                    "confidence": 0.0,
+                    "reasoning": "Not categorized by agent",
+                    "is_noise": False,
+                    "primary_mentions": [],
+                }
+            enriched.append(ev_copy)
+
+        categorized_count = sum(1 for e in enriched if e.get("semantic", {}).get("confidence", 0) > 0)
+        logger.info(f"[categorizer] Applied agent categories to {categorized_count}/{len(events)} events")
+        return enriched
+
+    # -- Instruction builders --------------------------------------------------
+
+    def _build_agent_instructions(self) -> str:
+        """Build rich categorization instructions for the agent prompt."""
+        cat_lines = []
+        for cat in CATEGORY_ORDER:
+            desc = CATEGORY_DESCRIPTIONS.get(cat, "")
+            cat_lines.append(f"  - {cat}: {desc}")
+
+        subcat_lines = []
+        for cat, subcats in SUBCATEGORY_MAP.items():
+            subcat_lines.append(f"  {cat}:")
+            for sub, desc in subcats.items():
+                subcat_lines.append(f"    - {sub}: {desc}")
+
+        noise_lines = "\n    ".join(f"- '{phrase}'" for phrase in TWITTER_NOISE_PHRASES[:10])
+        price_lines = "\n    ".join(f"- '{kw}'" for kw in PRICE_NOISE_KEYWORDS[:10])
+
+        return (
+            "You are an expert crypto-industry analyst. Categorize each event into exactly one category and subcategory.\n\n"
+            "Categories (ordered by priority — first match wins when multiple could apply):\n"
+            f"{chr(10).join(cat_lines)}\n\n"
+            "Subcategories:\n"
+            f"{chr(10).join(subcat_lines)}\n\n"
+            "Rules:\n"
+            "1. Categorize by SEMANTIC CONTENT, not keyword presence.\n"
+            "2. A 'wen mainnet' reply to a mainnet announcement is VISIBILITY, not TECH_EVENT.\n"
+            "3. A retweet of official news inherits the original's category.\n"
+            "4. Funding announcements with amounts >= $1M receive FINANCIAL.\n"
+            "5. 'Audit complete' without findings → TECH_EVENT. 'Audit finding' → RISK_ALERT.\n"
+            "6. Engagement bait, price predictions, memes → NOISE.\n"
+            "7. If chain-agnostic (mentions no specific chain), set primary_mentions to [].\n"
+            "8. For retweets: categorize based on the ORIGINAL content, not the reposter's commentary.\n"
+            "9. For quote tweets: categorize based on the new commentary + quoted content combined.\n"
+            "10. When in doubt between two categories, pick the one with higher real-world impact.\n\n"
+            "Noise filters (mark as NOISE / is_noise=true if primarily these):\n"
+            f"    {noise_lines}\n"
+            "    ... (and similar low-value phrases)\n\n"
+            "Price noise filters (mark as NOISE if primarily these):\n"
+            f"    {price_lines}\n"
+            "    ... (and similar price-commentary phrases)\n"
+        )
+
+    def _build_output_format(self) -> str:
+        return (
+            "Return a JSON array of results, one per event, in the SAME ORDER as the input events.\n"
+            "Each result must be:\n"
+            "{\n"
+            '  "id": <event id from input>,\n'
+            '  "category": "<CATEGORY>",\n'
+            '  "subcategory": "<subcategory>",\n'
+            '  "reasoning": "<1 sentence explaining the classification>",\n'
+            '  "is_noise": <true/false>,\n'
+            '  "primary_mentions": [<list of chain names mentioned, or []>]\n'
+            "}\n\n"
+            "CRITICAL: every event in the input must have a corresponding result with the correct id.\n"
+            "Do not skip events. Do not invent events. Do not return markdown fences.\n"
+        )
+
+    @staticmethod
+    def _flatten_evidence(evidence) -> dict:
+        """Normalize evidence field to a flat dict for the agent prompt."""
         if isinstance(evidence, dict):
-            text_parts.append(evidence.get("title", ""))
-            text_parts.append(evidence.get("summary", ""))
-            text_parts.append(evidence.get("pr_title", ""))
-            text_parts.append(evidence.get("link", ""))
-        else:
-            text_parts.append(str(evidence))
-
-        text = " ".join(str(p) for p in text_parts if p).lower()
-
-        # Filter out price/trading noise from FINANCIAL
-        is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
-        existing = event.get("category", "")
-        if (existing == "FINANCIAL" or existing == "NEWS") and not is_defillama:
-            for noise_kw in PRICE_NOISE_KEYWORDS:
-                if noise_kw in text:
-                    event["_filtered_price_noise"] = True
-                    event["category"] = "PRICE_NOISE"
-                    event["subcategory"] = "price_commentary"
-                    return event
-
-        # Check Twitter noise keywords
-        if "twitter" in source.lower() or "twitter" in str(event.get("source_name", "")).lower():
-            noise, reason = self._is_twitter_noise(text)
-            if noise:
-                event["_filtered_twitter_noise"] = True
-                event["category"] = "NOISE"
-                event["subcategory"] = reason
-                return event
-
-        # Keyword-based categorization
-        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
-        if existing and existing not in GENERIC_CATEGORIES:
-            keyword_category = existing
-        else:
-            keyword_category = self._detect_category(text)
-
-        keyword_subcategory = self._detect_subcategory(text, keyword_category)
-
-        event["category"] = keyword_category
-        event["subcategory"] = keyword_subcategory
-        return event
-
-    def _is_twitter_noise(self, text: str) -> tuple[bool, str]:
-        """Check if a tweet is low-value noise. Returns (is_noise, reason)."""
-        t = text.lower()
-
-        for phrase in TWITTER_NOISE_PHRASES:
-            if phrase in t:
-                return True, f"noise_phrase:{phrase.strip()}"
-
-        if len(t) < 30 and ("🚀" in t or "🔥" in t or "💰" in t):
-            return True, "short_emoji_bait"
-
-        if len(t) < 60:
-            has_indicator = any(hv in t for hv in TWITTER_HIGH_VALUE_INDICATORS)
-            if not has_indicator:
-                return True, "short_no_substance"
-
-        return False, ""
-
-    def _detect_category(self, text: str) -> str:
-        """Detect primary category from text using keywords."""
-        tech_overrides = [
-            "live on mainnet", "live on testnet", "goes live on mainnet",
-            "is live on mainnet", "is live on testnet",
-            "upgrade is live", "upgrade went live", "upgrade live",
-            "hard fork", "soft fork", "mainnet launch",
-        ]
-        for phrase in tech_overrides:
-            if phrase in text:
-                return "TECH_EVENT"
-
-        for category, keywords in CATEGORY_KEYWORDS.items():
-            for keyword in keywords:
-                if keyword in text:
-                    return category
-        return "TECH_EVENT"  # default
-
-    def _detect_subcategory(self, text: str, category: str) -> str:
-        """Detect subcategory within a category using keywords."""
-        return _detect_subcategory_keyword(text, category)
+            return {k: str(v) for k, v in evidence.items()}
+        return {"raw": str(evidence)}

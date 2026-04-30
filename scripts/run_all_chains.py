@@ -4,9 +4,15 @@ Full pipeline for ALL chains using divide-and-conquer.
 
 Phase 1: Non-Twitter collectors (run once)
 Phase 2: Twitter in batches with zombie cleanup
-Phase 3: Agent-native pipeline (dedup → categorize → score → reinforce → chain analyze → build prompt)
+Phase 3: Deduplicate
+Phase 4: Agent categorization checkpoint (running agent provides all categories)
+Phase 5: Score + Reinforce
+Phase 6: Per-chain deterministic analyze
+Phase 7: Agent prompt synthesis
+Phase 8: Deliver
 
-No external LLM calls. The running agent reads the saved prompt and writes prose.
+No external LLM calls. No keyword matching. The running agent is the only
+semantic reasoning engine.
 
 Run with: timeout 1800 python3 scripts/run_all_chains.py
 """
@@ -179,32 +185,69 @@ async def run_all_chains_pipeline() -> PipelineContext:
     ctx.unique_events = deduplicate_events(ctx.raw_events)
     print(f"  Unique events: {len(ctx.unique_events)} ({len(ctx.raw_events) - len(ctx.unique_events)} duplicates)")
 
-    # ── Phase 4: Categorize + Score + Reinforce ──────────────────────────────
-    print("\n[Phase 4] Categorizing, scoring, and reinforcing...")
+    # ── Phase 4: Agent Categorization Checkpoint ──────────────────────────────────────────
+    print("\n[Phase 4] Agent categorization checkpoint...")
     categorizer = EventCategorizer()
+
+    # Try to load existing agent categorization results
+    agent_results = categorizer.try_load_results()
+    if agent_results is None:
+        task_path = categorizer.prepare_agent_task([
+            {
+                "chain": ev.chain,
+                "category": ev.category,
+                "subcategory": ev.subcategory,
+                "description": ev.description,
+                "source": ev.source,
+                "reliability": ev.reliability,
+                "evidence": ev.evidence,
+                "semantic": ev.semantic,
+            }
+            for ev in ctx.unique_events
+        ])
+        print(f"  🤖 Agent checkpoint: categorize events at {task_path}")
+        ctx.final_digest = (
+            f"🤖 Agent categorization required\n\n"
+            f"Task saved to: {task_path}\n\n"
+            f"Please categorize events and save output to storage/agent_output/categorize_output_*.json"
+        )
+        return ctx
+
+    # Apply agent categories
+    event_dicts = [
+        {
+            "chain": ev.chain,
+            "category": ev.category,
+            "subcategory": ev.subcategory,
+            "description": ev.description,
+            "source": ev.source,
+            "reliability": ev.reliability,
+            "evidence": ev.evidence,
+            "semantic": ev.semantic,
+        }
+        for ev in ctx.unique_events
+    ]
+    categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
+
+    for ev, cat_dict in zip(ctx.unique_events, categorized_dicts):
+        ev.category = cat_dict.get("category", ev.category)
+        ev.subcategory = cat_dict.get("subcategory", ev.subcategory)
+        ev.semantic = cat_dict.get("semantic")
+
+    print(f"  {len(categorized_dicts)} events categorized by agent")
+
+    # ── Phase 5: Score + Reinforce ─────────────────────────────────────────────────
+    print("\n[Phase 5] Scoring and reinforcing...")
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
 
-    enriched_events = []
     signals_for_storage = []
-
-    for ev in ctx.unique_events:
-        ev_dict = {
-            "chain": ev.chain, "category": ev.category, "subcategory": ev.subcategory,
-            "description": ev.description, "source": ev.source, "reliability": ev.reliability,
-            "evidence": ev.evidence, "semantic": ev.semantic,
-        }
-        categorized = categorizer.categorize(ev_dict)
-        ev.category = categorized.get("category", ev.category)
-        ev.subcategory = categorized.get("subcategory", ev.subcategory)
-        ev.semantic = categorized.get("semantic")
-        enriched_events.append(ev)
-
+    for ev_dict in categorized_dicts:
         try:
-            signal = scorer.score(categorized)
+            signal = scorer.score(ev_dict)
             signals_for_storage.append(signal)
         except Exception as exc:
-            logger.warning(f"Scoring failed for {ev.chain}: {exc}")
+            logger.warning(f"Scoring failed for {ev_dict.get('chain')}: {exc}")
 
     ctx.signals = signals_for_storage
     print(f"  Signals scored: {len(ctx.signals)}")
@@ -219,8 +262,8 @@ async def run_all_chains_pipeline() -> PipelineContext:
     ctx.signals = reinforced_signals
     print(f"  Signals reinforced: {len(ctx.signals)}")
 
-    # ── Phase 5: Per-chain deterministic analyze ───────────────────────────────────────
-    print("\n[Phase 5] Per-chain deterministic analysis...")
+    # ── Phase 6: Per-chain deterministic analyze ─────────────────────────────────
+    print("\n[Phase 6] Per-chain deterministic analysis...")
 
     signals_by_chain = {}
     for sig in ctx.signals:
@@ -234,8 +277,8 @@ async def run_all_chains_pipeline() -> PipelineContext:
     for d in sorted(ctx.chain_digests, key=lambda x: -x.priority_score)[:5]:
         print(f"    {d.chain}: score={d.priority_score}, topic={d.dominant_topic[:50]}")
 
-    # ── Phase 6: Agent prompt synthesis ─────────────────────────────────────────
-    print("\n[Phase 6] Building agent synthesis prompt...")
+    # ── Phase 7: Agent prompt synthesis ──────────────────────────────────────────
+    print("\n[Phase 7] Building agent synthesis prompt...")
     ctx.final_digest = await synthesize_digest(
         ctx.chain_digests,
         source_health=ctx.health,
@@ -243,7 +286,7 @@ async def run_all_chains_pipeline() -> PipelineContext:
     )
     print(f"  Prompt saved. Length: {len(ctx.final_digest)} chars")
 
-    # ── Phase 7: Deliver ─────────────────────────────────────────────────────
+    # ── Phase 8: Deliver ───────────────────────────────────────────────────────────
     sender = TelegramSender()
     sent = False
     significant_digests = [d for d in ctx.chain_digests if d.has_significant_activity()]
