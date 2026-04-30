@@ -12,6 +12,8 @@ import os
 import random
 
 import time
+import concurrent.futures
+import multiprocessing as mp
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -137,20 +139,24 @@ SCROLL_JS = """() => { window.scrollTo(0, document.body.scrollHeight); }"""
 class TwitterCollector(BaseCollector):
     """Collects tweets from chain official accounts and contributors via Playwright."""
 
-    def __init__(self, standalone_mode: bool = False, lookback_hours: int | None = None):
+    def __init__(self, standalone_mode: bool = False, lookback_hours: int | None = None,
+                 max_workers: int = 1, num_batches: int = 1):
         """
         Args:
             standalone_mode: If True, skips dedup/reinforcement and writes to own JSON.
             lookback_hours: Override global default. Defaults to env TWITTER_LOOKBACK_HOURS (default 24).
+            max_workers: Number of parallel Playwright workers.
+            num_batches: Number of handle batches to split across workers.
         """
         super().__init__(name="twitter")
         self.standalone_mode = standalone_mode
         self.lookback_hours = lookback_hours or int(get_env("TWITTER_LOOKBACK_HOURS", "24"))
+        self.max_workers = int(get_env("TWITTER_MAX_WORKERS", str(max_workers)))
+        self.num_batches = int(get_env("TWITTER_NUM_BATCHES", str(num_batches)))
         self._playwright = None
         self._browser = None
         self._context = None
-        self._accounts: dict[str, list[dict]] = {}  # chain -> list of handle configs
-
+        self._accounts: dict[str, list[dict]] = {}  # chain -> list of handle configs        
         # Load accounts from YAML
         self._load_accounts()
 
@@ -256,24 +262,7 @@ class TwitterCollector(BaseCollector):
 
     def _cleanup(self):
         """Close browser resources and clean up any orphaned Chrome processes."""
-        # Kill any Chrome processes spawned by our own PID tree first
-        try:
-            import subprocess
-            parent_pid = str(os.getpid())
-            # Find Chrome child processes of our PID (or grand/children)
-            result = subprocess.run(
-                ["pgrep", "-P", parent_pid, "-f", "chrome"],
-                capture_output=True, text=True
-            )
-            for pid_str in result.stdout.strip().split("\n"):
-                if pid_str.strip():
-                    try:
-                        os.kill(int(pid_str.strip()), 9)
-                    except ProcessLookupError:
-                        pass
-        except Exception:
-            pass
-
+        # Close browser resources FIRST
         try:
             if self._context and hasattr(self._context, "close"):
                 self._context.close()
@@ -290,41 +279,140 @@ class TwitterCollector(BaseCollector):
         except Exception:
             pass
 
+        # Give processes time to exit gracefully
+        time.sleep(1.5)
+
+        # Kill any remaining Chrome processes in our PID tree
+        try:
+            import subprocess
+            our_pid = os.getpid()
+            # First: collect all descendant PIDs under our process
+            def get_descendants(pid: int) -> set[int]:
+                descendants = set()
+                try:
+                    pg = subprocess.run(
+                        ["pgrep", "-P", str(pid)],
+                        capture_output=True, text=True, check=False,
+                    )
+                    for line in pg.stdout.strip().split("\n"):
+                        line = line.strip()
+                        if line.isdigit():
+                            child_pid = int(line)
+                            descendants.add(child_pid)
+                            descendants |= get_descendants(child_pid)
+                except Exception:
+                    pass
+                return descendants
+
+            pids_to_kill = get_descendants(our_pid)
+            for pid in pids_to_kill:
+                try:
+                    # Verify it's actually chrome/chromium before killing
+                    cmd = subprocess.run(
+                        ["cat", f"/proc/{pid}/comm"],
+                        capture_output=True, text=True, check=False,
+                    ).stdout.strip().lower()
+                    if "chrome" in cmd or "chromium" in cmd:
+                        os.kill(pid, 9)
+                except (ProcessLookupError, PermissionError, Exception):
+                    pass
+        except Exception:
+            pass
+
     # -----------------------------------------------------------------------
     # Collection loop
     # -----------------------------------------------------------------------
     def collect(self) -> list[dict]:
-        """Run Twitter collection for all configured accounts."""
-        all_tweets: list[dict] = []
+        """Run Twitter collection with parallel batching.
+
+        Splits handles into `num_batches` batches, spawns up to `max_workers`
+        processes. Each worker gets its own browser context + one reused page.
+        Workers are independent (no shared state).
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
 
         if not self._accounts:
-            logger.warning("[twitter] No accounts configured — skipping")
+            logger.warning("[twitter] No accounts configured -- skipping")
             return []
 
-        self._start_browser()
-        # Reuse one page across all handles to avoid renderer proliferation
-        page = self._context.new_page() if self._context else None
+        # Flatten (chain_name, handle_cfg) tuples
+        all_handles: list[tuple[str, dict]] = []
+        for chain_name, cfg in self._accounts.items():
+            for hdl in cfg.get("official", []) + cfg.get("contributors", []):
+                all_handles.append((chain_name, hdl))
+
+        if not all_handles:
+            return []
+
+        # Split into batches
+        if self.num_batches >= len(all_handles):
+            batches = [[h] for h in all_handles]
+        else:
+            batch_size = max(1, len(all_handles) // self.num_batches)
+            batches = [
+                all_handles[i:i + batch_size]
+                for i in range(0, len(all_handles), batch_size)
+            ]
+
+        logger.info(
+            f"[twitter] {len(all_handles)} handles into {len(batches)} batches, "
+            f"max_workers={self.max_workers}"
+        )
+
+        # Run batches in parallel via ProcessPoolExecutor
+        all_tweets: list[dict] = []
         try:
-            for chain_name, cfg in self._accounts.items():
-                handles = cfg.get("official", []) + cfg.get("contributors", [])
-                if not handles:
-                    continue
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_workers,
+            ) as executor:
+                futures = {
+                    executor.submit(
+                        TwitterCollector._run_batch,
+                        batch_id,
+                        batch,
+                        self.lookback_hours,
+                        self.standalone_mode,
+                    ): batch_id
+                    for batch_id, batch in enumerate(batches)
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    batch_id = futures[future]
+                    try:
+                        batch_tweets = future.result()
+                        all_tweets.extend(batch_tweets)
+                        logger.info(
+                            f"[twitter] Batch-{batch_id} returned {len(batch_tweets)} tweets"
+                        )
+                    except Exception as exc:
+                        logger.error(f"[twitter] Batch-{batch_id} failed: {exc}")
+        except Exception as exc:
+            logger.error(f"[twitter] Parallel execution failed: {exc}")
+            logger.info("[twitter] Falling back to sequential collection...")
+            all_tweets = self._collect_single_worker(all_handles, cutoff)
 
-                for hdl in handles:
-                    handle = hdl["handle"].lstrip("@")
-                    logger.info(f"[twitter] Scraping @{handle} for {chain_name}")
-                    tweets = self._scrape_profile(handle, hdl, chain_name, cutoff, page=page)
-                    all_tweets.extend(tweets)
-                    # Rate-limiting sleep between accounts
-                    time.sleep(random.randint(3, 8))
-
-            logger.info(f"[twitter] Total tweets collected: {len(all_tweets)}")
+        logger.info(f"[twitter] Total tweets collected: {len(all_tweets)}")
+        if all_tweets:
             self.health.mark_success()
 
-        except Exception as e:
-            logger.error(f"[twitter] Collector failed: {e}")
-            self.health.mark_failure(str(e))
+        self._persist_raw(all_tweets)
+        events = self._tweets_to_events(all_tweets)
+        return events
+
+    def _collect_single_worker(
+        self, handles: list[tuple[str, dict]], cutoff: datetime
+    ) -> list[dict]:
+        """Sequential fallback: one browser context, one reused page."""
+        all_tweets: list[dict] = []
+        self._start_browser()
+        page = self._context.new_page() if self._context else None
+        try:
+            for chain_name, hdl in handles:
+                handle = hdl["handle"].lstrip("@")
+                tweets = self._scrape_profile(
+                    handle, hdl, chain_name, cutoff, page=page
+                )
+                all_tweets.extend(tweets)
+                time.sleep(random.randint(3, 7))
         finally:
             if page:
                 try:
@@ -332,13 +420,58 @@ class TwitterCollector(BaseCollector):
                 except Exception:
                     pass
             self._cleanup()
+        return all_tweets
 
-        # Persist raw tweets for historical/trending analysis
-        self._persist_raw(all_tweets)
+    @classmethod
+    def _run_batch(
+        cls,
+        batch_id: int,
+        batch: list[tuple[str, dict]],
+        lookback_hours: int,
+        standalone_mode: bool,
+    ) -> list[dict]:
+        """Worker function for ProcessPoolExecutor.
 
-        # Convert to event dicts for pipeline
-        events = self._tweets_to_events(all_tweets)
-        return events
+        Each worker gets its own browser context + one reused page.
+        Instantiates a fresh TwitterCollector with no shared state.
+        """
+        import logging
+
+        worker_logger = logging.getLogger(f"twitter-batch-{batch_id}")
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+        collector = cls(
+            standalone_mode=standalone_mode,
+            lookback_hours=lookback_hours,
+        )
+        all_tweets: list[dict] = []
+
+        try:
+            collector._start_browser()
+            page = collector._context.new_page() if collector._context else None
+            for chain_name, hdl in batch:
+                handle = hdl["handle"].lstrip("@")
+                worker_logger.info(
+                    f"[batch-{batch_id}] Scraping @{handle} for {chain_name}"
+                )
+                tweets = collector._scrape_profile(
+                    handle, hdl, chain_name, cutoff, page=page
+                )
+                all_tweets.extend(tweets)
+                worker_logger.info(
+                    f"[batch-{batch_id}] @{handle}: {len(tweets)} tweets"
+                )
+                time.sleep(random.randint(3, 7))
+        except Exception as exc:
+            worker_logger.error(f"[batch-{batch_id}] Error: {exc}")
+        finally:
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            collector._cleanup()
+
+        return all_tweets
 
     def _scrape_profile(self, handle: str, hdl_cfg: dict, chain_name: str, cutoff: datetime, page=None) -> list[dict]:
         """Open a profile, scroll, extract tweets within time window.

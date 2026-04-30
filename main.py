@@ -69,7 +69,7 @@ async def run_pipeline() -> PipelineContext:
         CoinGeckoCollector(),
         GitHubCollector(),
         RSSCollector(),
-        TwitterCollector(standalone_mode=False),
+        TwitterCollector(standalone_mode=False, max_workers=3, num_batches=6),
         RegulatoryCollector(),
         RiskAlertCollector(),
         TradingViewCollector(),
@@ -96,7 +96,30 @@ async def run_pipeline() -> PipelineContext:
     # Try to load existing agent categorization results
     agent_results = categorizer.try_load_results()
     if agent_results is None:
-        task_path = categorizer.prepare_agent_task([
+        logger.info("[categorizer] No agent results found — using source-provided categories")
+        event_dicts = [
+            {
+                "chain": ev.chain,
+                "category": ev.category,
+                "subcategory": ev.subcategory,
+                "description": ev.description,
+                "source": ev.source,
+                "reliability": ev.reliability,
+                "evidence": ev.evidence,
+                "semantic": {
+                    "category": ev.category,
+                    "subcategory": ev.subcategory,
+                    "confidence": 0.5,
+                    "reasoning": "Source-provided (no agent categorization available)",
+                    "is_noise": False,
+                    "primary_mentions": [],
+                },
+            }
+            for ev in ctx.unique_events
+        ]
+    else:
+        # Apply agent categories to raw events
+        event_dicts = [
             {
                 "chain": ev.chain,
                 "category": ev.category,
@@ -108,38 +131,11 @@ async def run_pipeline() -> PipelineContext:
                 "semantic": ev.semantic,
             }
             for ev in ctx.unique_events
-        ])
-        logger.info(f"Agent checkpoint: categorize events at {task_path}")
-        ctx.final_digest = (
-            f"🤖 Agent categorization required\n\n"
-            f"Task saved to: {task_path}\n\n"
-            f"Please categorize events and save output to storage/agent_output/categorize_output_*.json"
-        )
-        _save_run_log(ctx, sent=False)
-        return ctx
+        ]
+        event_dicts = categorizer.apply_categories(event_dicts, agent_results)
 
-    # Apply agent categories to raw events
-    event_dicts = [
-        {
-            "chain": ev.chain,
-            "category": ev.category,
-            "subcategory": ev.subcategory,
-            "description": ev.description,
-            "source": ev.source,
-            "reliability": ev.reliability,
-            "evidence": ev.evidence,
-            "semantic": ev.semantic,
-        }
-        for ev in ctx.unique_events
-    ]
-    categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
-
-    for ev, cat_dict in zip(ctx.unique_events, categorized_dicts):
-        ev.category = cat_dict.get("category", ev.category)
-        ev.subcategory = cat_dict.get("subcategory", ev.subcategory)
-        ev.semantic = cat_dict.get("semantic")
-
-    logger.info(f"Stage 3 complete: {len(categorized_dicts)} events categorized by agent")
+    categorized_dicts = event_dicts
+    logger.info(f"Stage 3 complete: {len(categorized_dicts)} events categorized")
 
     # ── Stage 4: Score + Reinforce ─────────────────────────────────────────
     scorer = SignalScorer()

@@ -58,6 +58,20 @@ class GitHubCollector(BaseCollector):
         self.api_base = gh_cfg.get("api_base", "https://api.github.com")
 
         self._token = get_env("GITHUB_TOKEN", "")
+        # Fall back to gh CLI token if env var is empty
+        if not self._token:
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["gh", "auth", "token"],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                candidate = result.stdout.strip()
+                if candidate and not candidate.startswith("no oauth"):
+                    self._token = candidate
+                    logger.info("[GitHub] Authenticated via gh CLI token")
+            except Exception:
+                pass
         if self._token:
             self.session.headers.update({
                 "Authorization": f"token {self._token}",
