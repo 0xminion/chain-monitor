@@ -72,9 +72,8 @@ Source Health: {health_block}
 2. Start with a 2-sentence theme summary (e.g. "Today's theme: ...").
 3. Group related signals under thematic headings (e.g. "Mainnet Launches", "Regulatory Pressure").
 4. For each group, explain WHY it matters — not just WHAT happened.
-5. End with a "Watch" section listing 2-3 upcoming items or follow-ups to monitor.
-6. Total output: 200-400 words.
-7. If no high-priority signals, say so and briefly mention any notable low-priority activity.
+5. Total output: 200-400 words.
+6. If no high-priority signals, say so and briefly mention any notable low-priority activity.
 8. Do NOT include any raw URLs as text — embed them as [text](url) Markdown links.
    NEVER wrap URLs in double brackets like [text]([link](url)). Use only ONE layer of brackets.
 9. Cover ALL signal categories present — not just regulatory. Include tech events, partnerships, and dev activity if they appear in the input.
@@ -93,9 +92,6 @@ Source Health: {health_block}
 
 [Thematic group 2]
 ...
-
-👀 Watch
-[2-3 follow-ups to monitor]
 """
     return prompt
 
