@@ -1,306 +1,274 @@
 #!/usr/bin/env python3
-"""
-Twitter/X standalone collector — parallel batched execution.
+"""Standalone Twitter collector — no external API, just browser automation.
 
-Split 138 handles into 10 batches, run across 5 parallel workers.
-Each worker reuses a single page (page.goto() per handle).
+Collects from configured accounts, outputs raw JSON for the v2.0 digest bridge.
 
-Usage:
-    python scripts/run_twitter_standalone.py --hours 24
-    python scripts/run_twitter_standalone.py --hours 48 --telegram
+No dedup/reinforcement — standalone pipeline does ONE scrape per profile,
+max 50 tweets/account, 100-150 total, 3-7s delays between accounts.
+
+Uses ONE browser context + ONE page reused across all handles
+(defaults to Chromium persistent profile -> storage_state cookies -> plain).
+
+Run it:
+  python scripts/run_twitter_standalone.py --hours 48 --workers 3 --batches 10
 """
 
 import argparse
 import json
 import logging
+import os
 import random
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from collectors.twitter_collector import TwitterCollector
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.environ.get("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 logger = logging.getLogger("twitter-standalone")
 
-# ---------------------------------------------------------------------------
-# Worker function (must be importable / picklable for ProcessPoolExecutor)
-# ---------------------------------------------------------------------------
 
-def _scrape_batch(worker_id: int, batches: list, lookback_hours: int, accounts: dict) -> list[dict]:
-    """Open one browser + one page per worker, scrape 2 batches of handles.
+def _get_env(key: str, default: str = "") -> str:
+    return os.environ.get(key, default)
 
-    Args:
-        worker_id: Worker index for logging.
-        batches: List of batches, each batch is a list of (chain, handle_cfg).
-        lookback_hours: Tweet lookback window.
-        accounts: Full accounts config dict (chain -> cfg).
-    """
-    from collectors.twitter_collector import TwitterCollector
-    # Import here to avoid pickling heavy deps from module level
-    import time, random
 
-    log = logging.getLogger(f"twitter-worker-{worker_id}")
-    log.info(f"[worker {worker_id}] Starting with {len(batches)} batches")
-
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+def run_batch(batch_id: int, handles: list[tuple], lookback_hours: int):
+    """Worker: scrape a batch of handles, save to batch JSON."""
+    logger.info(f"[batch-{batch_id}] Starting with {len(handles)} handles")
+    
     collector = TwitterCollector(standalone_mode=True, lookback_hours=lookback_hours)
-    collector._accounts = accounts  # inject full config
-
+    all_raw = []
+    
     try:
-        collector._start_browser()
-        page = collector._context.new_page()
-        log.info(f"[worker {worker_id}] Browser + single page created")
+        for chain_name, hcfg in handles:
+            handle = hcfg["handle"].lstrip("@")
+            logger.info(f"[batch-{batch_id}] Scraping @{handle} for {chain_name}")
+            
+            # Scrape profile (standalone returns raw tweet dicts)
+            tweets = collector._scrape_profile(handle, hcfg, chain_name,
+                datetime.now(timezone.utc) - timedelta(hours=lookback_hours))
+            all_raw.extend(tweets)
+            logger.info(f"[batch-{batch_id}] Got {len(tweets)} tweets from @{handle}")
+            
+            # Rate limit: 3-7s between accounts
+            time.sleep(random.randint(3, 7))
     except Exception as e:
-        log.error(f"[worker {worker_id}] Failed to start browser: {e}")
-        return []
-
-    total_tweets = []
-    try:
-        for b_idx, batch in enumerate(batches):
-            log.info(f"[worker {worker_id}] Batch {b_idx + 1}/{len(batches)} — {len(batch)} handles")
-            for chain_name, hdl in batch:
-                handle = hdl["handle"].lstrip("@")
-                try:
-                    tweets = collector._scrape_profile(handle, hdl, chain_name, cutoff, page=page)
-                    total_tweets.extend(tweets)
-                    log.info(f"[worker {worker_id}] @{handle}: {len(tweets)} tweets")
-                    time.sleep(random.uniform(2, 5))
-                except Exception as e:
-                    log.error(f"[worker {worker_id}] @{handle} failed: {e}")
-            # Sleep between batches to be nice to X
-            time.sleep(random.uniform(5, 10))
+        logger.error(f"[batch-{batch_id}] Error: {e}")
     finally:
-        try:
-            page.close()
-        except Exception:
-            pass
         collector._cleanup()
-        log.info(f"[worker {worker_id}] Cleaned up. Tweets: {len(total_tweets)}")
-
-    return total_tweets
-
-
-# ---------------------------------------------------------------------------
-# Main orchestrator
-# ---------------------------------------------------------------------------
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Twitter/X Parallel Batched Collector")
-    parser.add_argument("--hours", type=int, default=24, help="Lookback window (default: 24)")
-    parser.add_argument("--chains", type=str, default="", help="Comma-separated chains. Default: all.")
-    parser.add_argument("--workers", type=int, default=5, help="Parallel workers (default: 5)")
-    parser.add_argument("--batches", type=int, default=10, help="Total batches (default: 10)")
-    parser.add_argument("--telegram", action="store_true", help="Send digest via Telegram")
-    parser.add_argument("--json-only", action="store_true", help="Save JSON, skip Telegram")
-    parser.add_argument("--dry-run", action="store_true", help="Run but don't save/send")
-    parser.add_argument("--seed", type=int, default=None, help="Shuffle seed for deterministic batching")
-    return parser.parse_args()
+    
+    # Save batch
+    if all_raw:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        out_dir = REPO_ROOT / "storage" / "twitter" / "raw"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"tweets_{ts}_batch{batch_id}.json"
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(all_raw, f, indent=2, ensure_ascii=False)
+        logger.info(f"[batch-{batch_id}] Persisted {len(all_raw)} to {path}")
+    
+    return len(all_raw)
 
 
-def load_accounts(chains_filter: str = "") -> dict:
-    import yaml
-    path = REPO_ROOT / "config" / "twitter_accounts.yaml"
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    accounts = data.get("twitter_accounts", {})
-    if chains_filter:
-        selected = {c.strip().lower() for c in chains_filter.split(",")}
-        accounts = {k: v for k, v in accounts.items() if k.lower() in selected}
-    return accounts
+def _merge_batches() -> list[dict]:
+    """Merge all batch files into a single deduped list."""
+    raw_dir = REPO_ROOT / "storage" / "twitter" / "raw"
+    all_tweets: list[dict] = []
+    seen = set()
+    
+    for path in sorted(raw_dir.glob("tweets_*_batch*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            batch = data if isinstance(data, list) else data.get("tweets", [])
+            for t in batch:
+                tid = t.get("tweet_id") or t.get("url", "")
+                if tid and tid not in seen:
+                    seen.add(tid)
+                    all_tweets.append(t)
+        except Exception as e:
+            logger.warning(f"Merge error for {path}: {e}")
+    
+    return all_tweets
 
 
-def chunk(lst, n):
-    """Split list into n roughly-equal chunks."""
-    size = len(lst) // n + (1 if len(lst) % n else 0)
-    return [lst[i:i + size] for i in range(0, len(lst), size)]
-
-
-def format_telegram_digest(tweets: list[dict]) -> str:
-    if not tweets:
-        return "🐦 Twitter Standalone — No tweets found in window."
-    lines = [
-        "🐦 *Twitter Standalone Digest*",
-        f"_{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_",
-        "",
-        f"*Tweets collected:* {len(tweets)}\n",
-    ]
+def _build_digest(tweets: list[dict]) -> str:
+    """Build plain-text digest from raw tweets."""
+    lines = ["# Twitter Summary — Standalone Collection", ""]
+    
     by_chain = {}
     for t in tweets:
         by_chain.setdefault(t.get("chain", "unknown"), []).append(t)
-    for chain, chain_tweets in sorted(by_chain.items()):
-        lines.append(f"\n🔗 *{chain.upper()}*")
-        for t in chain_tweets[:10]:
-            h = t.get("account_handle", "")
-            ts = t.get("timestamp", "")[:10]
-            text = t.get("text", "")[:240].replace("*", "").replace("_", "")
-            url = t.get("url", "")
-            lines.append(f"• [{ts}] [@{h}](https://x.com/{h})\n  > {text}...\n  [Open tweet]({url})")
-        if len(chain_tweets) > 10:
-            lines.append(f"  _... and {len(chain_tweets) - 10} more_")
+    
+    for chain, c_tweets in sorted(by_chain.items()):
+        lines.append(f"\n## {chain}")
+        for tw in c_tweets[:7]:  # max 7 per chain in digest
+            handle = tw.get("account_handle", "")
+            role = tw.get("account_role", "")
+            text = tw.get("text", "")
+            url = tw.get("url", "")
+            ts = tw.get("timestamp", "")[:16].replace("T", " ")
+            
+            badges = []
+            if tw.get("is_retweet"):
+                badges.append("🔁")
+            if tw.get("is_quote_tweet"):
+                badges.append("💬")
+            badge_str = f" [{' '.join(badges)}]" if badges else ""
+            
+            # Clean text: remove @ and URLs from display
+            display_text = text
+            display_text = display_text.replace("@", "")
+            display_text = display_text.replace("https://", "").replace("http://", "")
+            
+            lines.append(f"- **@{handle}** ({role}){badge_str} — [{ts}]({url})")
+            lines.append(f"  > {display_text[:220]}{'...' if len(display_text) > 220 else ''}")
+    
     return "\n".join(lines)
 
 
-def score_tweets(tweets: list[dict]) -> list:
-    from processors.scoring import SignalScorer
-    scorer = SignalScorer()
-    signals = []
-    for t in tweets:
-        chain = t.get("chain", "unknown")
-        text = t.get("text", "").strip()
-        is_rt = t.get("is_retweet", False)
-        is_q = t.get("is_quote_tweet", False)
-        handle = t.get("account_handle", "")
-        role = t.get("account_role", "official")
-        reliability = float(t.get("account_reliability", 0.75))
-        url = t.get("url", "")
-        ts = t.get("timestamp", "")
-
-        if is_rt:
-            desc = f"@{handle} reposted: {text}"
-        elif is_q:
-            desc = f"@{handle} quoted: {text}"
-        else:
-            desc = text
-
-        event = {
-            "chain": chain,
-            "category": "NEWS",
-            "description": desc[:500],
-            "source": "twitter",
-            "reliability": reliability,
-            "timestamp": ts or datetime.now(timezone.utc).isoformat(),
-        }
-        try:
-            signal = scorer.score(event)
-            signals.append(signal)
-        except Exception as e:
-            logger.warning(f"Scoring failed for tweet: {e}")
-    return signals
-
-
 def main():
-    args = parse_args()
-    logger.info("=" * 50)
-    logger.info("Twitter/X Parallel Batched Collector v2")
-    logger.info(f"Batches: {args.batches} | Workers: {args.workers} | Lookback: {args.hours}h")
-    logger.info("=" * 50)
+    parser = argparse.ArgumentParser(description="Standalone Twitter collector")
+    parser.add_argument("--hours", type=int, default=24, help="Lookback hours")
+    parser.add_argument("--chains", type=str, default="", help="Comma-separated chain names")
+    parser.add_argument("--telegram", action="store_true", help="Send digest via TelegramSender")
+    parser.add_argument("--json-only", action="store_true", help="Skip Telegram, save files only")
+    parser.add_argument("--dry-run", action="store_true", help="Test auth without saving")
+    parser.add_argument("--workers", type=int, default=5, help="Parallel workers")
+    parser.add_argument("--batches", type=int, default=10, help="Number of batches")
+    args = parser.parse_args()
 
-    accounts = load_accounts(args.chains)
+    hours = args.hours
+    chains_filter = [c.strip() for c in args.chains.split(",")] if args.chains else []
+    workers = max(1, args.workers)
+    num_batches = max(1, args.batches)
+
+    logger.info("=" * 60)
+    logger.info("Twitter Standalone Collector")
+    logger.info(f"Lookback: {hours}h | Workers: {workers} | Batches: {num_batches}")
+    logger.info("=" * 60)
+
+    # Load accounts
+    import yaml
+    config_path = REPO_ROOT / "config" / "twitter_accounts.yaml"
+    if not config_path.exists():
+        logger.error("No twitter_accounts.yaml found")
+        return
+    
+    with open(config_path) as f:
+        data = yaml.safe_load(f) or {}
+    accounts = data.get("twitter_accounts", {})
+    
     if not accounts:
-        logger.error("No accounts matched. Exiting.")
-        sys.exit(1)
-
-    # Flatten all handles into a single list
-    all_handles = []
-    for chain, cfg in accounts.items():
-        for hdl in cfg.get("official", []) + cfg.get("contributors", []):
-            all_handles.append((chain, hdl))
-
-    logger.info(f"Total handles: {len(all_handles)}")
-
-    # Shuffle for even distribution across batches (deterministic if --seed)
-    if args.seed is not None:
-        random.seed(args.seed)
-    random.shuffle(all_handles)
-
-    # Split into batches
-    batched = chunk(all_handles, args.batches)
-    logger.info(f"Batches created: {len(batched)} (sizes: {[len(b) for b in batched]})")
-
-    # Assign batches to workers: worker i gets batches[i], [i+workers], ...
-    worker_tasks = {wid: [] for wid in range(args.workers)}
-    for i, batch in enumerate(batched):
-        worker_tasks[i % args.workers].append(batch)
-
-    # Filter empty workers
-    tasks = [
-        {"worker_id": wid, "batches": batches, "lookback_hours": args.hours, "accounts": accounts}
-        for wid, batches in worker_tasks.items() if batches
-    ]
-    logger.info(f"Workers assigned: {len(tasks)}")
-    for t in tasks:
-        total_handles = sum(len(b) for b in t["batches"])
-        logger.info(f"  Worker {t['worker_id']}: {len(t['batches'])} batches, {total_handles} handles")
-
-    # Run parallel scraping
-    all_tweets = []
-    start_time = time.time()
-
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(_scrape_batch, t["worker_id"], t["batches"], t["lookback_hours"], t["accounts"]): t for t in tasks}
-        for future in as_completed(futures):
-            worker_cfg = futures[future]
-            try:
-                tweets = future.result()
-                logger.info(f"[main] Worker {worker_cfg['worker_id']} returned {len(tweets)} tweets")
-                all_tweets.extend(tweets)
-            except Exception as e:
-                logger.error(f"[main] Worker {worker_cfg['worker_id']} crashed: {e}")
-
-    elapsed = time.time() - start_time
-    logger.info(f"[main] All workers done — {len(all_tweets)} tweets in {elapsed:.1f}s")
-
-    if not all_tweets:
-        logger.info("No tweets collected. Nothing to do.")
-        if args.telegram and not args.dry_run:
-            from output.telegram_sender import TelegramSender
-            TelegramSender().send_sync("🐦 Twitter — No tweets found.")
+        logger.error("No chains configured")
         return
 
-    # Score signals
-    signals = score_tweets(all_tweets)
-    high_priority = [s for s in signals if getattr(s, "priority_score", 0) >= 8]
-    logger.info(f"Signals scored: {len(signals)}, high priority: {len(high_priority)}")
+    # Filter to requested chains
+    if chains_filter:
+        accounts = {k: v for k, v in accounts.items() if k in chains_filter}
+        if not accounts:
+            logger.error(f"No matching chains for: {chains_filter}")
+            return
 
-    # Persist
-    if not args.dry_run:
-        now = datetime.now(timezone.utc)
+    # Build flat handle list
+    flat_handles = []
+    for chain_name, cfg in accounts.items():
+        for h in cfg.get("official", []) + cfg.get("contributors", []):
+            flat_handles.append((chain_name, h))
+    
+    if not flat_handles:
+        logger.error("No handles found")
+        return
+    
+    logger.info(f"Total handles to scrape: {len(flat_handles)}")
+
+    # DRY RUN
+    if args.dry_run:
+        logger.info("DRY RUN — testing authentication...")
+        try:
+            collector = TwitterCollector(standalone_mode=True, lookback_hours=hours)
+            collector._start_browser()
+            page = collector._context.new_page()
+            test_url = "https://x.com/solana"
+            page.goto(test_url, timeout=30000, wait_until="domcontentloaded")
+            time.sleep(4)
+            articles = page.query_selector_all('article[data-testid="tweet"]')
+            logger.info(f"DRY RUN success: {len(articles)} articles visible on {test_url}")
+            page.close()
+            collector._cleanup()
+            logger.info(f"DRY RUN complete — auth works, {len(articles)} articles found")
+        except Exception as e:
+            logger.error(f"DRY RUN failed: {e}")
+        return
+
+    # Split into batches
+    batch_size = max(1, len(flat_handles) // num_batches)
+    if batch_size < 1:
+        batch_size = 1
+    batches = [flat_handles[i:i + batch_size] for i in range(0, len(flat_handles), batch_size)]
+    logger.info(f"Split into {len(batches)} batches (size ~{batch_size})")
+
+    # Run batches in parallel
+    logger.info(f"Running {len(batches)} batches with {workers} worker(s)...")
+    total_collected = 0
+    
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(run_batch, i, batch, hours) for i, batch in enumerate(batches)]
+        for future in futures:
+            try:
+                total_collected += future.result()
+            except Exception as e:
+                logger.error(f"Batch worker error: {e}")
+
+    logger.info(f"=== Total tweets collected: {total_collected} ===")
+
+    # Merge and generate digest
+    all_tweets = _merge_batches()
+    
+    if all_tweets:
+        logger.info(f"Merged {len(all_tweets)} unique tweets from all batches")
+        
+        # Generate digest
+        digest = _build_digest(all_tweets)
+        
+        # Save JSON summary
         summary_dir = REPO_ROOT / "storage" / "twitter" / "summaries"
         summary_dir.mkdir(parents=True, exist_ok=True)
-        summary_path = summary_dir / f"standalone_summary_{now.strftime('%Y%m%d_%H%M%S')}.json"
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "timestamp": now.isoformat(),
-                    "lookback_hours": args.hours,
-                    "chains": list(accounts.keys()),
-                    "tweet_count": len(all_tweets),
-                    "tweets": all_tweets,
-                    "signals": [s.to_dict() for s in signals],
-                    "high_priority_count": len(high_priority),
-                    "elapsed_seconds": elapsed,
-                },
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
-        logger.info(f"Summary written: {summary_path}")
-
-    # Telegram
-    if args.telegram and not args.dry_run:
-        from output.telegram_sender import TelegramSender
-        digest = format_telegram_digest(all_tweets)
-        sender = TelegramSender()
-        success = sender.send_sync(digest)
-        logger.info(f"Telegram sent: {success}")
-
-    # Print top chains
-    by_chain = {}
-    for t in all_tweets:
-        by_chain.setdefault(t.get("chain", "unknown"), 0)
-        by_chain[t.get("chain", "unknown")] += 1
-    logger.info("Tweet counts by chain:")
-    for chain, count in sorted(by_chain.items(), key=lambda x: -x[1])[:10]:
-        logger.info(f"  {chain}: {count}")
-
-    logger.info("Standalone run complete.")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        
+        json_path = summary_dir / f"standalone_summary_{ts}.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump({"tweets": all_tweets, "digest": digest}, f, indent=2, ensure_ascii=False)
+        logger.info(f"JSON summary saved: {json_path}")
+        
+        # Append monthly markdown
+        month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+        md_path = summary_dir / f"twitter_summary_{month_key}.md"
+        with open(md_path, "a", encoding="utf-8") as f:
+            f.write(f"\n## Standalone Run @ {ts}\n\n")
+            f.write(digest + "\n")
+        logger.info(f"Markdown summary appended: {md_path}")
+        
+        # Optional Telegram delivery
+        if args.telegram and not args.json_only:
+            logger.info("Sending to Telegram...")
+            try:
+                from output.telegram_sender import TelegramSender
+                sender = TelegramSender()
+                sent = sender.send(digest)
+                logger.info(f"Telegram delivered: {sent}")
+            except Exception as e:
+                logger.error(f"Telegram failed: {e}")
+    else:
+        logger.warning("No tweets collected in any batch")
 
 
 if __name__ == "__main__":
