@@ -112,18 +112,19 @@ Output format:
 🧠 Today's theme
 [1-2 sentences of the single most important cross-chain theme]
 
-[For each chain with score ≥ 2, write a section:]
+[Then write ONE section per chain. For each chain with score ≥ 2:]
 
 **ChainName (Score: X)**
 [2-3 sentences synthesizing what's happening and why it matters. Be specific — mention partner names, funding amounts, version numbers when available.]
 [If a URL is provided above, embed it as a markdown link using the FIRST content-bearing word: "Polygon [activated](url) Visa rails..." NOT "[source](url)".]
 [If no URL is provided, write without any link.]
 
-[For chains with score < 2, omit or use a single bullet.]
+[For chains with score < 2, omit or use a single bullet at the end.]
 
 Rules:
 - Use Telegram Markdown: **bold** for emphasis. No # headers. No HTML tags.
 - Never use all-caps headings.
+- **DO NOT** group chains under thematic headings (e.g., "TradFi & Stablecoins", "DeFi & Governance", "L2 Infrastructure"). Each chain gets its own standalone **ChainName (Score: X)** section.
 - Past tense for events ("announced", "secured", "launched").
 - Do NOT invent events. Only use the data provided above.
 - Do NOT fabricate URLs. Only use URLs explicitly listed above.
