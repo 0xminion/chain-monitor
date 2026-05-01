@@ -53,13 +53,7 @@ python3 scripts/doctor.py
 # Run the full pipeline (daily digest)
 python3 main.py
 
-# Run the v2 Twitter-centric digest (raw tweets → events → analyze → digest)
-python3 scripts/run_stored_reanalysis.py
-
-# Run the weekly event-driven synthesizer
-python3 scripts/run_weekly_digest.py
-
-# Full pipeline for all 27 chains (divide & conquer, batch Twitter collection)
+# Full pipeline for all chains (batch Twitter + non-Twitter)
 python3 scripts/run_all_chains.py
 
 # Dry-run digest (no Telegram, print to stdout)
@@ -72,24 +66,22 @@ python3 scripts/chain_monitor_cli.py cron install --hour 9
 python3 -m pytest tests/ -q
 ```
 
-Chain Monitor uses local LLM inference (Ollama) for capabilities:
+Chain Monitor is fully agent-native — no external LLM subprocess calls.
 
-### 1. Per-Chain Semantic Analysis (v2.0)
-Each chain gets an LLM analysis of all its signals:
+### 1. Per-Chain Semantic Analysis
+Each chain gets deterministic analysis of all its signals:
 - **Cross-source merging**: GitHub release + tweet + blog post about same event = ONE observation
-- **Event classification**: TECH_EVENT, PARTNERSHIP, FINANCIAL, RISK_ALERT, REGULATORY, VISIBILITY
+- **Event classification**: TECH_EVENT, PARTNERSHIP, FINANCIAL, RISK_ALERT, REGULATORY, VISIBILITY (agent-provided)
 - **Priority scoring**: Chain-level score 0-15 based on highest-impact observation + cross-reinforcement
 - **Trader narrative**: 2-3 sentence summary of WHY it matters, not just WHAT happened
-- **Confidence score**: How certain the LLM is, driven by source count and agreement
+- **Confidence score**: Driven by source count and agreement
 
-### 2. Twitter Semantic Enrichment (v0.2+)
+### 2. Twitter Semantic Enrichment
 Every tweet, retweet, and quote-tweet is enriched with semantic understanding:
-- **LLM categorization**: Categories assigned by semantic content, not keywords
-  - Handles slang ("wen mainnet" → VISIBILITY), irony, cross-domain metaphors
-  - Retweets inherit original author's semantic category
-  - Confidence score + reasoning for every classification
-- **7-day cache**: Same tweet re-scraped costs zero LLM tokens
-- **Keyword fallback**: If LLM fails, keyword categorizer takes over seamlessly
+- **Agent-native categorization**: Categories assigned by the running agent, not LLMs
+  - Role-aware scoring (official → P9, contributor → P6, community → P3)
+  - Deterministic keyword + rule-based fallback if agent results absent
+- **Engagement filtering**: Regex filters out "gm", "wagmi", emoji-only noise
 
 ### LLM Configuration
 All LLM settings configurable via `.env`:

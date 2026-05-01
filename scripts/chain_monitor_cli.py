@@ -25,6 +25,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+__version__ = "0.1.0"
+
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -207,7 +209,7 @@ def cmd_config_edit(args) -> int:
 def main():
     parser = argparse.ArgumentParser(
         prog="chain-monitor",
-        description="Chain Monitor v2.0 — crypto chain intelligence pipeline",
+        description="Chain Monitor v0.1.0 — crypto chain intelligence pipeline",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -260,7 +262,7 @@ def main():
         return 0
 
     if args.command == "version":
-        print("Chain Monitor v2.0")
+        print(f"Chain Monitor v{__version__}")
         return 0
     if args.command == "config":
         return cmd_config_edit(args)

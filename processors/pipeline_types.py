@@ -1,7 +1,7 @@
 """Pipeline data types — contracts between all pipeline stages.
 
-v2.0: Defines RawEvent, ChainDigest, and PipelineContext for the
-6-stage chain-centric pipeline.
+v0.1.0: Defines RawEvent, ChainDigest, and PipelineContext for the
+7-stage chain-centric pipeline.
 """
 
 from __future__ import annotations

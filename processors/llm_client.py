@@ -7,7 +7,6 @@ with optional fallback to OpenRouter.
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Optional
 
 import requests

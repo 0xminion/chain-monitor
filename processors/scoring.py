@@ -61,6 +61,10 @@ class SignalScorer:
         baseline = self.baselines.get(chain, {})
         impact, urgency = self._calculate_scores(event, category, baseline)
 
+        # Twitter nuanced override — role-aware, not blanket
+        if "twitter" in str(source).lower():
+            impact, urgency = self._score_twitter(event)
+
         # --- AGENT-NATIVE SEMANTIC OVERRIDE ---
         # If the agent already scored this event via semantic enrichment,
         # trust its judgment over deterministic heuristics.

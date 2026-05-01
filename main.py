@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from config.loader import get_active_chains, get_env, reload_configs
-from processors.pipeline_types import PipelineContext, RawEvent
+from processors.pipeline_types import PipelineContext
 from processors.parallel_runner import collect_all
 from processors.dedup_engine import deduplicate_events
 from processors.categorizer import EventCategorizer
@@ -48,6 +48,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("chain-monitor")
 
+__version__ = "0.1.0"
+
 
 async def run_pipeline() -> PipelineContext:
     """Execute the full 6-stage agent-native pipeline.
@@ -59,7 +61,7 @@ async def run_pipeline() -> PipelineContext:
     reload_configs()
     ctx = PipelineContext()
     logger.info("=" * 50)
-    logger.info("Chain Monitor v0.2.0 — Agent-native pipeline (standalone Twitter)")
+    logger.info("Chain Monitor v0.1.0 — Agent-native pipeline (standalone Twitter)")
     logger.info(f"Active chains: {len(get_active_chains())}")
     logger.info("=" * 50)
 

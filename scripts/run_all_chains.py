@@ -17,7 +17,7 @@ semantic reasoning engine.
 Run with: timeout 1800 python3 scripts/run_all_chains.py
 """
 
-import sys, logging, time, subprocess, os, asyncio
+import sys, logging, subprocess, os, asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 

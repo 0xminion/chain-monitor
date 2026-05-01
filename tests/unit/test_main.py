@@ -1,4 +1,4 @@
-"""Tests for main.py v2.0 async pipeline (agent-native)."""
+"""Tests for main.py v0.1.0 async pipeline (agent-native)."""
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock

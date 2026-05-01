@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Standalone Twitter collector — sequential, stable, resource-capped.
 
-Collects from configured accounts, outputs raw JSON for the v2.0 digest bridge.
+Collects from configured accounts, outputs raw JSON for the pipeline bridge.
 
 Modes (determined by --workers):
   --workers 2 (default): Spawn-based parallel (2 fresh processes).
@@ -52,7 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger("twitter-standalone")
 
 # ——— Resource limits ————————————————————————————————————————————————————————
-MAX_WORKERS = 5          # Hard cap regardless of CLI arg
+MAX_WORKERS = 10          # Hard cap regardless of CLI arg
 BATCH_HANDLE_CAP = 20    # Restart browser every N handles within a worker
 RAM_KILL_PCT = 80      # Kill worker if RAM usage exceeds this % of available
 WORKER_TIMEOUT = 600   # Seconds before a worker is considered hung
@@ -408,7 +408,7 @@ def main():
     parser.add_argument("--telegram", action="store_true", help="Send digest via TelegramSender")
     parser.add_argument("--json-only", action="store_true", help="Skip Telegram, save files only")
     parser.add_argument("--dry-run", action="store_true", help="Test auth without saving")
-    parser.add_argument("--workers", type=int, default=2, help="Parallel workers (1=sequential, max 5)")
+    parser.add_argument("--workers", type=int, default=10, help="Parallel workers (1=sequential, max 10)")
     parser.add_argument("--batches", type=int, default=1, help="Number of batches")
     args = parser.parse_args()
 
