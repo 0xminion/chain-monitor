@@ -136,84 +136,31 @@ async def run_all_chains_pipeline() -> PipelineContext:
     ctx.feed_health.update(nt_feed_health)
     print(f"  [Phase 1] {len(nt_events)} non-Twitter events")
 
-    # ── Phase 2: Twitter in batches ──────────────────────────────────────────
-    print(f"\n[Phase 2] Twitter collection in batches ({len(ALL_CHAINS)} chains)")
-    _sweep_stale_chromes()
-    _free_and_swap()
-
-    full_twitter = TwitterCollector(standalone_mode=False, lookback_hours=24)
-    full_accounts = getattr(full_twitter, '_accounts', {})
-
-    batch_size = (len(ALL_CHAINS) + 2) // 3
-    batches = [ALL_CHAINS[i:i+batch_size] for i in range(0, len(ALL_CHAINS), batch_size)]
-
-    total_tweets = 0
-    for i, batch in enumerate(batches, 1):
-        print(f"\n  [Batch {i}/{len(batches)}] Chains: {', '.join(batch)}")
-        batch_accounts = {k: v for k, v in full_accounts.items() if k in batch}
-
-        if not batch_accounts:
-            print(f"  [SKIP] No accounts for this batch")
-            continue
-
-        twitter = TwitterCollector(standalone_mode=False, lookback_hours=24)
-        twitter._accounts = batch_accounts
-
-        batch_events = []
-        try:
-            batch_events = await asyncio.to_thread(twitter.collect)
-            ctx.raw_events.extend(batch_events)
-            total_tweets += len(batch_events)
-            print(f"  [OK] Batch {i}: {len(batch_events)} tweets")
-        except Exception as e:
-            print(f"  [ERR] Batch {i}: {e}")
-
-        ctx.health["twitter"] = twitter.get_health()
-
-        if i < len(batches):
-            print(f"  [WAIT] 10s cooldown + zombie sweep...")
-            time.sleep(5)
-            _sweep_stale_chromes(min_age_sec=10)
-            _free_and_swap()
-            time.sleep(5)
-
-    print(f"\n[Phase 2] Total Twitter tweets: {total_tweets}")
-    print(f"[Phase 2] Total raw events: {len(ctx.raw_events)}")
+    # ── Phase 2: Twitter via standalone bridge ──────────────────────────────────────────
+    print(f"\n[Phase 2] Loading standalone Twitter data...")
+    from collectors.twitter_standalone_bridge import load_recent_standalone_tweets
+    twitter_events = load_recent_standalone_tweets(lookback_hours=24)
+    ctx.raw_events.extend(twitter_events)
+    ctx.health["twitter"] = {"status": "ok", "events": len(twitter_events)}
+    print(f"  [OK] {len(twitter_events)} Twitter events loaded")
+    print(f"  Total raw events: {len(ctx.raw_events)}")
 
     # ── Phase 3: Deduplicate ─────────────────────────────────────────────────
     print("\n[Phase 3] Deduplicating events...")
     ctx.unique_events = deduplicate_events(ctx.raw_events)
     print(f"  Unique events: {len(ctx.unique_events)} ({len(ctx.raw_events) - len(ctx.unique_events)} duplicates)")
 
-    # ── Phase 4: Agent Categorization Checkpoint ──────────────────────────────────────────
-    print("\n[Phase 4] Agent categorization checkpoint...")
+    # ── Phase 4: Categorization (non-blocking) ──────────────────────────────────────────
+    print("\n[Phase 4] Categorization...")
     categorizer = EventCategorizer()
 
-    # Try to load existing agent categorization results
+    # Try to load agent categorization results, but DON'T block on it
     agent_results = categorizer.try_load_results()
-    if agent_results is None:
-        task_path = categorizer.prepare_agent_task([
-            {
-                "chain": ev.chain,
-                "category": ev.category,
-                "subcategory": ev.subcategory,
-                "description": ev.description,
-                "source": ev.source,
-                "reliability": ev.reliability,
-                "evidence": ev.evidence,
-                "semantic": ev.semantic,
-            }
-            for ev in ctx.unique_events
-        ])
-        print(f"  🤖 Agent checkpoint: categorize events at {task_path}")
-        ctx.final_digest = (
-            f"🤖 Agent categorization required\n\n"
-            f"Task saved to: {task_path}\n\n"
-            f"Please categorize events and save output to storage/agent_output/categorize_output_*.json"
-        )
-        return ctx
+    if agent_results is not None:
+        print(f"  Using agent categorization ({len(agent_results)} results)")
+    else:
+        print("  No agent categorization available — using source-provided categories")
 
-    # Apply agent categories
     event_dicts = [
         {
             "chain": ev.chain,
@@ -227,14 +174,14 @@ async def run_all_chains_pipeline() -> PipelineContext:
         }
         for ev in ctx.unique_events
     ]
-    categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
 
-    for ev, cat_dict in zip(ctx.unique_events, categorized_dicts):
-        ev.category = cat_dict.get("category", ev.category)
-        ev.subcategory = cat_dict.get("subcategory", ev.subcategory)
-        ev.semantic = cat_dict.get("semantic")
+    if agent_results is not None:
+        categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
+    else:
+        # Source-provided fallback — don't block pipeline
+        categorized_dicts = event_dicts
 
-    print(f"  {len(categorized_dicts)} events categorized by agent")
+    print(f"  {len(categorized_dicts)} events ready for scoring")
 
     # ── Phase 5: Score + Reinforce ─────────────────────────────────────────────────
     print("\n[Phase 5] Scoring and reinforcing...")

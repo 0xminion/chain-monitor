@@ -60,6 +60,12 @@ class SignalScorer:
 
         baseline = self.baselines.get(chain, {})
         impact, urgency = self._calculate_scores(event, category, baseline)
+
+        # Twitter override: always treat official twitter posts as VISIBILITY
+        if "twitter" in str(source).lower():
+            impact = max(3, impact)
+            urgency = max(3, urgency)
+
         trader_context = self._generate_trader_context(chain, category, description, baseline, evidence)
 
         signal = Signal(

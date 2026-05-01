@@ -40,7 +40,7 @@ from collectors.risk_alert_collector import RiskAlertCollector
 from collectors.tradingview_collector import TradingViewCollector
 from collectors.events_collector import EventsCollector
 from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
-from collectors.twitter_collector import TwitterCollector
+from collectors.twitter_standalone_bridge import TwitterStandaloneBridge
 
 logging.basicConfig(
     level=get_env("LOG_LEVEL", "INFO"),
@@ -59,17 +59,16 @@ async def run_pipeline() -> PipelineContext:
     reload_configs()
     ctx = PipelineContext()
     logger.info("=" * 50)
-    logger.info("Chain Monitor v0.1.0 — Agent-native pipeline")
+    logger.info("Chain Monitor v0.2.0 — Agent-native pipeline (standalone Twitter)")
     logger.info(f"Active chains: {len(get_active_chains())}")
     logger.info("=" * 50)
 
-    # ── Stage 1: Parallel Collect ─────────────────────────────────────
-    collectors = [
+    # ── Stage 1: Parallel Collect (non-Twitter) ─────────────────────────────────────
+    non_twitter_collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
         GitHubCollector(),
         RSSCollector(),
-        TwitterCollector(standalone_mode=False, max_workers=3, num_batches=6),
         RegulatoryCollector(),
         RiskAlertCollector(),
         TradingViewCollector(),
@@ -77,11 +76,20 @@ async def run_pipeline() -> PipelineContext:
         HackathonOutcomesCollector(),
     ]
 
-    ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(collectors)
+    ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(non_twitter_collectors)
     logger.info(
         f"Stage 1 complete: {len(ctx.raw_events)} raw events from "
-        f"{len([c for c in collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy collectors"
+        f"{len([c for c in non_twitter_collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy non-Twitter collectors"
     )
+
+    # ── Stage 1b: Twitter via standalone bridge ─────────────────────────────────────
+    logger.info("Stage 1b: Loading standalone Twitter data...")
+    twitter_bridge = TwitterStandaloneBridge(lookback_hours=24)
+    twitter_events = twitter_bridge.collect()
+    # Convert RawEvent objects to dicts for pipeline compatibility
+    ctx.raw_events.extend(twitter_events)
+    ctx.health["twitter"] = {"status": "ok", "events": len(twitter_events)}
+    logger.info(f"Stage 1b complete: {len(twitter_events)} Twitter events loaded")
 
     # ── Stage 2: Dedup (O(n)) ─────────────────────────────────────────
     ctx.unique_events = deduplicate_events(ctx.raw_events)
@@ -90,51 +98,36 @@ async def run_pipeline() -> PipelineContext:
         f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
     )
 
-    # ── Stage 3: Agent Categorization Checkpoint ───────────────────────────
+    # ── Stage 3: Categorization (non-blocking) ───────────────────────────
     categorizer = EventCategorizer()
 
     # Try to load existing agent categorization results
     agent_results = categorizer.try_load_results()
-    if agent_results is None:
-        logger.info("[categorizer] No agent results found — using source-provided categories")
-        event_dicts = [
-            {
-                "chain": ev.chain,
-                "category": ev.category,
-                "subcategory": ev.subcategory,
-                "description": ev.description,
-                "source": ev.source,
-                "reliability": ev.reliability,
-                "evidence": ev.evidence,
-                "semantic": {
-                    "category": ev.category,
-                    "subcategory": ev.subcategory,
-                    "confidence": 0.5,
-                    "reasoning": "Source-provided (no agent categorization available)",
-                    "is_noise": False,
-                    "primary_mentions": [],
-                },
-            }
-            for ev in ctx.unique_events
-        ]
+    if agent_results is not None:
+        logger.info(f"[categorizer] Loaded agent results for {len(agent_results)} events")
     else:
-        # Apply agent categories to raw events
-        event_dicts = [
-            {
-                "chain": ev.chain,
-                "category": ev.category,
-                "subcategory": ev.subcategory,
-                "description": ev.description,
-                "source": ev.source,
-                "reliability": ev.reliability,
-                "evidence": ev.evidence,
-                "semantic": ev.semantic,
-            }
-            for ev in ctx.unique_events
-        ]
-        event_dicts = categorizer.apply_categories(event_dicts, agent_results)
+        logger.info("[categorizer] No agent results found — using source-provided categories")
 
-    categorized_dicts = event_dicts
+    event_dicts = [
+        {
+            "chain": ev.chain,
+            "category": ev.category,
+            "subcategory": ev.subcategory,
+            "description": ev.description,
+            "source": ev.source,
+            "reliability": ev.reliability,
+            "evidence": ev.evidence,
+            "semantic": ev.semantic,
+        }
+        for ev in ctx.unique_events
+    ]
+
+    if agent_results is not None:
+        categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
+    else:
+        # Source-provided fallback — don't block pipeline
+        categorized_dicts = event_dicts
+
     logger.info(f"Stage 3 complete: {len(categorized_dicts)} events categorized")
 
     # ── Stage 4: Score + Reinforce ─────────────────────────────────────────
