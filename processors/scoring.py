@@ -1,7 +1,7 @@
 """Signal scorer — assigns impact/urgency scores based on baselines."""
 
 import logging
-
+import re
 
 from config.loader import get_baselines, get_chains
 from processors.signal import Signal
@@ -61,10 +61,9 @@ class SignalScorer:
         baseline = self.baselines.get(chain, {})
         impact, urgency = self._calculate_scores(event, category, baseline)
 
-        # Twitter override: always treat official twitter posts as VISIBILITY
+        # Twitter nuanced override — role-aware, not blanket
         if "twitter" in str(source).lower():
-            impact = max(3, impact)
-            urgency = max(3, urgency)
+            impact, urgency = self._score_twitter(event)
 
         trader_context = self._generate_trader_context(chain, category, description, baseline, evidence)
 
@@ -119,6 +118,59 @@ class SignalScorer:
                 impact = baseline.get("regulatory_any_mention_impact", 5)
 
         return impact, urgency
+
+    def _score_twitter(self, event: dict) -> tuple[int, int]:
+        """Nuanced Twitter scoring based on account role and tweet substance.
+
+        Tiers:
+            Official        → P9 (impact:9, urgency:1)
+            Contributors    → P6 (impact:3, urgency:2)
+            Empty / engagement-only  → P3 (impact:3, urgency:1)
+            Everything else → P3 (impact:3, urgency:1)
+        """
+        evidence = event.get("evidence") or {}
+        if not isinstance(evidence, dict):
+            evidence = {}
+
+        role = (evidence.get("role") or "").lower()
+        text = (event.get("description") or "").strip()
+
+        # --- Official accounts → P9 ---
+        if role == "official":
+            return 9, 1
+
+        # --- Contributors → P6 ---
+        if role in ("contributor", "core contributor"):
+            return 3, 2
+
+        # --- Empty-text / engagement-only → P3 ---
+        if self._is_engagement_only(text):
+            return 3, 1
+
+        # Fallback for unclassified Twitter → P3
+        return 3, 1
+
+    _ENGAGEMENT_ONLY_RE = re.compile(
+        r"^(gm|gn|wagmi|lfg|[🚀👀🔥💎🙏❤️⭐✨💯👍🎉🫡👏🤝🎯🔋⚡])+$"
+        r"|^(?:\s*(?:\b(?:gm|gn|wagmi|lfg|bullish|bearish|moon|diamond hands)\b|[🚀👀🔥💎🙏❤️⭐✨💯👍🎉🫡👏🤝🎯🔋⚡])\s*){2,}$",
+        flags=re.IGNORECASE,
+    )
+
+    def _is_engagement_only(self, text: str) -> bool:
+        """Detect tweets that are purely engagement / no substance."""
+        if not text or len(text) < 5:
+            return True
+        # Pure emoji / one-word filler
+        if self._ENGAGEMENT_ONLY_RE.match(text.strip()):
+            return True
+        # Very short with no chain mention or substantive words
+        words = text.split()
+        if len(words) <= 3:
+            substance = {"launched", "partnership", "upgrade", "audit", "hack", "cve", "mainnet", "testnet", "bridge", "dex", "ama", "grant", "funding"}
+            if not any(w.lower() in substance for w in words):
+                return True
+        return False
+
 
     def _score_financial(self, event: dict, baseline: dict) -> int:
         subcategory = event.get("subcategory", "")

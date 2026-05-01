@@ -289,3 +289,110 @@ class TestUrgencyScoring:
         event = {"chain": "ethereum", "category": "VISIBILITY", "description": "podcast", "subcategory": "podcast"}
         signal = scorer.score(event)
         assert signal.urgency == 1
+
+
+class TestTwitterScoring:
+    """Test Twitter role-aware scoring tiers."""
+
+    def test_official_twitter_is_p9(self, scorer):
+        event = {
+            "chain": "solana",
+            "category": "VISIBILITY",
+            "description": "Mainnet upgrade schedule released",
+            "source": "twitter",
+            "evidence": {"role": "official"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 9
+        assert signal.urgency == 1
+        assert signal.priority_score == 9
+
+    def test_contributor_twitter_is_p6(self, scorer):
+        event = {
+            "chain": "ethereum",
+            "category": "TECH_EVENT",
+            "description": "New PR merged for rollup client",
+            "source": "twitter",
+            "evidence": {"role": "contributor"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 2
+        assert signal.priority_score == 6
+
+    def test_core_contributor_twitter_is_p6(self, scorer):
+        event = {
+            "chain": "monad",
+            "category": "TECH_EVENT",
+            "description": "Devnet reset completed",
+            "source": "twitter",
+            "evidence": {"role": "core contributor"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 2
+        assert signal.priority_score == 6
+
+    def test_engagement_only_twitter_is_p3(self, scorer):
+        event = {
+            "chain": "base",
+            "category": "NEWS",
+            "description": "GM 🚀🔥",
+            "source": "twitter",
+            "evidence": {"role": "unknown"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 1
+        assert signal.priority_score == 3
+
+    def test_empty_text_twitter_is_p3(self, scorer):
+        event = {
+            "chain": "arbitrum",
+            "category": "NEWS",
+            "description": "",
+            "source": "twitter",
+            "evidence": {"role": "community"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 1
+        assert signal.priority_score == 3
+
+    def test_short_nonsubstantive_twitter_is_p3(self, scorer):
+        event = {
+            "chain": "optimism",
+            "category": "NEWS",
+            "description": "Bullish AF",
+            "source": "twitter",
+            "evidence": {"role": "community"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 1
+        assert signal.priority_score == 3
+
+    def test_fallback_twitter_is_p3(self, scorer):
+        event = {
+            "chain": "polygon",
+            "category": "NEWS",
+            "description": "Some random thread about validators",
+            "source": "twitter",
+            "evidence": {"role": "community"},
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 3
+        assert signal.urgency == 1
+        assert signal.priority_score == 3
+
+    def test_non_twitter_not_affected(self, scorer):
+        event = {
+            "chain": "ethereum",
+            "category": "FINANCIAL",
+            "description": "TVL milestone",
+            "subcategory": "tvl_milestone",
+            "source": "defillama",
+        }
+        signal = scorer.score(event)
+        assert signal.impact == 4
+        assert signal.urgency == 2

@@ -101,8 +101,8 @@ class TestRunPipeline:
             mock_synth.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_pipeline_stops_at_agent_checkpoint(self, mock_config):
-        """If no agent categorization output exists, pipeline should stop at checkpoint."""
+    async def test_pipeline_continues_without_agent_categorization(self, mock_config):
+        """Pipeline no longer blocks on agent categorization — falls through to source categories."""
         with (
             patch("main.collect_all", new_callable=AsyncMock) as mock_collect_all,
             patch("main.deduplicate_events") as mock_dedup,
@@ -123,7 +123,6 @@ class TestRunPipeline:
             # No agent output available
             mock_categorizer = MagicMock()
             mock_categorizer.try_load_results.return_value = None
-            mock_categorizer.prepare_agent_task.return_value = MagicMock(name="task_path")
             mock_cat_cls.return_value = mock_categorizer
 
             mock_scorer = MagicMock()
@@ -139,10 +138,10 @@ class TestRunPipeline:
             from main import run_pipeline
             ctx = await run_pipeline()
 
-            # Pipeline should stop at checkpoint, not send telegram
-            mock_sender.send.assert_not_awaited()
-            mock_scorer.score.assert_not_called()
-            assert "Agent categorization required" in ctx.final_digest
+            # Pipeline should now continue to scoring instead of stopping
+            mock_scorer.score.assert_called()
+            mock_reinf.process.assert_called()
+            assert "Agent categorization required" not in str(ctx.final_digest)
 
     @pytest.mark.asyncio
     async def test_pipeline_skips_send_when_no_activity(self, mock_config):
