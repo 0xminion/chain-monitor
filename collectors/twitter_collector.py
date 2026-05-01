@@ -186,37 +186,44 @@ class TwitterCollector(BaseCollector):
     def _start_browser(self):
         """Launch browser with best available anti-detection strategy."""
         from playwright.sync_api import sync_playwright
+        import multiprocessing
+
+        in_forked_worker = multiprocessing.current_process().name != "MainProcess"
+        if in_forked_worker:
+            logger.info("[twitter] Running in forked worker — skipping Camoufox and persistent profile to avoid lock contention")
 
         self._playwright = sync_playwright().start()
 
-        # --- Tier 1: Camoufox (anti-detect) -----------------------------------
-        try:
-            from camoufox.sync_api import Camoufox
-            logger.info("[twitter] Using Camoufox (anti-detect)")
-            self._browser = Camoufox(headless=True).__enter__()
-            self._context = self._browser
-            return
-        except Exception as e:
-            logger.info(f"[twitter] Camoufox failed ({e}), trying Chromium persistent context")
-
-        # --- Tier 2: Chromium persistent context with user profile ------------
-        profile_path = self._find_chrome_profile()
-        if profile_path:
+        # --- Tier 1: Camoufox (anti-detect) — skip in forked workers -----------------
+        if not in_forked_worker:
             try:
-                logger.info(f"[twitter] Using Chromium persistent profile: {profile_path}")
-                self._context = self._playwright.chromium.launch_persistent_context(
-                    profile_path,
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    locale="en-US",
-                    args=["--disable-blink-features=AutomationControlled"],
-                )
-                self._browser = self._context
+                from camoufox.sync_api import Camoufox
+                logger.info("[twitter] Using Camoufox (anti-detect)")
+                self._browser = Camoufox(headless=True).__enter__()
+                self._context = self._browser
                 return
             except Exception as e:
-                logger.info(f"[twitter] Persistent context failed ({e}), falling back to plain Chromium")
+                logger.info(f"[twitter] Camoufox failed ({e}), trying Chromium persistent context")
 
-        # --- Tier 3: Plain Chromium + storage state (cookies from export) -----
+        # --- Tier 2: Chromium persistent context with user profile — skip in workers --
+        if not in_forked_worker:
+            profile_path = self._find_chrome_profile()
+            if profile_path:
+                try:
+                    logger.info(f"[twitter] Using Chromium persistent profile: {profile_path}")
+                    self._context = self._playwright.chromium.launch_persistent_context(
+                        profile_path,
+                        headless=True,
+                        viewport={"width": 1280, "height": 800},
+                        locale="en-US",
+                        args=["--disable-blink-features=AutomationControlled"],
+                    )
+                    self._browser = self._context
+                    return
+                except Exception as e:
+                    logger.info(f"[twitter] Persistent context failed ({e}), falling back to plain Chromium")
+
+        # --- Tier 3: Plain Chromium + storage state (safe for workers) ---------------
         storage_state = self._find_storage_state()
         ss = storage_state if storage_state else None
         if ss:
@@ -224,7 +231,22 @@ class TwitterCollector(BaseCollector):
         else:
             logger.info("[twitter] Using plain Chromium (no cookies — may hit login wall)")
 
-        self._browser = self._playwright.chromium.launch(headless=True)
+        self._browser = self._playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--single-process",
+                "--no-sandbox",
+                "--no-zygote",
+                "--disable-dev-shm-usage",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--max_old_space_size=256",
+            ],
+        )
         self._context = self._browser.new_context(
             viewport={"width": 1280, "height": 800},
             locale="en-US",
@@ -262,7 +284,47 @@ class TwitterCollector(BaseCollector):
 
     def _cleanup(self):
         """Close browser resources and clean up any orphaned Chrome processes."""
-        # Close browser resources FIRST
+        # Fast-path: kill Chrome tree with SIGTERM → wait → SIGKILL
+        import signal
+        our_pid = os.getpid()
+        for sig, label in [(signal.SIGTERM, "TERM"), (signal.SIGKILL, "KILL")]:
+            try:
+                ps_out = subprocess.run(
+                    ["ps", "-eo", "pid,ppid,comm"],
+                    capture_output=True, text=True, check=False,
+                )
+                pid_to_ppid = {}
+                pid_to_comm = {}
+                for line in ps_out.stdout.strip().split("\n")[1:]:
+                    parts = line.strip().split()
+                    if len(parts) >= 3:
+                        try:
+                            p, pp = int(parts[0]), int(parts[1])
+                            pid_to_ppid[p] = pp
+                            pid_to_comm[p] = parts[2]
+                        except ValueError:
+                            pass
+                # Walk full tree from our PID
+                descendants = set()
+                stack = [our_pid]
+                while stack:
+                    cur = stack.pop()
+                    for child_pid, ppid in pid_to_ppid.items():
+                        if ppid == cur and child_pid not in descendants:
+                            descendants.add(child_pid)
+                            stack.append(child_pid)
+                for pid in descendants:
+                    if "chrome" in pid_to_comm.get(pid, "").lower():
+                        try:
+                            os.kill(pid, sig)
+                        except (ProcessLookupError, PermissionError):
+                            pass
+            except Exception:
+                pass
+            if sig == signal.SIGTERM:
+                time.sleep(0.5)
+
+        # Graceful Playwright cleanup (may already be dead)
         try:
             if self._context and hasattr(self._context, "close"):
                 self._context.close()
@@ -276,46 +338,6 @@ class TwitterCollector(BaseCollector):
         try:
             if self._playwright:
                 self._playwright.stop()
-        except Exception:
-            pass
-
-        # Give processes time to exit gracefully
-        time.sleep(1.5)
-
-        # Kill any remaining Chrome processes in our PID tree
-        try:
-            import subprocess
-            our_pid = os.getpid()
-            # First: collect all descendant PIDs under our process
-            def get_descendants(pid: int) -> set[int]:
-                descendants = set()
-                try:
-                    pg = subprocess.run(
-                        ["pgrep", "-P", str(pid)],
-                        capture_output=True, text=True, check=False,
-                    )
-                    for line in pg.stdout.strip().split("\n"):
-                        line = line.strip()
-                        if line.isdigit():
-                            child_pid = int(line)
-                            descendants.add(child_pid)
-                            descendants |= get_descendants(child_pid)
-                except Exception:
-                    pass
-                return descendants
-
-            pids_to_kill = get_descendants(our_pid)
-            for pid in pids_to_kill:
-                try:
-                    # Verify it's actually chrome/chromium before killing
-                    cmd = subprocess.run(
-                        ["cat", f"/proc/{pid}/comm"],
-                        capture_output=True, text=True, check=False,
-                    ).stdout.strip().lower()
-                    if "chrome" in cmd or "chromium" in cmd:
-                        os.kill(pid, 9)
-                except (ProcessLookupError, PermissionError, Exception):
-                    pass
         except Exception:
             pass
 

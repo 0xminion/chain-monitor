@@ -283,9 +283,12 @@ class EventCategorizer:
                     "reasoning": r.get("reasoning", ""),
                     "is_noise": r.get("is_noise", False),
                     "primary_mentions": r.get("primary_mentions", []),
+                    "impact": r.get("impact"),
+                    "urgency": r.get("urgency"),
+                    "trader_context": r.get("trader_context"),
+                    "reliability": r.get("reliability"),
                 }
             else:
-                # Event was not categorized by agent — mark as NEWS/general
                 ev_copy["category"] = "NEWS"
                 ev_copy["subcategory"] = "general"
                 ev_copy["semantic"] = {
@@ -295,6 +298,10 @@ class EventCategorizer:
                     "reasoning": "Not categorized by agent",
                     "is_noise": False,
                     "primary_mentions": [],
+                    "impact": None,
+                    "urgency": None,
+                    "trader_context": None,
+                    "reliability": None,
                 }
             enriched.append(ev_copy)
 
@@ -321,23 +328,38 @@ class EventCategorizer:
         price_lines = "\n    ".join(f"- '{kw}'" for kw in PRICE_NOISE_KEYWORDS[:10])
 
         return (
-            "You are an expert crypto-industry analyst. Categorize each event into exactly one category and subcategory.\n\n"
+            "You are an expert crypto-industry analyst. Categorize each event into exactly one category and subcategory, then score impact, urgency, and trader relevance.\n\n"
             "Categories (ordered by priority — first match wins when multiple could apply):\n"
-            f"{chr(10).join(cat_lines)}\n\n"
+            f"{'\n'.join(cat_lines)}\n\n"
             "Subcategories:\n"
-            f"{chr(10).join(subcat_lines)}\n\n"
+            f"{'\n'.join(subcat_lines)}\n\n"
+            "Scoring rules:\n"
+            "  impact (1-9): How much this event affects the chain/token/network.\n"
+            "    9: Official mainnet / regulatory approval / $100M+ hack / tier-1 CEX listing\n"
+            "    7: Protocol upgrade / major partnership / governance vote / testnet live\n"
+            "    5: Ecosystem app launch / tooling update / minor security fix\n"
+            "    3: Visibility (AMA, conference, hire) / retweet of minor news\n"
+            "    1: Noise / engagement bait / price commentary with no new facts\n"
+            "    Use 4, 6, 8 for intermediate severity.\n"
+            "  urgency (1-3): How soon relevant action is needed.\n"
+            "    3: Active exploit, bridge halted, enforcement in progress / imminent\n"
+            "    2: Governance vote closing, upgrade deploying, funding window\n"
+            "    1: General awareness, long-term positioning, no immediate decision needed\n"
+            "  trader_context (1 sentence): Concise, trader-facing takeaway. Why does this matter for positions, timing, or risk? If the event has no trading implication, write 'General narrative awareness — no immediate position impact.'\n"
+            "  reliability (0.0-1.0): How much to trust this source. Official accounts=0.95, core contributors=0.85, ecosystem builders=0.80, anonymous or hype accounts=0.55.\n\n"
             "Rules:\n"
             "1. Categorize by SEMANTIC CONTENT, not keyword presence.\n"
             "2. A 'wen mainnet' reply to a mainnet announcement is VISIBILITY, not TECH_EVENT.\n"
             "3. A retweet of official news inherits the original's category.\n"
             "4. Funding announcements with amounts >= $1M receive FINANCIAL.\n"
             "5. 'Audit complete' without findings → TECH_EVENT. 'Audit finding' → RISK_ALERT.\n"
-            "6. Engagement bait, price predictions, memes → NOISE.\n"
+            "6. Engagement bait, price predictions, memes → NOISE (impact=1, urgency=1).\n"
             "7. If chain-agnostic (mentions no specific chain), set primary_mentions to [].\n"
-            "8. For retweets: categorize based on the ORIGINAL content, not the reposter's commentary.\n"
-            "9. For quote tweets: categorize based on the new commentary + quoted content combined.\n"
-            "10. When in doubt between two categories, pick the one with higher real-world impact.\n\n"
-            "Noise filters (mark as NOISE / is_noise=true if primarily these):\n"
+            "8. For retweets: categorize and score based on the ORIGINAL content, not the reposter's commentary.\n"
+            "9. For quote tweets: categorize and score based on the new commentary + quoted content combined.\n"
+            "10. When in doubt between two categories, pick the one with higher real-world impact.\n"
+            "11. News from tier-1 media (The Block, CoinDesk, Bloomberg) that mentions a specific chain gets reliability boost to 0.85+.\n\n"
+            "Noise filters (mark as NOISE if primarily these):\n"
             f"    {noise_lines}\n"
             "    ... (and similar low-value phrases)\n\n"
             "Price noise filters (mark as NOISE if primarily these):\n"
@@ -355,7 +377,11 @@ class EventCategorizer:
             '  "subcategory": "<subcategory>",\n'
             '  "reasoning": "<1 sentence explaining the classification>",\n'
             '  "is_noise": <true/false>,\n'
-            '  "primary_mentions": [<list of chain names mentioned, or []>]\n'
+            '  "primary_mentions": [<list of chain names mentioned, or []>],\n'
+            '  "impact": <integer 1-9>,\n'
+            '  "urgency": <integer 1-3>,\n'
+            '  "trader_context": "<1 sentence trader takeaway>",\n'
+            '  "reliability": <float 0.0-1.0>\n'
             "}\n\n"
             "CRITICAL: every event in the input must have a corresponding result with the correct id.\n"
             "Do not skip events. Do not invent events. Do not return markdown fences.\n"
