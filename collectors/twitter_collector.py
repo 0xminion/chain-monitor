@@ -32,7 +32,7 @@ RAW_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "raw"
 SUMMARY_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "summaries"
 
 # ---------------------------------------------------------------------------
-# NEW v0.2: Enrichment output dir
+# NEW: Enrichment output dir (v0.1.0)
 # ---------------------------------------------------------------------------
 ENRICHED_OUT_DIR = REPO_ROOT / "storage" / "twitter" / "enriched"
 
@@ -733,7 +733,7 @@ class TwitterCollector(BaseCollector):
                 "original_author": original_author,
                 "quoted_text": quoted_text,
                 "media_urls": t.get("media_urls", []),
-                "semantic": t.get("semantic"),  # v0.2: pass LLM semantic result through
+                "semantic": t.get("semantic"),  # pass semantic result through
             }
 
             event = {

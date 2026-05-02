@@ -158,10 +158,16 @@ def cmd_cron_install(args) -> int:
     # Remove old entries and append new
     try:
         result = subprocess.run(
-            "crontab -l 2>/dev/null | grep -v 'chain-monitor' || true",
-            shell=True, capture_output=True, text=True, check=False,
+            ["crontab", "-l"],
+            capture_output=True, text=True, check=False,
         )
-        existing = result.stdout or ""
+        if result.returncode != 0:
+            existing = ""
+        else:
+            existing = "\n".join(
+                line for line in result.stdout.splitlines()
+                if "chain-monitor" not in line
+            ) + "\n"
         new_crontab = existing.rstrip("\n") + "\n" + cron_entry + "\n"
         proc = subprocess.run(
             ["crontab", "-"],
@@ -183,10 +189,16 @@ def cmd_cron_install(args) -> int:
 def cmd_cron_remove(args) -> int:
     try:
         result = subprocess.run(
-            "crontab -l 2>/dev/null | grep -v 'chain-monitor' || true",
-            shell=True, capture_output=True, text=True, check=False,
+            ["crontab", "-l"],
+            capture_output=True, text=True, check=False,
         )
-        new = result.stdout or ""
+        if result.returncode != 0:
+            print("No existing crontab — nothing to remove")
+            return 0
+        new = "\n".join(
+            line for line in result.stdout.splitlines()
+            if "chain-monitor" not in line
+        ) + "\n"
         proc = subprocess.run(["crontab", "-"], input=new, text=True, capture_output=True)
         if proc.returncode == 0:
             print("✅ Chain Monitor cron job removed")

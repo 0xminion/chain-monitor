@@ -17,8 +17,10 @@ storage/narratives/*.json
 storage/twitter/raw/
 storage/twitter/enriched/
 storage/twitter/summaries/*.json
+storage/twitter/summaries/*.txt
 storage/llm_cache/
 storage/health/*.json
 storage/health/*.txt
 storage/health/*.log
 storage/agent_input/*.md
+storage/agent_input/*.txt
