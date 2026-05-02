@@ -1,6 +1,7 @@
 """Summary engine — builds a rich agent prompt for daily digest synthesis.
 
-No external LLM calls. The running agent reads the prompt and writes prose.
+The running agent reads the saved prompt and writes prose.
+No inline LLM calls — avoids hallucination and keeps the pipeline deterministic.
 """
 
 import logging
@@ -147,7 +148,7 @@ async def synthesize_digest(
     digests: list[ChainDigest],
     source_health: Optional[dict] = None,
     source_health_detail: Optional[dict] = None,
-    client=None,  # unused — kept for API compat
+    client=None,
     date_str: Optional[str] = None,
 ) -> str:
     """Build agent prompt for daily digest synthesis.

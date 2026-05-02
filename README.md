@@ -1,6 +1,6 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 9 event categories, scores events, synthesizes per-chain narratives via LLM, and delivers daily/weekly digests to Telegram.
+Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 6 event categories, scores events, and delivers daily/weekly digests to Telegram. Agent-native: no inline LLM calls, the running agent handles all semantic synthesis.
 
 ## v0.1.0 — Chain-Centric Agent-Native Pipeline
 

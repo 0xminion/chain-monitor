@@ -28,7 +28,7 @@ class Signal:
     trader_context: str = ""
     impact: int = 1  # 1-5
     urgency: int = 1  # 1-3
-    priority_score: int = 1  # impact * urgency
+    priority_score: int | None = None
     detected_at: str = ""
     reinforced_at: str = ""
     source_count: int = 1
@@ -42,7 +42,7 @@ class Signal:
             self.detected_at = datetime.now(timezone.utc).isoformat()
         if not self.reinforced_at:
             self.reinforced_at = self.detected_at
-        if not self.priority_score:
+        if self.priority_score is None:
             self.priority_score = self.impact * self.urgency
         if not self.id:
             self.id = self._generate_id()

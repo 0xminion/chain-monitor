@@ -140,13 +140,13 @@ class TwitterCollector(BaseCollector):
     """Collects tweets from chain official accounts and contributors via Playwright."""
 
     def __init__(self, standalone_mode: bool = False, lookback_hours: int | None = None,
-                 max_workers: int = 1, num_batches: int = 1):
+                 max_workers: int = 10, num_batches: int = 10):
         """
         Args:
             standalone_mode: If True, skips dedup/reinforcement and writes to own JSON.
             lookback_hours: Override global default. Defaults to env TWITTER_LOOKBACK_HOURS (default 24).
-            max_workers: Number of parallel Playwright workers.
-            num_batches: Number of handle batches to split across workers.
+            max_workers: Number of parallel Playwright workers (default: 10).
+            num_batches: Number of handle batches to split across workers (default: 10).
         """
         super().__init__(name="twitter")
         self.standalone_mode = standalone_mode
@@ -381,23 +381,34 @@ class TwitterCollector(BaseCollector):
             f"max_workers={self.max_workers}"
         )
 
-        # Run batches in parallel via ProcessPoolExecutor
+        ctx = mp.get_context("spawn")
+        executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=self.max_workers,
+            mp_context=ctx,
+        )
+
         all_tweets: list[dict] = []
+        futures: dict = {}
+        deadline = time.time() + 600  # 10 min hard wall-clock deadline for all futures
+
         try:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.max_workers,
-            ) as executor:
-                futures = {
-                    executor.submit(
-                        TwitterCollector._run_batch,
-                        batch_id,
-                        batch,
-                        self.lookback_hours,
-                        self.standalone_mode,
-                    ): batch_id
-                    for batch_id, batch in enumerate(batches)
-                }
-                for future in concurrent.futures.as_completed(futures):
+            futures = {
+                executor.submit(
+                    TwitterCollector._run_batch,
+                    batch_id,
+                    batch,
+                    self.lookback_hours,
+                    self.standalone_mode,
+                ): batch_id
+                for batch_id, batch in enumerate(batches)
+            }
+
+            pending = set(futures.keys())
+            while pending:
+                done, pending = concurrent.futures.wait(
+                    pending, timeout=5
+                )
+                for future in done:
                     batch_id = futures[future]
                     try:
                         batch_tweets = future.result()
@@ -407,10 +418,20 @@ class TwitterCollector(BaseCollector):
                         )
                     except Exception as exc:
                         logger.error(f"[twitter] Batch-{batch_id} failed: {exc}")
+
+                if time.time() > deadline:
+                    logger.error(f"[twitter] HARD DEADLINE ({600}s) — cancelling remaining batches")
+                    for future in pending:
+                        future.cancel()
+                    break
         except Exception as exc:
             logger.error(f"[twitter] Parallel execution failed: {exc}")
             logger.info("[twitter] Falling back to sequential collection...")
             all_tweets = self._collect_single_worker(all_handles, cutoff)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+            time.sleep(2)
+            self._cleanup()
 
         logger.info(f"[twitter] Total tweets collected: {len(all_tweets)}")
         if all_tweets:
@@ -509,16 +530,17 @@ class TwitterCollector(BaseCollector):
             url = f"https://x.com/{handle}"
             logger.info(f"[twitter] Navigating {url}")
             page.goto(url, timeout=45000, wait_until="domcontentloaded")
-            # Hard wait for React initial render + first article mount
-            page.wait_for_timeout(random.randint(4000, 7000))
-            # Detect and mitigate SPA stale DOM: force a soft reload if fewer than 2 articles
+            # Wait for React SPA hydration — articles usually mount within 4-6s on Steam Deck
+            page.wait_for_timeout(random.randint(6000, 9000))
+
+            # Detect slow hydration: if < 2 articles, wait more then reload once
             articles = page.query_selector_all('article[data-testid="tweet"]')
             if len(articles) < 2:
                 page.wait_for_timeout(random.randint(3000, 5000))
-                page.reload(wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(random.randint(4000, 6000))
-            # Allow X's background data fetch to complete
-            page.wait_for_timeout(random.randint(2000, 4000))
+                articles = page.query_selector_all('article[data-testid="tweet"]')
+                if len(articles) < 2:
+                    page.reload(wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(random.randint(6000, 9000))
 
             # Check for login wall / suspension
             body_text = (page.inner_text("body") or "").lower()

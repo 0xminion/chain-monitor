@@ -111,25 +111,25 @@ def main():
         "LLM_DIGEST_ENABLED=true",
         f"LLM_DIGEST_MODEL={digest_model}",
         "LLM_DIGEST_TEMPERATURE=0.4",
-        "LLM_DIGEST_MAX_TOKENS=1500",
+        "LLM_DIGEST_MAX_TOKENS=***",
         "LLM_DIGEST_TIMEOUT=45",
         "",
     ])
 
     if api_key:
-        lines.append(f"{provider.upper()}_API_KEY={api_key}")
+        lines.append(f"{provider.upper()}_API_KEY=***")
     if cryptorank:
-        lines.append(f"CRYPTORANK_API_KEY={cryptorank}")
+        lines.append(f"CRYPTORANK_API_KEY=***")
     if coingecko:
-        lines.append(f"COINGECKO_API_KEY={coingecko}")
+        lines.append(f"COINGECKO_API_KEY=***")
     if youtube:
-        lines.append(f"YOUTUBE_API_KEY={youtube}")
+        lines.append(f"YOUTUBE_API_KEY=***")
     if github:
-        lines.append(f"GITHUB_TOKEN={github}")
+        lines.append(f"GITHUB_TOKEN=***")
 
     lines.extend([
         "",
-        f"TELEGRAM_BOT_TOKEN={tg_token}",
+        f"TELEGRAM_BOT_TOKEN=***",
         f"TELEGRAM_CHAT_ID={tg_chat}",
         "",
         f"LOG_LEVEL={log_level}",

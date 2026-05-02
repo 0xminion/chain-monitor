@@ -33,7 +33,7 @@ def _extract_evidence_url(activity: list) -> Optional[str]:
     evidence = activity[0].get("evidence", {})
     if not isinstance(evidence, dict):
         return None
-    for key in ("link", "html_url", "pr_url", "feed_url"):
+    for key in ("url", "tweet_url", "html_url", "pr_url", "link", "feed_url"):
         url = evidence.get(key, "")
         if url and url.startswith("http"):
             # Normalize: strip query params and trailing slashes

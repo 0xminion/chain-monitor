@@ -40,6 +40,12 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+# ── Force unbuffered output even when stdout is a file (non-TTY) ────────
+try:
+    sys.stdout = open(sys.stdout.fileno(), mode="w", buffering=1, closefd=False)
+except (OSError, ValueError):
+    pass
+
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -52,7 +58,7 @@ logging.basicConfig(
 logger = logging.getLogger("twitter-standalone")
 
 # ——— Resource limits ————————————————————————————————————————————————————————
-MAX_WORKERS = 10          # Hard cap regardless of CLI arg
+MAX_WORKERS = 15         # Hard cap regardless of CLI arg
 BATCH_HANDLE_CAP = 20    # Restart browser every N handles within a worker
 RAM_KILL_PCT = 80      # Kill worker if RAM usage exceeds this % of available
 WORKER_TIMEOUT = 600   # Seconds before a worker is considered hung
@@ -408,8 +414,8 @@ def main():
     parser.add_argument("--telegram", action="store_true", help="Send digest via TelegramSender")
     parser.add_argument("--json-only", action="store_true", help="Skip Telegram, save files only")
     parser.add_argument("--dry-run", action="store_true", help="Test auth without saving")
-    parser.add_argument("--workers", type=int, default=10, help="Parallel workers (1=sequential, max 10)")
-    parser.add_argument("--batches", type=int, default=1, help="Number of batches")
+    parser.add_argument("--workers", type=int, default=10, help="Parallel workers (1=sequential, max 15)")
+    parser.add_argument("--batches", type=int, default=10, help="Number of batches")
     args = parser.parse_args()
 
     hours = args.hours

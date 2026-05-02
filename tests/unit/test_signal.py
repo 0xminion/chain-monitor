@@ -44,8 +44,11 @@ class TestSignalCreation:
 
     def test_post_init_priority_score(self):
         sig = Signal(id="x", chain="e", category="T", description="d", impact=3, urgency=2, priority_score=0)
-        # priority_score=0 is falsy, so __post_init__ recalculates
-        assert sig.priority_score == 6
+        # priority_score=0 should be preserved (legitimate score), not recalculated
+        assert sig.priority_score == 0
+        # When None, it auto-calculates
+        sig2 = Signal(id="x", chain="e", category="T", description="d", impact=3, urgency=2, priority_score=None)
+        assert sig2.priority_score == 6
 
     def test_signal_with_all_fields(self):
         sig = Signal(

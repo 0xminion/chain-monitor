@@ -27,6 +27,7 @@ _chains = None
 _baselines = None
 _narratives = None
 _sources = None
+_twitter_accounts = None
 
 
 def get_chains() -> dict:
@@ -55,6 +56,14 @@ def get_sources() -> dict:
     if _sources is None:
         _sources = load_yaml("sources.yaml")
     return _sources
+
+
+def get_twitter_accounts() -> dict:
+    """Get Twitter account configuration."""
+    global _twitter_accounts
+    if _twitter_accounts is None:
+        _twitter_accounts = load_yaml("twitter_accounts.yaml")
+    return _twitter_accounts
 
 
 def get_chain(chain_name: str) -> Optional[dict]:
@@ -89,8 +98,9 @@ def get_chains_by_category(category: str) -> list[str]:
 
 def reload_configs():
     """Force reload all configs (useful for dynamic updates)."""
-    global _chains, _baselines, _narratives, _sources
+    global _chains, _baselines, _narratives, _sources, _twitter_accounts
     _chains = None
     _baselines = None
     _narratives = None
     _sources = None
+    _twitter_accounts = None

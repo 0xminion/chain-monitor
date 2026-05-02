@@ -136,7 +136,7 @@ python3 -m pytest tests/ -q
 - Add a collector: subclass `BaseCollector`, implement `collect()`, register in `main.py`
 - Add a chain: use `scripts/chain_monitor_cli.py chains add` or edit `config/chains.yaml`
 - Change LLM prompt: edit `processors/chain_analyzer.py` or `processors/summary_engine.py`
-- Change weekly digest format: edit `scripts/run_weekly_digest.py` `_WEEKLY_SYSTEM_PROMPT`
+- Change weekly digest format: edit `output/weekly_digest.py` `build_digest()`
 - Change scoring: edit `processors/scoring.py`
 - Add new event category: update `processors/categorizer.py` CATEGORY_KEYWORDS + LLM prompts
 
@@ -148,4 +148,4 @@ python3 -m pytest tests/ -q
 | `scripts/doctor.py` | End-to-end health check with auto-fix hints |
 | `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
 | `scripts/run_all_chains.py` | Full pipeline for all 27 chains (batch Twitter, divide & conquer) |
-| `output/weekly_digest.py` | Weekly digest prompt builder (reads 7 days of daily digests) |
+| `output/weekly_digest.py` | Weekly digest builder (reads 7 days of daily prompts) |

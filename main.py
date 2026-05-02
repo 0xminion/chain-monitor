@@ -33,7 +33,6 @@ from output.telegram_sender import TelegramSender
 # Import all collectors
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
-from collectors.github_collector import GitHubCollector
 from collectors.rss_collector import RSSCollector
 from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
@@ -52,7 +51,7 @@ __version__ = "0.1.0"
 
 
 async def run_pipeline() -> PipelineContext:
-    """Execute the full 6-stage agent-native pipeline.
+    """Execute the full 7-stage agent-native pipeline.
 
     Returns a PipelineContext with all intermediate and final data.
     The running agent reads ctx.final_digest (or the saved prompt)
@@ -69,7 +68,6 @@ async def run_pipeline() -> PipelineContext:
     non_twitter_collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
-        GitHubCollector(),
         RSSCollector(),
         RegulatoryCollector(),
         RiskAlertCollector(),
@@ -190,14 +188,13 @@ async def run_pipeline() -> PipelineContext:
     sender = TelegramSender()
     sent = False
     if _should_send(ctx.chain_digests):
-        if "🤖 Agent synthesis required" in ctx.final_digest:
-            logger.info("Agent prompt ready — awaiting agent synthesis before sending")
-        else:
-            try:
-                sent = await sender.send(ctx.final_digest)
-                logger.info(f"Digest delivered: {sent}")
-            except Exception as exc:
-                logger.error(f"Telegram delivery failed: {exc}")
+        try:
+            sent = await sender.send(ctx.final_digest)
+            logger.info(f"Digest delivered: {sent}")
+        except Exception as exc:
+            logger.error(f"Telegram delivery failed: {exc}")
+        finally:
+            await sender.close()
     else:
         logger.info("Digest not sent — fewer than 2 chains with significant activity")
 
@@ -235,7 +232,7 @@ def _save_run_log(ctx: PipelineContext, sent: bool):
     stats["digest_sent"] = sent
     stats["source_health"] = ctx.health
 
-    log_path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    log_path = log_dir / f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     try:
         with open(log_path, "w") as f:
             json.dump(stats, f, indent=2)
