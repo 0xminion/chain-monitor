@@ -308,6 +308,13 @@ class TwitterCollector(BaseCollector):
                 "Safe Browsing Cookies", "Safe Browsing Cookies-journal", "DownloadMetadata",
                 "AutofillAiModelCache", "AutofillStrikeDatabase", "commerce_subscription_db",
                 "discount_infos_db", "discounts_db", "parcel_tracking_db", "GCM Store",
+                "OnDeviceHeadSuggestModel", "Subresource Filter", "ZxcvbnData",
+                "component_crx_cache", "component_crx_cache", "certificate_error_assistant",
+                "Crowd Deny", "Crowd Deny-journal", "Extension Cookies", "Extension State",
+                "Extension State-journal", "Platform Notifications", "Platform Notifications-journal",
+                "Site Characteristics Database", "Site Characteristics-journal",
+                "TransportSecurity", "TransportSecurity-journal", "VideoDecodeStats",
+                "Trust Tokens", "Trust Tokens-journal",
             }
             return [f for f in files if f.endswith(".lock") or f.endswith("-journal")
                     or f in skip_names]
