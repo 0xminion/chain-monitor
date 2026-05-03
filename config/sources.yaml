@@ -187,9 +187,7 @@ coingecko:
 cryptorank:
   base_url: https://api.cryptorank.io/v1
   rate_limit_per_min: 10
-github:
-  api_base: https://api.github.com
-  rate_limit_per_hour: 5000
+
 youtube:
   api_base: https://www.googleapis.com/youtube/v3
   daily_quota: 10000

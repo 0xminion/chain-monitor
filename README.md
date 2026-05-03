@@ -54,7 +54,7 @@ python3 -m pytest tests/ -q
 
 | Directory | Purpose |
 |-----------|---------|
-| `collectors/` | 10 data ingestors: RSS, Twitter, DefiLlama, GitHub, regulatory, etc. |
+| `collectors/` | 10 data ingestors: RSS, Twitter, DefiLlama, regulatory, etc. |
 | `processors/` | Dedup, scoring, reinforcement, chain analysis, prompt synthesis |
 | `output/` | Weekly digest builder (reads 7 days of persisted daily prompts) |
 | `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml` |
@@ -69,7 +69,7 @@ python3 -m pytest tests/ -q
 |-----------|--------|---------|
 | DefiLlama | TVL, fees, volume | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | FINANCIAL |
-| GitHub | Version tags, PRs, EIPs | TECH_EVENT |
+
 | Hackathon Outcomes | DevPost competitions | VISIBILITY |
 | RSS | 80+ feeds across 27 chains | All categories |
 | Regulatory | SEC EDGAR, policy | REGULATORY |

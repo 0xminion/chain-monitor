@@ -12,7 +12,7 @@
 ```
 ┌────────────────────┐
 │ Stage 0: Collect     │ ← asyncio.gather across 10 collectors
-│    (parallel)        │     RSS, DefiLlama, CoinGecko, GitHub, TradingView, Events,
+│    (parallel)        │     RSS, DefiLlama, CoinGecko, TradingView, Events,
 │                      │     Hackathon Outcomes, Risk Alert, Regulatory, Twitter
 └──────────┬──────────┘
            │ list[RawEvent]
@@ -37,7 +37,7 @@
            v
 ┌────────────────────┐
 │ Stage 4: Reinforce   │ ← cross-source merge (dedup on fingerprint)
-│                      │     Same event from RSS + GitHub = one reinforced signal
+│                      │     Same event from RSS = one reinforced signal
 └──────────┬──────────┘
            │ dict[chain, list[Signal]]
            v

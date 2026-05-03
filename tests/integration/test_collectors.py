@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
 
-
 class TestDefiLlamaCollector:
     """Test DefiLlamaCollector with mocked API."""
 
@@ -75,7 +74,6 @@ class TestDefiLlamaCollector:
         assert sig["reliability"] == 0.8
         assert sig["evidence"] == {"key": "val"}
 
-
 class TestCoinGeckoCollector:
     """Test CoinGeckoCollector with mocked API."""
 
@@ -144,70 +142,6 @@ class TestCoinGeckoCollector:
             mock_fetch.return_value = None
             signals = collector.collect()
             assert signals == []
-
-
-class TestGitHubCollector:
-    """Test GitHubCollector with mocked API."""
-
-    @pytest.fixture
-    def collector(self, mock_config):
-        from collectors.github_collector import GitHubCollector
-        return GitHubCollector()
-
-    def test_collect_returns_list(self, collector):
-        with patch.object(collector, "fetch_with_retry") as mock_fetch:
-            mock_fetch.return_value = []
-            signals = collector.collect()
-            assert isinstance(signals, list)
-
-    def test_new_release_detection(self, collector):
-        now = datetime.now(timezone.utc)
-        recent_time = (now.replace(hour=1)).isoformat().replace("+00:00", "Z")
-
-        with patch.object(collector, "fetch_with_retry") as mock_fetch:
-            def side_effect(url, params=None):
-                if "releases/latest" in url:
-                    return {
-                        "tag_name": "v1.14.0",
-                        "name": "Pectra Release",
-                        "published_at": recent_time,
-                        "html_url": "https://github.com/test/repo/releases/v1.14.0",
-                        "prerelease": False,
-                        "draft": False,
-                    }
-                if "commits" in url:
-                    return []
-                return None
-
-            mock_fetch.side_effect = side_effect
-            # We need at least one chain with github_repos
-            collector._chains_cfg = {"ethereum": {"github_repos": ["ethereum/go-ethereum"]}}
-            signals = collector.collect()
-            release_signals = [s for s in signals if "release" in s.get("description", "").lower()]
-            assert len(release_signals) > 0
-
-    def test_no_draft_releases(self, collector):
-        with patch.object(collector, "fetch_with_retry") as mock_fetch:
-            def side_effect(url, params=None):
-                if "releases/latest" in url:
-                    return {
-                        "tag_name": "v1.0.0",
-                        "name": "Draft",
-                        "published_at": "2026-01-01T00:00:00Z",
-                        "html_url": "",
-                        "prerelease": False,
-                        "draft": True,
-                    }
-                if "commits" in url:
-                    return []
-                return None
-
-            mock_fetch.side_effect = side_effect
-            collector._chains_cfg = {"ethereum": {"github_repos": ["ethereum/go-ethereum"]}}
-            signals = collector.collect()
-            release_signals = [s for s in signals if "release" in s.get("description", "").lower()]
-            assert len(release_signals) == 0
-
 
 class TestRSSCollector:
     """Test RSSCollector with mocked feed."""

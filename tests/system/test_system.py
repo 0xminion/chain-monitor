@@ -2,7 +2,6 @@
 
 import pytest
 
-
 class TestConfigFilesLoad:
     """Verify all config files load."""
 
@@ -37,7 +36,6 @@ class TestConfigFilesLoad:
         for chain_name in chains:
             assert chain_name in baselines, f"Missing baseline for chain: {chain_name}"
 
-
 class TestImportsWork:
     """Verify all imports work."""
 
@@ -54,7 +52,7 @@ class TestImportsWork:
         from collectors.base import BaseCollector, SourceHealth
         from collectors.defillama import DefiLlamaCollector
         from collectors.coingecko_collector import CoinGeckoCollector
-        from collectors.github_collector import GitHubCollector
+        
         from collectors.rss_collector import RSSCollector
         assert BaseCollector is not None
 
@@ -74,9 +72,8 @@ class TestImportsWork:
         import collectors
         assert hasattr(collectors, "DefiLlamaCollector")
         assert hasattr(collectors, "CoinGeckoCollector")
-        assert hasattr(collectors, "GitHubCollector")
-        assert hasattr(collectors, "RSSCollector")
 
+        assert hasattr(collectors, "RSSCollector")
 
 class TestCollectorInstantiation:
     """Verify collector classes can be instantiated."""
@@ -93,18 +90,11 @@ class TestCollectorInstantiation:
         assert c.name == "CoinGecko"
         assert c.health is not None
 
-    def test_github_collector(self):
-        from collectors.github_collector import GitHubCollector
-        c = GitHubCollector()
-        assert c.name == "GitHub"
-        assert c.health is not None
-
     def test_rss_collector(self):
         from collectors.rss_collector import RSSCollector
         c = RSSCollector()
         assert c.name == "RSS"
         assert c.health is not None
-
 
 class TestProcessorInstantiation:
     """Verify processor classes can be instantiated."""
@@ -123,7 +113,6 @@ class TestProcessorInstantiation:
     def test_agent_native_synthesis(self):
         from processors.summary_engine import synthesize_digest
         assert synthesize_digest is not None
-
 
 class TestSourceHealth:
     """Verify SourceHealth works."""

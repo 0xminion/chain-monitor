@@ -3,8 +3,6 @@ base:
   tier: 1
   coingecko_id: null
   defillama_slug: base
-  github_repos:
-  - base-org/node
   blog_rss: https://base.mirror.xyz/feed/atom
   youtube_channel: '@Base'
   status_page: https://status.base.org
@@ -18,9 +16,6 @@ bsc:
   tier: 1
   coingecko_id: binancecoin
   defillama_slug: bsc
-  github_repos:
-  - bnb-chain/bsc
-  - bnb-chain/BEPs
   blog_rss: https://bnbchain.substack.com/feed
   youtube_channel: '@BNBChain'
   status_page: null
@@ -32,8 +27,6 @@ mantle:
   tier: 2
   coingecko_id: mantle
   defillama_slug: mantle
-  github_repos:
-  - mantlenetworkio/mantle
   blog_rss: https://www.mantle.xyz/blog/rss.xml
   youtube_channel: '@MantleOffl'
   status_page: null
@@ -45,7 +38,6 @@ hyperliquid:
   tier: 1
   coingecko_id: hyperliquid
   defillama_slug: Hyperliquid L1
-  github_repos: []
   blog_rss: null
   scrape_url: https://app.hyperliquid.xyz/announcements
   youtube_channel: '@HyperliquidX'
@@ -58,8 +50,6 @@ ink:
   tier: 3
   coingecko_id: null
   defillama_slug: ink
-  github_repos:
-  - inkonchain/node
   blog_rss: https://ink.substack.com/feed
   youtube_channel: null
   status_page: null
@@ -69,7 +59,6 @@ xlayer:
   tier: 2
   coingecko_id: null
   defillama_slug: X Layer
-  github_repos: []
   blog_rss: null
   scrape_url: https://www.okx.com/help/section/announcements-latest-announcements
   scrape_filter: x layer
@@ -81,8 +70,6 @@ morph:
   tier: 3
   coingecko_id: morph
   defillama_slug: morph
-  github_repos:
-  - morph-l2/morph
   blog_rss: https://blog.morph.network/feed
   youtube_channel: null
   status_page: null
@@ -92,10 +79,6 @@ ethereum:
   tier: 1
   coingecko_id: ethereum
   defillama_slug: ethereum
-  github_repos:
-  - ethereum/go-ethereum
-  - ethereum/consensus-specs
-  - ethereum/execution-specs
   blog_rss: https://blog.ethereum.org/feed.xml
   youtube_channel: '@EthereumFoundation'
   status_page: https://ethstats.net
@@ -108,8 +91,6 @@ bitcoin:
   tier: 1
   coingecko_id: bitcoin
   defillama_slug: null
-  github_repos:
-  - bitcoin/bitcoin
   blog_rss: null
   youtube_channel: null
   status_page: null
@@ -121,9 +102,6 @@ solana:
   tier: 1
   coingecko_id: solana
   defillama_slug: solana
-  github_repos:
-  - solana-labs/solana
-  - anza-xyz/agave
   blog_rss: https://solana.com/news/rss.xml
   youtube_channel: '@Solana'
   status_page: https://status.solana.com
@@ -135,9 +113,6 @@ arbitrum:
   tier: 1
   coingecko_id: arbitrum
   defillama_slug: arbitrum
-  github_repos:
-  - OffchainLabs/nitro
-  - OffchainLabs/arbitrum-sdk
   blog_rss: https://medium.com/feed/@arbitrum
   youtube_channel: '@Arbitrum'
   status_page: https://status.arbitrum.io
@@ -149,8 +124,6 @@ starknet:
   tier: 1
   coingecko_id: starknet
   defillama_slug: starknet
-  github_repos:
-  - starkware-libs/cairo
   blog_rss: https://starknet.substack.com/feed
   youtube_channel: '@StarknetFndn'
   status_page: https://status.starknet.io
@@ -162,8 +135,6 @@ tempo:
   tier: 3
   coingecko_id: null
   defillama_slug: null
-  github_repos:
-  - tempoxyz/tempo
   blog_rss: https://tempo.substack.com/feed
   youtube_channel: null
   status_page: null
@@ -173,7 +144,6 @@ plasma:
   tier: 3
   coingecko_id: plasma
   defillama_slug: plasma
-  github_repos: []
   blog_rss: https://plasma.substack.com/feed
   youtube_channel: null
   status_page: null
@@ -183,7 +153,6 @@ stablechain:
   tier: 3
   coingecko_id: null
   defillama_slug: null
-  github_repos: []
   blog_rss: https://blog.stable.xyz/rss
   youtube_channel: null
   status_page: null
@@ -193,9 +162,6 @@ polygon:
   tier: 2
   coingecko_id: matic-network
   defillama_slug: polygon
-  github_repos:
-  - maticnetwork/bor
-  - 0xPolygonHermez/zkevm-node
   blog_rss: https://polygon.substack.com/feed
   youtube_channel: '@0xPolygon'
   status_page: https://status.polygon.technology
@@ -207,8 +173,6 @@ gnosis:
   tier: 3
   coingecko_id: gnosis
   defillama_slug: gnosis
-  github_repos:
-  - gnosischain/specs
   blog_rss: null
   youtube_channel: '@GnosisChain'
   status_page: https://status.gnosischain.com
@@ -220,8 +184,6 @@ megaeth:
   tier: 3
   coingecko_id: null
   defillama_slug: null
-  github_repos:
-  - megaeth-labs/mega-evm
   blog_rss: https://megaethlabs.substack.com/feed
   youtube_channel: null
   status_page: null
@@ -231,7 +193,6 @@ monad:
   tier: 2
   coingecko_id: monad
   defillama_slug: monad
-  github_repos: []
   blog_rss: https://monad.substack.com/feed
   youtube_channel: '@monad_xyz'
   status_page: null
@@ -243,8 +204,6 @@ sei:
   tier: 2
   coingecko_id: sei-network
   defillama_slug: sei
-  github_repos:
-  - sei-protocol/sei-chain
   blog_rss: https://seinetwork.substack.com/feed
   youtube_channel: '@SeiNetwork'
   status_page: https://status.sei.io
@@ -255,8 +214,6 @@ sui:
   tier: 2
   coingecko_id: sui
   defillama_slug: sui
-  github_repos:
-  - MystenLabs/sui
   blog_rss: https://blog.sui.io/feed/
   youtube_channel: '@SuiNetwork'
   status_page: https://status.sui.io
@@ -268,8 +225,6 @@ aptos:
   tier: 2
   coingecko_id: aptos
   defillama_slug: aptos
-  github_repos:
-  - aptos-labs/aptos-core
   blog_rss: https://aptosfoundation.org/news/rss.xml
   youtube_channel: '@AptosLabs'
   status_page: https://status.aptoslabs.com
@@ -281,7 +236,6 @@ virtuals:
   tier: 3
   coingecko_id: virtual-protocol
   defillama_slug: null
-  github_repos: []
   blog_rss: https://virtuals.substack.com/feed
   youtube_channel: null
   status_page: null
@@ -291,9 +245,6 @@ bittensor:
   tier: 3
   coingecko_id: bittensor
   defillama_slug: null
-  github_repos:
-  - opentensor/bittensor
-  - opentensor/subtensor
   blog_rss: https://bittensor.substack.com/feed
   youtube_channel: '@bittensor'
   status_page: https://status.bittensor.com
@@ -305,8 +256,6 @@ ton:
   tier: 3
   coingecko_id: the-open-network
   defillama_slug: ton
-  github_repos:
-  - ton-blockchain/ton
   youtube_channel: '@tonblockchain'
   status_page: https://status.ton.org
   governance_forum:
@@ -317,9 +266,6 @@ optimism:
   tier: 2
   coingecko_id: optimism
   defillama_slug: op-mainnet
-  github_repos:
-  - ethereum-optimism/optimism
-  - ethereum-optimism/specs
   blog_rss: https://optimism.mirror.xyz/feed/atom
   youtube_channel: '@OptimismCollective'
   status_page: https://status.optimism.io
@@ -333,8 +279,6 @@ near:
   tier: 3
   coingecko_id: near
   defillama_slug: near
-  github_repos:
-  - near/nearcore
   blog_rss: https://near.substack.com/feed
   youtube_channel: '@NEARProtocol'
   status_page: https://status.near.org

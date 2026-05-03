@@ -34,7 +34,6 @@ from processors.agent_runner import AgentDigestRunner
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.events_collector import EventsCollector
-from collectors.github_collector import GitHubCollector
 from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
 from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
@@ -83,7 +82,6 @@ async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = Fa
         EventsCollector(),
         HackathonOutcomesCollector(),
         TwitterCollector(standalone_mode=False),
-        GitHubCollector(),
     ]
 
     ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(

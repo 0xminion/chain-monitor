@@ -4,7 +4,6 @@ from collectors.base import BaseCollector
 from collectors.coingecko_collector import CoinGeckoCollector
 from collectors.defillama import DefiLlamaCollector
 from collectors.events_collector import EventsCollector
-from collectors.github_collector import GitHubCollector
 from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
 from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
@@ -17,7 +16,6 @@ __all__ = [
     "CoinGeckoCollector",
     "DefiLlamaCollector",
     "EventsCollector",
-    "GitHubCollector",
     "HackathonOutcomesCollector",
     "RegulatoryCollector",
     "RiskAlertCollector",

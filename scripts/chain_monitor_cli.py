@@ -66,7 +66,7 @@ def cmd_chains_add(args) -> int:
         "tier": args.tier or 3,
         "coingecko_id": args.coingecko_id,
         "defillama_slug": args.defillama_slug,
-        "github_repos": args.github_repos.split(",") if args.github_repos else [],
+        "github_repos": [],
         "blog_rss": args.blog_rss,
         "youtube_channel": args.youtube_channel,
         "status_page": None,
@@ -241,7 +241,6 @@ def main():
     add_p.add_argument("--tier", type=int, default=3)
     add_p.add_argument("--coingecko-id")
     add_p.add_argument("--defillama-slug")
-    add_p.add_argument("--github-repos")
     add_p.add_argument("--blog-rss")
     add_p.add_argument("--youtube-channel")
 
