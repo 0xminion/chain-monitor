@@ -380,9 +380,8 @@ async def synthesize_weekly_digest(client=None, daily_digests=None) -> str:
 
 class WeeklyDigestFormatter:
     def format(self, signals=None, narrative_tracker=None, source_health=None, client=None) -> str:
-        import asyncio
         try:
-            return asyncio.run(synthesize_weekly_digest())
+            return build_digest()
         except Exception as e:
             logger.error(f"Weekly digest failed: {e}")
             now = datetime.now(timezone.utc)

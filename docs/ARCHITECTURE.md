@@ -11,9 +11,9 @@
 
 ```
 ┌────────────────────┐
-│ Stage 0: Collect     │ ← asyncio.gather across 9 collectors
-│    (parallel)        │     RSS, DefiLlama, GitHub, TradingView, Events,
-│                      │     Risk Alert, Regulatory, Twitter, CoinGecko
+│ Stage 0: Collect     │ ← asyncio.gather across 10 collectors
+│    (parallel)        │     RSS, DefiLlama, CoinGecko, GitHub, TradingView, Events,
+│                      │     Hackathon Outcomes, Risk Alert, Regulatory, Twitter
 └──────────┬──────────┘
            │ list[RawEvent]
            v

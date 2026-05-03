@@ -8,9 +8,9 @@ The running agent is the only reasoning engine in the loop: it reads the generat
 
 ## Pipeline (7 stages)
 
-1. **Parallel Collect** — 9 collectors run concurrently via `asyncio.gather`
+1. **Parallel Collect** — 10 collectors run concurrently via `asyncio.gather`
 2. **Dedup** — O(n) hash-based deduplication
-3. **Categorize** — source-provided categories with deterministic keyword fallback
+3. **Categorize** — source-provided categories with agent-native checkpoint
 4. **Score + Reinforce** — rule-based heuristics merge similar signals across sources
 5. **Per-chain Analyze** — deterministic analysis builds `ChainDigest` objects
 6. **Agent Prompt Synthesis** — structured markdown prompt saved to `storage/agent_input/`
@@ -54,7 +54,7 @@ python3 -m pytest tests/ -q
 
 | Directory | Purpose |
 |-----------|---------|
-| `collectors/` | 9 data ingestors: RSS, Twitter, DefiLlama, GitHub, regulatory, etc. |
+| `collectors/` | 10 data ingestors: RSS, Twitter, DefiLlama, GitHub, regulatory, etc. |
 | `processors/` | Dedup, scoring, reinforcement, chain analysis, prompt synthesis |
 | `output/` | Weekly digest builder (reads 7 days of persisted daily prompts) |
 | `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml` |
@@ -70,6 +70,7 @@ python3 -m pytest tests/ -q
 | DefiLlama | TVL, fees, volume | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | FINANCIAL |
 | GitHub | Version tags, PRs, EIPs | TECH_EVENT |
+| Hackathon Outcomes | DevPost competitions | VISIBILITY |
 | RSS | 80+ feeds across 27 chains | All categories |
 | Regulatory | SEC EDGAR, policy | REGULATORY |
 | Risk Alert | Hack/vulnerability feeds | RISK_ALERT |

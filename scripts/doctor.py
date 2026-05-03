@@ -46,6 +46,9 @@ def check_python_deps() -> list[tuple[str, bool, str]]:
         ("feedparser", "feedparser"),
         ("python-dotenv", "dotenv"),
         ("filelock", "filelock"),
+        ("pydantic", "pydantic"),
+        ("playwright", "playwright.sync_api"),
+        ("rich", "rich"),
     ]
     for pkg_name, import_name in required:
         try:
@@ -84,7 +87,7 @@ def check_storage() -> list[tuple[str, bool, str]]:
 def check_config_files() -> list[tuple[str, bool, str]]:
     """Check required YAML configs exist."""
     results = []
-    for fname in ("chains.yaml", "sources.yaml", "baselines.yaml", "narratives.yaml"):
+    for fname in ("chains.yaml", "pipeline.yaml", "sources.yaml", "baselines.yaml", "narratives.yaml", "twitter_accounts.yaml"):
         p = REPO_ROOT / "config" / fname
         if p.exists():
             results.append((f"cfg:{fname}", True, f"{fname} OK"))

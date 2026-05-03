@@ -92,7 +92,7 @@ def get_pipeline_value(key_path: str, default):
             cfg = cfg[part]
         else:
             return default
-    return cfg
+    return default if cfg is None else cfg
 
 
 def get_chain(chain_name: str) -> Optional[dict]:

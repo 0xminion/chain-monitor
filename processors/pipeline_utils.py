@@ -123,27 +123,21 @@ def validate_raw_event(raw: dict) -> dict:
 def memory_pressure_mb() -> float:
     """Return available system memory in megabytes.
 
-    Reads ``/proc/meminfo`` (Linux only).  The ``MemAvailable`` field is
-    preferred; if it is absent the value falls back to ``MemFree``.
-
-    Returns:
-        Available memory in MB.
-
-    Raises:
-        FileNotFoundError: If ``/proc/meminfo`` does not exist (non-Linux).
-        ValueError: If the expected fields cannot be parsed.
+    Reads ``/proc/meminfo`` (Linux only).  Falls back to ``float('inf')``
+    on non-Linux platforms so the caller never crashes.
     """
-    available_kb: float | None = None
-    with open("/proc/meminfo", "r", encoding="ascii") as fh:
-        for line in fh:
-            if line.startswith("MemAvailable:"):
-                available_kb = float(line.split()[1])
-                break
-            elif line.startswith("MemFree:") and available_kb is None:
-                available_kb = float(line.split()[1])
-    if available_kb is None:
-        raise ValueError("Unable to parse /proc/meminfo for available memory")
-    return available_kb / 1024.0
+    try:
+        with open("/proc/meminfo", "r", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    available_kb: float = float(line.split()[1])
+                    return available_kb / 1024.0
+                elif line.startswith("MemFree:"):
+                    free_kb: float = float(line.split()[1])
+                    return free_kb / 1024.0
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return float("inf")
 
 
 def should_throttle() -> bool:
