@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from collectors.base import BaseCollector
-from config.loader import get_env
+from config.loader import get_env, get_pipeline_value
 
 logger = logging.getLogger(__name__)
 
@@ -140,19 +140,22 @@ class TwitterCollector(BaseCollector):
     """Collects tweets from chain official accounts and contributors via Playwright."""
 
     def __init__(self, standalone_mode: bool = False, lookback_hours: int | None = None,
-                 max_workers: int = 10, num_batches: int = 10):
+                 max_workers: int | None = None, num_batches: int | None = None):
         """
         Args:
             standalone_mode: If True, skips dedup/reinforcement and writes to own JSON.
-            lookback_hours: Override global default. Defaults to env TWITTER_LOOKBACK_HOURS (default 24).
-            max_workers: Number of parallel Playwright workers (default: 10).
-            num_batches: Number of handle batches to split across workers (default: 10).
+            lookback_hours: Override global default. Defaults to env TWITTER_LOOKBACK_HOURS or config.
+            max_workers: Number of parallel Playwright workers. Defaults to config (15).
+            num_batches: Number of handle batches. Defaults to config (10).
         """
         super().__init__(name="twitter")
         self.standalone_mode = standalone_mode
-        self.lookback_hours = lookback_hours or int(get_env("TWITTER_LOOKBACK_HOURS", "24"))
-        self.max_workers = int(get_env("TWITTER_MAX_WORKERS", str(max_workers)))
-        self.num_batches = int(get_env("TWITTER_NUM_BATCHES", str(num_batches)))
+        self.lookback_hours = lookback_hours or int(get_env("TWITTER_LOOKBACK_HOURS",
+                                                           str(get_pipeline_value("twitter.lookback_hours", 24))))
+        self.max_workers = int(get_env("TWITTER_MAX_WORKERS",
+                                       str(max_workers if max_workers is not None else get_pipeline_value("twitter.max_workers", 15))))
+        self.num_batches = int(get_env("TWITTER_NUM_BATCHES",
+                                       str(num_batches if num_batches is not None else get_pipeline_value("twitter.num_batches", 10))))
         self._playwright = None
         self._browser = None
         self._context = None

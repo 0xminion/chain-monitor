@@ -1,9 +1,10 @@
 """Tests for main.py v0.1.0 async pipeline (agent-native)."""
 
+from pathlib import Path
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
 
-from processors.pipeline_types import PipelineContext, RawEvent
+from processors.pipeline_types import PipelineContext, RawEvent, ChainDigest
 
 
 class TestRunPipeline:
@@ -19,14 +20,14 @@ class TestRunPipeline:
             patch("main.SignalScorer") as mock_scorer_cls,
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
-            patch("main.synthesize_digest", new_callable=AsyncMock) as mock_synth,
+            patch("main.AgentDigestRunner") as mock_runner_cls,
             patch("main.TelegramSender") as mock_sender_cls,
         ):
             # Stage 1: collectors return raw events
             mock_collect_all.return_value = (
                 [
-                    RawEvent("solana", "TECH_EVENT", "upgrade", "v2", "rss", 0.7),
-                    RawEvent("ethereum", "TECH_EVENT", "upgrade", "v3", "rss", 0.7),
+                    RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="v2", source="rss", reliability=0.7),
+                    RawEvent(chain="ethereum", category="TECH_EVENT", subcategory="upgrade", description="v3", source="rss", reliability=0.7),
                 ],
                 {"DefiLlama": {"status": "healthy"}},
                 {},
@@ -34,8 +35,8 @@ class TestRunPipeline:
 
             # Stage 2: dedup returns same (no dups)
             mock_dedup.return_value = [
-                RawEvent("solana", "TECH_EVENT", "upgrade", "v2", "rss", 0.7),
-                RawEvent("ethereum", "TECH_EVENT", "upgrade", "v3", "rss", 0.7),
+                RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="v2", source="rss", reliability=0.7),
+                RawEvent(chain="ethereum", category="TECH_EVENT", subcategory="upgrade", description="v3", source="rss", reliability=0.7),
             ]
 
             # Stage 3: agent categorizer mock
@@ -68,7 +69,6 @@ class TestRunPipeline:
             mock_reinf_cls.return_value = mock_reinforcer
 
             # Stage 5: chain analyzer
-            from processors.chain_analyzer import ChainDigest
             mock_digest = ChainDigest(
                 chain="solana",
                 chain_tier=1,
@@ -82,23 +82,33 @@ class TestRunPipeline:
             )
             mock_analyze.return_value = [mock_digest]
 
-            # Stage 6: summary
-            mock_synth.return_value = "📊 Chain Monitor — Apr 27, 2026\n\nSolana v2."
+            # Stage 6: agent runner
+            mock_runner = MagicMock()
+            mock_runner.synthesize = AsyncMock(return_value="📊 Chain Monitor — Apr 27, 2026\n\nSolana v2.")
+            mock_runner.synthesize_weekly = AsyncMock(return_value="📈 Weekly Brief")
+            mock_runner_cls.return_value = mock_runner
 
-            # Stage 7: telegram
+            # Stage 7: sender
             mock_sender = AsyncMock()
-            mock_sender.send.return_value = True
             mock_sender_cls.return_value = mock_sender
 
+            # Prevent alert injection from real disk state by passing a fresh metrics instance
+            from processors.metrics import PipelineMetrics
+            mock_metrics = PipelineMetrics()
+            # Monkeypatch to prevent disk reads
+            mock_metrics.get_collector_alert_lines = lambda health: []
+
             from main import run_pipeline
-            ctx = await run_pipeline()
+            ctx = await run_pipeline(metrics=mock_metrics)
 
             assert isinstance(ctx, PipelineContext)
-            assert ctx.final_digest == "📊 Chain Monitor — Apr 27, 2026\n\nSolana v2."
-            assert len(ctx.chain_digests) == 1
+            assert "📊 Chain Monitor — Apr 27, 2026" in ctx.final_digest
+            assert "Solana v2." in ctx.final_digest
+            # Stage 6 now returns prompt directly, so final_digest IS the digest
+            assert "Agent synthesis required" not in str(ctx.final_digest)
             mock_collect_all.assert_awaited_once()
             mock_analyze.assert_awaited_once()
-            mock_synth.assert_awaited_once()
+            mock_runner.synthesize.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_pipeline_continues_without_agent_categorization(self, mock_config):
@@ -110,15 +120,15 @@ class TestRunPipeline:
             patch("main.SignalScorer") as mock_scorer_cls,
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
-            patch("main.synthesize_digest", new_callable=AsyncMock) as mock_synth,
+            patch("main.AgentDigestRunner") as mock_runner_cls,
             patch("main.TelegramSender") as mock_sender_cls,
         ):
             mock_collect_all.return_value = (
-                [RawEvent("solana", "TECH_EVENT", "upgrade", "v2", "rss", 0.7)],
+                [RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="v2", source="rss", reliability=0.7)],
                 {"DefiLlama": {"status": "healthy"}},
                 {},
             )
-            mock_dedup.return_value = [RawEvent("solana", "TECH_EVENT", "upgrade", "v2", "rss", 0.7)]
+            mock_dedup.return_value = [RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="v2", source="rss", reliability=0.7)]
 
             # No agent output available
             mock_categorizer = MagicMock()
@@ -130,18 +140,25 @@ class TestRunPipeline:
             mock_reinf = MagicMock()
             mock_reinf_cls.return_value = mock_reinf
             mock_analyze.return_value = []
-            mock_synth.return_value = "Quiet day."
+            mock_runner = MagicMock()
+            mock_runner.synthesize = AsyncMock(return_value="Quiet day.")
+            mock_runner_cls.return_value = mock_runner
 
             mock_sender = AsyncMock()
             mock_sender_cls.return_value = mock_sender
 
+            # Prevent alert injection from real disk state
+            from processors.metrics import PipelineMetrics
+            mock_metrics = PipelineMetrics()
+            mock_metrics.get_collector_alert_lines = lambda health: []
+
             from main import run_pipeline
-            ctx = await run_pipeline()
+            ctx = await run_pipeline(metrics=mock_metrics)
 
             # Pipeline should now continue to scoring instead of stopping
             mock_scorer.score.assert_called()
             mock_reinf.process.assert_called()
-            assert "Agent categorization required" not in str(ctx.final_digest)
+            assert "Agent synthesis required" not in str(ctx.final_digest)
 
     @pytest.mark.asyncio
     async def test_pipeline_skips_send_when_no_activity(self, mock_config):
@@ -153,7 +170,7 @@ class TestRunPipeline:
             patch("main.SignalScorer") as mock_scorer_cls,
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
-            patch("main.synthesize_digest", new_callable=AsyncMock) as mock_synth,
+            patch("main.AgentDigestRunner") as mock_runner_cls,
             patch("main.TelegramSender") as mock_sender_cls,
         ):
             mock_collect_all.return_value = ([], {"DefiLlama": {"status": "healthy"}}, {})
@@ -169,13 +186,21 @@ class TestRunPipeline:
             mock_reinf = MagicMock()
             mock_reinf_cls.return_value = mock_reinf
             mock_analyze.return_value = []
-            mock_synth.return_value = "Quiet day."
+            mock_runner = MagicMock()
+            mock_runner.synthesize = AsyncMock(return_value="Quiet day.")
+            mock_runner_cls.return_value = mock_runner
 
             mock_sender = AsyncMock()
             mock_sender_cls.return_value = mock_sender
 
-            from main import run_pipeline
-            ctx = await run_pipeline()
+            # Prevent alert injection from real disk state
+            from processors.metrics import PipelineMetrics
+            mock_metrics = PipelineMetrics()
+            mock_metrics.get_collector_alert_lines = lambda health: []
 
+            from main import run_pipeline
+            ctx = await run_pipeline(metrics=mock_metrics)
+
+            # Pipeline no longer sends via Telegram in no-activity case
             mock_sender.send.assert_not_awaited()
         assert ctx.final_digest == "Quiet day."

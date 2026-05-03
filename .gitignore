@@ -24,3 +24,11 @@ storage/health/*.txt
 storage/health/*.log
 storage/agent_input/*.md
 storage/agent_input/*.txt
+storage/metrics/*
+storage/twitter/cookies.json
+storage/twitter/summaries/*.md
+storage/twitter/summaries/*.txt
+storage/daily_digests/*.md
+storage/weekly_digests/*.md
+storage/agent_input/daily_prompt_*.md
+storage/agent_input/weekly_digest_*.md

@@ -10,8 +10,8 @@ from processors.dedup_engine import deduplicate_events
 class TestDedupEngine:
 
     def test_unique_events_all_preserved(self):
-        a = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2", "rss", 0.7)
-        b = RawEvent("ethereum", "TECH_EVENT", "upgrade", "Eth v3", "rss", 0.7)
+        a = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2", source="rss", reliability=0.7)
+        b = RawEvent(chain="ethereum", category="TECH_EVENT", subcategory="upgrade", description="Eth v3", source="rss", reliability=0.7)
         result = deduplicate_events([a, b])
         assert len(result) == 2
         assert {r.chain for r in result} == {"solana", "ethereum"}
@@ -19,12 +19,12 @@ class TestDedupEngine:
     def test_url_dedup_keeps_richer(self):
         url = "https://blog.solana.com/v2"
         a = RawEvent(
-            "solana", "TECH_EVENT", "upgrade", "Solana v2",
-            "rss", 0.7, raw_url=url, evidence={"a": 1}, semantic={"cat": "TECH_EVENT"}
+            chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2",
+            source="rss", reliability=0.7, raw_url=url, evidence={"a": 1}, semantic={"cat": "TECH_EVENT"}
         )
         b = RawEvent(
-            "solana", "TECH_EVENT", "upgrade", "Solana v2",
-            "twitter", 0.8, raw_url=url, evidence={"a": 1, "b": 2}, semantic={"cat": "TECH_EVENT"}
+            chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2",
+            source="twitter", reliability=0.8, raw_url=url, evidence={"a": 1, "b": 2}, semantic={"cat": "TECH_EVENT"}
         )
         result = deduplicate_events([a, b])
         assert len(result) == 1
@@ -34,33 +34,33 @@ class TestDedupEngine:
 
     def test_url_dedup_different_chains_kept(self):
         url = "https://coindesk.com/news"
-        a = RawEvent("solana", "TECH_EVENT", "upgrade", "Story", "rss", 0.7, raw_url=url)
-        b = RawEvent("ethereum", "TECH_EVENT", "upgrade", "Story", "rss", 0.7, raw_url=url)
+        a = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Story", source="rss", reliability=0.7, raw_url=url)
+        b = RawEvent(chain="ethereum", category="TECH_EVENT", subcategory="upgrade", description="Story", source="rss", reliability=0.7, raw_url=url)
         result = deduplicate_events([a, b])
         # URL + chain: different key → both kept
         assert len(result) == 2
 
     def test_fingerprint_dedup_no_url(self):
-        a = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2", "rss", 0.7)
-        b = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2", "twitter", 0.8)
+        a = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2", source="rss", reliability=0.7)
+        b = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2", source="twitter", reliability=0.8)
         result = deduplicate_events([a, b])
         assert len(result) == 1
 
     def test_fingerprint_distinct_descriptions_preserved(self):
-        a = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2 release", "rss", 0.7)
-        b = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana devnet reset", "rss", 0.7)
+        a = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2 release", source="rss", reliability=0.7)
+        b = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana devnet reset", source="rss", reliability=0.7)
         result = deduplicate_events([a, b])
         assert len(result) == 2
 
     def test_timestamp_tiebreaker(self):
         now = datetime.now(timezone.utc)
         earlier = RawEvent(
-            "solana", "TECH_EVENT", "upgrade", "Solana v2",
-            "rss", 0.7, evidence={"a": 1}, published_at=now
+            chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2",
+            source="rss", reliability=0.7, evidence={"a": 1}, published_at=now
         )
         later = RawEvent(
-            "solana", "TECH_EVENT", "upgrade", "Solana v2",
-            "twitter", 0.7, evidence={"a": 1}, published_at=now + timedelta(seconds=1)
+            chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2",
+            source="twitter", reliability=0.7, evidence={"a": 1}, published_at=now + timedelta(seconds=1)
         )
         result = deduplicate_events([earlier, later])
         assert len(result) == 1
@@ -72,9 +72,9 @@ class TestDedupEngine:
         assert result == []
 
     def test_preserves_insertion_order(self):
-        a = RawEvent("solana", "TECH_EVENT", "upgrade", "Solana v2", "rss", 0.7)
-        b = RawEvent("ethereum", "TECH_EVENT", "upgrade", "Eth v3", "rss", 0.7)
-        c = RawEvent("bitcoin", "TECH_EVENT", "upgrade", "Bitcoin core", "rss", 0.7)
+        a = RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="Solana v2", source="rss", reliability=0.7)
+        b = RawEvent(chain="ethereum", category="TECH_EVENT", subcategory="upgrade", description="Eth v3", source="rss", reliability=0.7)
+        c = RawEvent(chain="bitcoin", category="TECH_EVENT", subcategory="upgrade", description="Bitcoin core", source="rss", reliability=0.7)
         result = deduplicate_events([a, b, c])
         assert [r.chain for r in result] == ["solana", "ethereum", "bitcoin"]
 

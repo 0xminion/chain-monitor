@@ -7,14 +7,23 @@ v0.1.0: Defines RawEvent, ChainDigest, and PipelineContext for the
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-@dataclass
-class RawEvent:
+__all__ = [
+    "RawEvent",
+    "KeyEvent",
+    "ChainDigest",
+    "PipelineContext",
+]
+
+
+class RawEvent(BaseModel):
     """A raw collected event before any processing."""
+
+    model_config = ConfigDict(extra="forbid")
 
     chain: str
     category: str
@@ -22,10 +31,28 @@ class RawEvent:
     description: str
     source: str
     reliability: float
-    evidence: dict = field(default_factory=dict)
+    evidence: dict = Field(default_factory=dict)
     raw_url: Optional[str] = None
     published_at: Optional[datetime] = None
     semantic: Optional[dict] = None
+
+    def __init__(self, *args, **kwargs):
+        """Support keyword-only OR positional args for backward compat.
+        
+        Positional order (6 required):
+          chain, category, subcategory, description, source, reliability
+        Optional keywords after positional:
+          evidence, raw_url, published_at, semantic
+        """
+        field_names = [
+            "chain", "category", "subcategory", "description", "source", "reliability",
+            "evidence", "raw_url", "published_at", "semantic"
+        ]
+        kw = dict(kwargs)
+        for i, val in enumerate(args):
+            if i < len(field_names):
+                kw[field_names[i]] = val
+        super().__init__(**kw)
 
     @property
     def fingerprint(self) -> str:
@@ -85,29 +112,45 @@ class RawEvent:
             semantic=d.get("semantic"),
         )
 
+    @field_validator("reliability")
+    @classmethod
+    def _check_reliability(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("reliability must be in [0.0, 1.0]")
+        return v
 
-@dataclass
-class KeyEvent:
+    @field_validator("chain")
+    @classmethod
+    def _check_chain(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("chain must be non-empty after strip")
+        return v
+
+
+class KeyEvent(BaseModel):
     """Single merged event observation within a chain digest."""
+
+    model_config = ConfigDict(extra="forbid")
 
     topic: str
     category: str
-    sources: list[str] = field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
     priority: int = 0
     confidence: float = 0.0
     detail: str = ""
     why_it_matters: str = ""
 
 
-@dataclass
-class ChainDigest:
+class ChainDigest(BaseModel):
     """Per-chain LLM-synthesized summary."""
+
+    model_config = ConfigDict(extra="forbid")
 
     chain: str
     chain_tier: int
     chain_category: str
     summary: str
-    key_events: list[dict] = field(default_factory=list)
+    key_events: list[dict] = Field(default_factory=list)
     priority_score: int = 0
     dominant_topic: str = ""
     sources_seen: int = 0
@@ -118,21 +161,34 @@ class ChainDigest:
         """True if this chain has anything worth reporting."""
         return self.priority_score >= 3 or self.event_count >= 2 or self.key_events
 
+    @field_validator("priority_score")
+    @classmethod
+    def _check_priority_score(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("priority_score must be >= 0")
+        return v
 
-@dataclass
-class PipelineContext:
+    @field_validator("chain_tier")
+    @classmethod
+    def _check_chain_tier(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("chain_tier must be >= 1")
+        return v
+
+
+class PipelineContext(BaseModel):
     """Shared mutable context passed through pipeline stages."""
 
-    raw_events: list[RawEvent] = field(default_factory=list)
-    unique_events: list[RawEvent] = field(default_factory=list)
-    signals: list = field(default_factory=list)
-    chain_digests: list[ChainDigest] = field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+
+    raw_events: list[RawEvent] = Field(default_factory=list)
+    unique_events: list[RawEvent] = Field(default_factory=list)
+    signals: list = Field(default_factory=list)
+    chain_digests: list[ChainDigest] = Field(default_factory=list)
     final_digest: str = ""
-    health: dict = field(default_factory=dict)
-    feed_health: dict = field(default_factory=dict)
-    started_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    health: dict = Field(default_factory=dict)
+    feed_health: dict = Field(default_factory=dict)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def stats(self) -> dict:
         """Return pipeline statistics."""

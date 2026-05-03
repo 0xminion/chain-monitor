@@ -1,9 +1,13 @@
-"""Telegram sender — sends messages with auto-splitting."""
+"""Telegram sender — sends messages with auto-splitting and optional delivery.
+
+If TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID are not configured, the sender
+gracefully disables itself and logs at INFO level (not ERROR).
+"""
 
 import asyncio
 import logging
 from pathlib import Path
-
+from typing import Optional
 
 import aiohttp
 
@@ -13,23 +17,44 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramSender:
-    """Sends messages to Telegram with automatic splitting for long content."""
+    """Sends messages to Telegram with automatic splitting for long content.
+
+    If Telegram credentials are not configured, ``enabled`` will be ``False``
+    and all send calls will return ``False`` immediately without error.
+    """
 
     def __init__(self):
         self.bot_token = get_env("TELEGRAM_BOT_TOKEN")
         self.chat_id = get_env("TELEGRAM_CHAT_ID")
+
+        self._enabled = True
         if not self.bot_token or self.bot_token == "your_telegram_bot_token_here":
-            logger.warning("TELEGRAM_BOT_TOKEN not configured — Telegram sending disabled")
+            logger.info("TELEGRAM_BOT_TOKEN not configured — Telegram delivery disabled")
+            self._enabled = False
             self.bot_token = None
+
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}" if self.bot_token else None
         self.max_length = 4096
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
         self._timeout = aiohttp.ClientTimeout(total=30)
 
+    @property
+    def enabled(self) -> bool:
+        """Whether Telegram sending is configured and available."""
+        return self._enabled
+
     async def send(self, text: str, parse_mode: str = "Markdown") -> bool:
-        """Send message, auto-splitting if needed."""
+        """Send message, auto-splitting if needed.
+
+        Returns ``True`` if every chunk was successfully delivered,
+        ``False`` if any chunk failed or if Telegram is unconfigured.
+        """
+        if not self._enabled:
+            logger.debug("TelegramSender disabled — skipping")
+            return False
+
         if not self.bot_token or not self.chat_id:
-            logger.error("Telegram credentials not configured")
+            logger.info("Telegram credentials not configured — skipping")
             return False
 
         chunks = self._split_message(text, reserve=20 if len(text) > self.max_length else 0)
@@ -51,7 +76,7 @@ class TelegramSender:
 
     async def send_document(self, file_path: str, caption: str = "") -> bool:
         """Send a file as document."""
-        if not self.bot_token or not self.chat_id:
+        if not self._enabled or not self.bot_token or not self.chat_id:
             return False
 
         url = f"{self.base_url}/sendDocument"
@@ -79,9 +104,17 @@ class TelegramSender:
         return self._session
 
     async def close(self):
-        """Close the aiohttp session."""
+        """Close the aiohttp session. Safe to call multiple times."""
         if self._session and not self._session.closed:
             await self._session.close()
+            self._session = None
+
+    async def __aenter__(self):
+        await self._get_session()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
     async def _send_single(self, text: str, parse_mode: str = "Markdown", max_retries: int = 3) -> bool:
         """Send a single message with exponential backoff retry."""

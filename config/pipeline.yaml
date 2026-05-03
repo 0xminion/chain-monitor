@@ -1,0 +1,36 @@
+# Chain Monitor Pipeline Configuration
+# Centralized constants — edit here, not in Python files.
+
+pipeline:
+  # Concurrency limits
+  max_concurrent_collectors: 4
+  max_concurrent_chain_analysis: 5
+
+  # Memory back-pressure
+  memory_throttle_mb: 500
+  memory_throttle_concurrency: 2
+
+  # Data retention
+  data_retention_days: 90
+
+  # Digest delivery
+  min_chains_for_telegram: 2
+  min_priority_for_telegram: 5
+
+  # Agent synthesis
+  llm_digest_enabled: false
+  llm_digest_temperature: 0.4
+  llm_digest_max_tokens: 2048
+  llm_digest_timeout: 45
+
+# Twitter collector settings
+twitter:
+  max_workers: 15
+  default_workers: 15
+  num_batches: 10
+  lookback_hours: 24
+
+# Scoring thresholds
+scoring:
+  similarity_threshold: 0.85
+  baseline_tvl_threshold_usd: 1_000_000_000

@@ -122,7 +122,7 @@ async def analyze_chain(chain: str, signals: list[Signal]) -> ChainDigest:
 async def analyze_all_chains(
     signals_by_chain: dict[str, list[Signal]],
     client=None,  # unused — kept for backward compat
-    max_concurrent: int = 5,
+    max_concurrent: int | None = None,
 ) -> list[ChainDigest]:
     """Analyze all chains deterministically.
 

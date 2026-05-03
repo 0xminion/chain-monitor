@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import Optional
 
 from processors.pipeline_types import ChainDigest
+from processors.pipeline_utils import safe_text_write
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
 AGENT_INPUT_DIR = REPO_ROOT / "storage" / "agent_input"
+DAILY_DIGEST_PREFIX = "daily_digest_"
 
 
 def _format_chain_for_prompt(digest: ChainDigest, idx: int) -> str:
@@ -107,29 +109,26 @@ def _build_daily_prompt(
 ## Instructions
 You are a senior crypto market analyst. Write the daily Chain Monitor digest for Telegram.
 
-Output format:
+OUTPUT FORMAT — MANDATORY. Follow this exactly. No deviations.
+
 📊 Chain Monitor — {date_str}
 
-🧠 Today's theme
-[1-2 sentences of the single most important cross-chain theme]
+🧠 Cross-chain theme: [1-2 sentences summarizing the single most important pattern across chains]
 
-[Then write ONE section per chain. For each chain with score ≥ 2:]
+[Then write ONE prose paragraph per chain. No bullet lists within sections. No thematic groupings.]
 
 **ChainName (Score: X)**
-[2-3 sentences synthesizing what's happening and why it matters. Be specific — mention partner names, funding amounts, version numbers when available.]
-[If a URL is provided above, embed it as a markdown link using the FIRST content-bearing word: "Polygon [activated](url) Visa rails..." NOT "[source](url)".]
-[If no URL is provided, write without any link.]
-
-[For chains with score < 2, omit or use a single bullet at the end.]
+[2-3 sentences of fluent prose. Be specific: mention partner names, dollar amounts, version numbers, proposal names. Embed ONE link per section as a natural markdown hyperlink on the first content-bearing word — e.g. "CME Group [revealed](url) that $SUI futures..." NOT "[source](url)". If no URL exists, write prose with no link.]
 
 Rules:
-- Use Telegram Markdown: **bold** for emphasis. No # headers. No HTML tags.
-- Never use all-caps headings.
-- **DO NOT** group chains under thematic headings (e.g., "TradFi & Stablecoins", "DeFi & Governance", "L2 Infrastructure"). Each chain gets its own standalone **ChainName (Score: X)** section.
+- Each chain gets its own standalone **ChainName (Score: X)** section.
+- **DO NOT** group chains under thematic headings (e.g. "DeFi & Capital", "Regulation & ETFs").
+- **DO NOT** use bullet lists inside chain sections — write continuous prose only.
+- **DO NOT** use bold formatting inside chain sections. Save **bold** for the cross-chain theme line and the score header only.
+- **DO NOT** use # headers, --- dividers, or HTML tags.
 - Past tense for events ("announced", "secured", "launched").
-- Do NOT invent events. Only use the data provided above.
-- Do NOT fabricate URLs. Only use URLs explicitly listed above.
-- Total length: 300-600 words.
+- Do NOT invent events or fabricate URLs. Use only data explicitly listed above.
+- Total length: 350–700 words.
 """
     return prompt
 
@@ -139,7 +138,7 @@ def save_agent_prompt(prompt: str, label: str) -> Path:
     AGENT_INPUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = AGENT_INPUT_DIR / f"{label}_prompt_{ts}.md"
-    path.write_text(prompt, encoding="utf-8")
+    safe_text_write(path, prompt)
     logger.info(f"[agent] Prompt saved: {path}")
     return path
 
@@ -153,8 +152,9 @@ async def synthesize_digest(
 ) -> str:
     """Build agent prompt for daily digest synthesis.
 
-    Returns the prompt string. The running agent should read this prompt
-    and produce the final digest text.
+    Returns the full prompt string (which IS the digest artifact in the
+    agent-native pipeline).  The running agent should read this prompt
+    and produce the final prose digest.
     """
     if not digests:
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
@@ -164,11 +164,6 @@ async def synthesize_digest(
         )
 
     prompt = _build_daily_prompt(digests, source_health, source_health_detail, date_str)
-    path = save_agent_prompt(prompt, "daily")
+    save_agent_prompt(prompt, "daily")
 
-    return (
-        f"🤖 Agent synthesis required\n\n"
-        f"A rich prompt with {len([d for d in digests if d.priority_score > 0])} active chains "
-        f"has been saved to:\n{path}\n\n"
-        f"Read the prompt and produce the digest."
-    )
+    return prompt

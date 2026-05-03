@@ -136,13 +136,17 @@ async def run_all_chains_pipeline() -> PipelineContext:
     ctx.feed_health.update(nt_feed_health)
     print(f"  [Phase 1] {len(nt_events)} non-Twitter events")
 
-    # ── Phase 2: Twitter via standalone bridge ──────────────────────────────────────────
+    # ── Phase 2: Twitter direct collection ──────────────────────
     print(f"\n[Phase 2] Loading standalone Twitter data...")
-    from collectors.twitter_standalone_bridge import load_recent_standalone_tweets
-    twitter_events = load_recent_standalone_tweets(lookback_hours=24)
+    from collectors.twitter_collector import TwitterCollector
+
+    # ── Phase 2: Twitter direct collection ──────────────────────────────────────────
+    print(f"\n[Phase 2] Twitter collection...")
+    twitter_collector = TwitterCollector(standalone_mode=False)
+    twitter_events = twitter_collector.collect()
     ctx.raw_events.extend(twitter_events)
     ctx.health["twitter"] = {"status": "ok", "events": len(twitter_events)}
-    print(f"  [OK] {len(twitter_events)} Twitter events loaded")
+    print(f"  [OK] {len(twitter_events)} Twitter events collected")
     print(f"  Total raw events: {len(ctx.raw_events)}")
 
     # ── Phase 3: Deduplicate ─────────────────────────────────────────────────

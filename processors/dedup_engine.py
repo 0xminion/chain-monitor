@@ -53,6 +53,16 @@ def deduplicate_events(events: list[RawEvent]) -> list[RawEvent]:
     Returns:
         Deduplicated list, preserving original order of first occurrence.
     """
+    # Defensive: convert any plain dicts to RawEvent instances before processing
+    normalized: list[RawEvent] = []
+    for ev in events:
+        if isinstance(ev, dict):
+            logger.warning("Converting dict to RawEvent in deduplicate_events")
+            normalized.append(RawEvent(**ev))
+        else:
+            normalized.append(ev)
+    events = normalized
+
     # Primary: URL index   key -> (weight, event)
     url_index: dict[str, tuple[int, RawEvent]] = {}
     # Secondary: Fingerprint index

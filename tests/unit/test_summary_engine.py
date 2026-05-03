@@ -17,18 +17,21 @@ class TestSummaryEngine:
 
     @pytest.mark.asyncio
     async def test_builds_agent_prompt(self):
-        """When digests exist, synthesize_digest saves a prompt and returns placeholder."""
+        """When digests exist, synthesize_digest saves a prompt and returns it."""
         digests = [
-            ChainDigest("solana", 1, "majors", "", priority_score=8, dominant_topic="Mainnet v2",
+            ChainDigest(chain="solana", chain_tier=1, chain_category="majors", summary="",
+                        priority_score=8, dominant_topic="Mainnet v2",
                         key_events=[{"topic": "v2 release", "category": "TECH_EVENT", "priority": 8,
                                      "confidence": 0.9, "detail": "Solana v2 tagged", "why_it_matters": "Perf gains",
                                      "url": "https://x.com/solana/status/123", "sources": ["Twitter"]}]),
-            ChainDigest("ethereum", 1, "majors", "", priority_score=2, dominant_topic="Quiet",
+            ChainDigest(chain="ethereum", chain_tier=1, chain_category="majors", summary="",
+                        priority_score=2, dominant_topic="Quiet",
                         key_events=[]),
         ]
         result = await synthesize_digest(digests)
-        assert "🤖 Agent synthesis required" in result
-        assert "daily_prompt_" in result
+        # synthesize_digest now returns the actual prompt, not a placeholder
+        assert "Agent Prompt" in result
+        assert "daily_prompt_" not in result  # no longer returns placeholder
         # Verify prompt was actually saved
         assert os.path.exists(digests[0].key_events[0].get("url", "")) == False  # placeholder
 
@@ -36,7 +39,8 @@ class TestSummaryEngine:
     async def test_prompt_contains_chain_data(self):
         """The saved prompt should contain chain names, scores, and event details."""
         digests = [
-            ChainDigest("solana", 1, "majors", "", priority_score=8, dominant_topic="Mainnet v2",
+            ChainDigest(chain="solana", chain_tier=1, chain_category="majors", summary="",
+                        priority_score=8, dominant_topic="Mainnet v2",
                         key_events=[{"topic": "v2 release", "category": "TECH_EVENT", "priority": 8,
                                      "confidence": 0.9, "detail": "Solana v2 tagged", "why_it_matters": "Perf gains",
                                      "url": "https://x.com/solana/status/123", "sources": ["Twitter"]}]),
@@ -51,7 +55,8 @@ class TestSummaryEngine:
     @pytest.mark.asyncio
     async def test_prompt_with_health(self):
         digests = [
-            ChainDigest("solana", 1, "majors", "", priority_score=5, dominant_topic="Upgrade"),
+            ChainDigest(chain="solana", chain_tier=1, chain_category="majors", summary="",
+                        priority_score=5, dominant_topic="Upgrade"),
         ]
         health = {"defillama": {"status": "healthy"}, "twitter": {"status": "down"}}
         prompt = _build_daily_prompt(digests, source_health=health, date_str="Apr 29, 2026")

@@ -1,20 +1,18 @@
 """Parallel collector orchestration — run all collectors concurrently.
 
 Uses asyncio.gather() over a semaphore to bound concurrency.
-Collectors that are synchronous (blocking I/O) are run in a thread pool.
+Collectors that are synchronous (blocking I/O) are dispatched via asyncio.to_thread()
+to prevent blocking the event loop.
 """
 
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from processors.pipeline_types import RawEvent
+from processors.pipeline_utils import should_throttle
 
 logger = logging.getLogger(__name__)
-
-# Reusable thread pool for CPU-bound or sync-I/O collectors
-_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="collector-")
 
 
 async def _run_collector(collector: Any, semaphore: asyncio.Semaphore) -> list[RawEvent]:
@@ -31,10 +29,9 @@ async def _run_collector(collector: Any, semaphore: asyncio.Semaphore) -> list[R
             elif asyncio.iscoroutinefunction(getattr(collector, "collect", None)):
                 raw = await collector.collect()
             else:
-                loop = asyncio.get_running_loop()
-                raw = await loop.run_in_executor(_EXECUTOR, collector.collect)
+                raw = await asyncio.to_thread(collector.collect)
         except Exception as exc:
-            logger.error(f"[{collector.name}] Collector exception: {exc}")
+            logger.error(f"[{collector.name}] Collector exception: {type(exc).__name__}: {exc}")
             return []
 
     # Normalise to list[RawEvent]
@@ -43,7 +40,10 @@ async def _run_collector(collector: Any, semaphore: asyncio.Semaphore) -> list[R
         if isinstance(item, RawEvent):
             events.append(item)
         elif isinstance(item, dict):
-            events.append(RawEvent.from_collector_dict(item, collector.name))
+            try:
+                events.append(RawEvent.from_collector_dict(item, collector.name))
+            except Exception as exc:
+                logger.warning(f"[{collector.name}] Unable to convert dict to RawEvent: {exc}")
         else:
             logger.warning(f"[{collector.name}] Ignoring unknown item type: {type(item)}")
     return events
@@ -51,7 +51,7 @@ async def _run_collector(collector: Any, semaphore: asyncio.Semaphore) -> list[R
 
 async def collect_all(
     collectors: list[Any],
-    max_concurrent: int = 5,
+    max_concurrent: int | None = None,
 ) -> tuple[list[RawEvent], dict, dict]:
     """Run all collectors in parallel.
 
@@ -62,11 +62,20 @@ async def collect_all(
 
     Args:
         collectors: List of collector instances.
-        max_concurrent: Max simultaneous collectors (default 5).
+        max_concurrent: Max simultaneous collectors (default from config/pipeline.yaml).
 
     Returns:
         (events, health, feed_health)
     """
+    if max_concurrent is None:
+        from config.loader import get_pipeline_value
+        max_concurrent = get_pipeline_value("pipeline.max_concurrent_collectors", 5)
+    if should_throttle():
+        from config.loader import get_pipeline_value
+        throttle_concurrency = get_pipeline_value("pipeline.memory_throttle_concurrency", 2)
+        logger.warning(f"[collect_all] Memory pressure detected — reducing concurrency to {throttle_concurrency}")
+        max_concurrent = min(max_concurrent, throttle_concurrency)
+
     semaphore = asyncio.Semaphore(max_concurrent)
     tasks = [_run_collector(c, semaphore) for c in collectors]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -77,7 +86,7 @@ async def collect_all(
 
     for collector, result in zip(collectors, results):
         if isinstance(result, Exception):
-            logger.error(f"[{collector.name}] Collector failed: {result}")
+            logger.error(f"[{collector.name}] Collector failed: {type(result).__name__}: {result}")
             health[collector.name] = {"status": "down", "last_error": str(result)}
             continue
 

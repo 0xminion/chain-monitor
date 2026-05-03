@@ -28,6 +28,7 @@ _baselines = None
 _narratives = None
 _sources = None
 _twitter_accounts = None
+_pipeline = None
 
 
 def get_chains() -> dict:
@@ -66,6 +67,34 @@ def get_twitter_accounts() -> dict:
     return _twitter_accounts
 
 
+def get_pipeline_config() -> dict:
+    """Get pipeline configuration with typed defaults."""
+    global _pipeline
+    if _pipeline is None:
+        try:
+            _pipeline = load_yaml("pipeline.yaml")
+        except FileNotFoundError:
+            _pipeline = {}
+    return _pipeline
+
+
+def get_pipeline_value(key_path: str, default):
+    """Get a nested value from pipeline config via dot-path.
+
+    Examples:
+        get_pipeline_value("pipeline.max_concurrent_collectors", 4)
+        get_pipeline_value("twitter.max_workers", 15)
+    """
+    cfg = get_pipeline_config()
+    parts = key_path.split(".")
+    for part in parts:
+        if isinstance(cfg, dict) and part in cfg:
+            cfg = cfg[part]
+        else:
+            return default
+    return cfg
+
+
 def get_chain(chain_name: str) -> Optional[dict]:
     """Get config for a specific chain."""
     return get_chains().get(chain_name)
@@ -98,9 +127,10 @@ def get_chains_by_category(category: str) -> list[str]:
 
 def reload_configs():
     """Force reload all configs (useful for dynamic updates)."""
-    global _chains, _baselines, _narratives, _sources, _twitter_accounts
+    global _chains, _baselines, _narratives, _sources, _twitter_accounts, _pipeline
     _chains = None
     _baselines = None
     _narratives = None
     _sources = None
     _twitter_accounts = None
+    _pipeline = None

@@ -4,10 +4,10 @@
 Collects from configured accounts, outputs raw JSON for the pipeline bridge.
 
 Modes (determined by --workers):
-  --workers 2 (default): Spawn-based parallel (2 fresh processes).
-                         Each worker gets its own browser. Capped at 5.
+  --workers 15 (default): Spawn-based parallel (15 fresh processes).
+                         Each worker gets its own browser. Capped at 15.
                          Each worker gets a fresh isolated process + browser.
-                         Safer than fork but heavier. Capped to max 3 workers.
+                         Safer than fork but heavier. Capped to max 15 workers.
 
 Resource caps:
   - Per-worker RAM watched; killed + restarted if >80% available.
@@ -414,8 +414,8 @@ def main():
     parser.add_argument("--telegram", action="store_true", help="Send digest via TelegramSender")
     parser.add_argument("--json-only", action="store_true", help="Skip Telegram, save files only")
     parser.add_argument("--dry-run", action="store_true", help="Test auth without saving")
-    parser.add_argument("--workers", type=int, default=10, help="Parallel workers (1=sequential, max 15)")
-    parser.add_argument("--batches", type=int, default=10, help="Number of batches")
+    parser.add_argument("--workers", type=int, default=15, help="Parallel workers (1=sequential, max 15)")
+    parser.add_argument("--batches", type=int, default=15, help="Number of batches")
     args = parser.parse_args()
 
     hours = args.hours
