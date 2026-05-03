@@ -32,7 +32,6 @@ class TestE2EPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
             patch("main._save_run_log") as mock_save_log,
             patch("main._persist_daily_digest") as mock_persist,
             patch("main.PipelineMetrics.write") as mock_metrics_write,
@@ -73,10 +72,6 @@ class TestE2EPipeline:
             mock_runner.synthesize = AsyncMock(return_value="📊 Chain Monitor — Apr 27, 2026\n\nSolana v2 released. Ethereum quiet.")
             mock_runner.synthesize_weekly = AsyncMock(return_value="📈 Weekly Brief\n\nWeek summary.")
             mock_runner_cls.return_value = mock_runner
-            # Stage 7
-            mock_sender = AsyncMock()
-            mock_sender.send = AsyncMock(return_value=True)
-            mock_sender_cls.return_value = mock_sender
 
             from main import run_pipeline
             ctx = await run_pipeline()
@@ -104,7 +99,6 @@ class TestE2EPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
             patch("main._save_run_log"),
             patch("main._persist_daily_digest"),
             patch("main.PipelineMetrics.write"),
@@ -121,8 +115,6 @@ class TestE2EPipeline:
             mock_runner.synthesize_weekly = AsyncMock(return_value="📈 Weekly Brief — week summary")
             mock_runner.synthesize = AsyncMock()
             mock_runner_cls.return_value = mock_runner
-            mock_sender = AsyncMock()
-            mock_sender_cls.return_value = mock_sender
 
             from main import run_pipeline
             ctx = await run_pipeline(weekly=True)
@@ -152,7 +144,6 @@ class TestE2EPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
             patch("main._save_run_log"),
             patch("main._persist_daily_digest"),
         ):
@@ -182,8 +173,6 @@ class TestE2EPipeline:
             mock_runner = MagicMock()
             mock_runner.synthesize = AsyncMock(return_value="📊 Chain Monitor — Apr 27\n\nSolana v2.")
             mock_runner_cls.return_value = mock_runner
-            mock_sender = AsyncMock()
-            mock_sender_cls.return_value = mock_sender
 
             # Build metrics manually to seed defillama as empty
             metrics = PipelineMetrics()

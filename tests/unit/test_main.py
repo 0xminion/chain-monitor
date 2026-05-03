@@ -21,7 +21,6 @@ class TestRunPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
         ):
             # Stage 1: collectors return raw events
             mock_collect_all.return_value = (
@@ -88,10 +87,6 @@ class TestRunPipeline:
             mock_runner.synthesize_weekly = AsyncMock(return_value="📈 Weekly Brief")
             mock_runner_cls.return_value = mock_runner
 
-            # Stage 7: sender
-            mock_sender = AsyncMock()
-            mock_sender_cls.return_value = mock_sender
-
             # Prevent alert injection from real disk state by passing a fresh metrics instance
             from processors.metrics import PipelineMetrics
             mock_metrics = PipelineMetrics()
@@ -121,7 +116,6 @@ class TestRunPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
         ):
             mock_collect_all.return_value = (
                 [RawEvent(chain="solana", category="TECH_EVENT", subcategory="upgrade", description="v2", source="rss", reliability=0.7)],
@@ -143,9 +137,6 @@ class TestRunPipeline:
             mock_runner = MagicMock()
             mock_runner.synthesize = AsyncMock(return_value="Quiet day.")
             mock_runner_cls.return_value = mock_runner
-
-            mock_sender = AsyncMock()
-            mock_sender_cls.return_value = mock_sender
 
             # Prevent alert injection from real disk state
             from processors.metrics import PipelineMetrics
@@ -171,7 +162,6 @@ class TestRunPipeline:
             patch("main.SignalReinforcer") as mock_reinf_cls,
             patch("main.analyze_all_chains", new_callable=AsyncMock) as mock_analyze,
             patch("main.AgentDigestRunner") as mock_runner_cls,
-            patch("main.TelegramSender") as mock_sender_cls,
         ):
             mock_collect_all.return_value = ([], {"DefiLlama": {"status": "healthy"}}, {})
             mock_dedup.return_value = []
@@ -190,9 +180,6 @@ class TestRunPipeline:
             mock_runner.synthesize = AsyncMock(return_value="Quiet day.")
             mock_runner_cls.return_value = mock_runner
 
-            mock_sender = AsyncMock()
-            mock_sender_cls.return_value = mock_sender
-
             # Prevent alert injection from real disk state
             from processors.metrics import PipelineMetrics
             mock_metrics = PipelineMetrics()
@@ -201,6 +188,4 @@ class TestRunPipeline:
             from main import run_pipeline
             ctx = await run_pipeline(metrics=mock_metrics)
 
-            # Pipeline no longer sends via Telegram in no-activity case
-            mock_sender.send.assert_not_awaited()
         assert ctx.final_digest == "Quiet day."

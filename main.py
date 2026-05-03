@@ -29,7 +29,6 @@ from processors.summary_engine import synthesize_digest
 from processors.pipeline_utils import safe_json_write
 from processors.metrics import PipelineMetrics
 from processors.agent_runner import AgentDigestRunner
-from output.telegram_sender import TelegramSender
 
 # Import all collectors
 from collectors.defillama import DefiLlamaCollector
@@ -229,24 +228,10 @@ async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = Fa
         if alert_lines and ctx.final_digest:
             ctx.final_digest = ctx.final_digest + "\n\n" + "\n".join(alert_lines)
 
-    # 7d: Optional Telegram delivery
-    sent = False
-    sender = TelegramSender()
-    if _should_send(ctx.chain_digests):
-        try:
-            sent = await sender.send(ctx.final_digest)
-            logger.info(f"Digest delivered: {sent}")
-        except Exception as exc:
-            logger.error(f"Telegram delivery failed: {type(exc).__name__}: {exc}")
-        finally:
-            try:
-                await sender.close()
-            except Exception:
-                pass
-    else:
-        logger.info("Digest not sent — fewer than 2 chains with significant activity")
-
-    metrics.stage_end("deliver", events_in=len(ctx.final_digest), events_out=int(sent), errors=0)
+    # ── Stage 7d: Agent-native delivery (no external Telegram) ──────────────
+    # In v0.2+, the running agent (you) reads the saved prompt and writes
+    # prose directly into this chat. The TelegramSender is deprecated.
+    logger.info("Digest delivered via agent-native channel (this chat)")
 
     # Cleanup old signals
     try:
