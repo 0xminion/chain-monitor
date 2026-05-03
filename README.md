@@ -1,84 +1,20 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 6 event categories, scores events, and delivers daily/weekly digests via the running agent. Fully agent-native: no inline LLM calls, no external Telegram bot.
+Multi-chain crypto intelligence pipeline. Monitors 27 blockchain ecosystems across 6 event categories, scores signals, and structures daily/weekly digests for agent-native prose synthesis.
 
-## v0.1.0 — Chain-Centric Agent-Native Pipeline
+The running agent is the only reasoning engine in the loop: it reads the generated prompt and writes the final digest prose directly into the active chat. No external LLM calls. No Telegram bot.
 
-The pipeline now treats every chain as a unit of intelligence:
+---
 
-1. **Parallel Collect** — all 10 collectors run concurrently via `asyncio.gather()`
-2. **Dedup** — O(n) hash-based deduplication (URL + fingerprint index)
-3. **Categorize + Score** — keyword categorization + rule-based scoring
-4. **Per-chain deterministic analyze** — merges related signals into ChainDigests
-5. **Agent-native synthesis** — the running agent reads a rich prompt and writes prose directly
-6. **Weekly synthesize** — thematic sections from 7 days of persisted daily digests
-7. **Deliver** — agent-native delivery (this chat) + run log + daily digest persistence
+## Pipeline (7 stages)
 
-### What's New in v0.1.0
-
-- **Per-chain narrative**: Instead of raw signal bullets, the digest tells you what's actually happening
-- **Cross-source merging**: Multiple sources about the same event = ONE reinforced observation
-- **Parallel everything**: Collectors and chain analyzers both run concurrently
-- **O(n) dedup**: Single-pass hash dedup replaces the old O(n*m) text similarity loop
-- **Event-driven weekly digest**: Thematic sections with assigned emojis, not chain-by-chain breakdown
-- **Markdown links on first word**: Evidence-backed hyperlinks embedded via `[Word](URL)`
-- **Management CLI**: `scripts/chain_monitor_cli.py` for chains, cron, digest, health
-- **Setup wizard**: `scripts/setup.py` interactive `.env` generator
-- **Doctor**: `scripts/doctor.py` end-to-end health check with auto-fix hints
-
-## Quick Start
-
-```bash
-cd chain-monitor
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Playwright browsers
-python -m playwright install chromium
-
-# Install Camoufox (anti-detect browser for Cloudflare-protected sites)
-camoufox fetch
-
-# Interactive setup (creates .env and checks storage dirs)
-python3 scripts/setup.py
-
-# Edit .env with your API keys
-cp .env.example .env
-nano .env
-
-# Health check
-python3 scripts/doctor.py
-
-# Run the full pipeline (daily digest)
-python3 main.py
-
-# Dry-run digest (print to stdout)
-python3 scripts/chain_monitor_cli.py digest --dry-run --preview
-
-# Install daily cron at 9am UTC
-python3 scripts/chain_monitor_cli.py cron install --hour 9
-
-# Run tests
-python3 -m pytest tests/ -q
-```
-
-Chain Monitor is fully agent-native — no external LLM subprocess calls.
-
-### 1. Per-Chain Semantic Analysis
-Each chain gets deterministic analysis of all its signals:
-- **Cross-source merging**: GitHub release + tweet + blog post about same event = ONE observation
-- **Event classification**: TECH_EVENT, PARTNERSHIP, FINANCIAL, RISK_ALERT, REGULATORY, VISIBILITY (agent-provided)
-- **Priority scoring**: Chain-level score 0-15 based on highest-impact observation + cross-reinforcement
-- **Trader narrative**: 2-3 sentence summary of WHY it matters, not just WHAT happened
-- **Confidence score**: Driven by source count and agreement
-
-### 2. Twitter Semantic Enrichment
-Every tweet, retweet, and quote-tweet is enriched with semantic understanding:
-- **Agent-native categorization**: Categories assigned by the running agent, not LLMs
-  - Role-aware scoring (official → P9, contributor → P6, community → P3)
-  - Deterministic keyword + rule-based fallback if agent results absent
-- **Engagement filtering**: Regex filters out "gm", "wagmi", emoji-only noise
+1. **Parallel Collect** — 9 collectors run concurrently via `asyncio.gather`
+2. **Dedup** — O(n) hash-based deduplication
+3. **Categorize** — source-provided categories with deterministic keyword fallback
+4. **Score + Reinforce** — rule-based heuristics merge similar signals across sources
+5. **Per-chain Analyze** — deterministic analysis builds `ChainDigest` objects
+6. **Agent Prompt Synthesis** — structured markdown prompt saved to `storage/agent_input/`
+7. **Agent-native Delivery** — running agent reads prompt and writes prose
 
 ---
 
@@ -93,169 +29,99 @@ pip install -r requirements.txt
 # Install Playwright browsers
 python -m playwright install chromium
 
-# Install Camoufox (anti-detect browser for Cloudflare-protected sites)
-camoufox fetch
+# Setup .env (data source API keys only; no LLM config needed)
+python3 scripts/setup.py
 
-# Edit .env with your API keys
-cp .env.example .env
-nano .env
+# Health check
+python3 scripts/doctor.py
 
-# Run a collection cycle
+# Run the full pipeline
 python3 main.py
 
+# With resource profiling
+python3 scripts/chain_monitor_cli.py digest --preview
+
+# Install daily cron at 9am UTC
+python3 scripts/chain_monitor_cli.py cron install --hour 9
+
 # Run tests
-python3 -m pytest tests/
+python3 -m pytest tests/ -q
 ```
 
-## Configuration
+---
 
-All configuration is YAML-based. No code changes needed to add/remove chains or narratives.
+## Structure
 
-| File | Purpose |
-|------|---------|
-| `config/chains.yaml` | 27 chain definitions, data sources, GitHub repos |
-| `config/baselines.yaml` | Per-chain scoring thresholds |
-| `config/narratives.yaml` | Narrative categories and keywords |
-| `config/sources.yaml` | RSS feeds, API endpoints, TradingView config |
+| Directory | Purpose |
+|-----------|---------|
+| `collectors/` | 9 data ingestors: RSS, Twitter, DefiLlama, GitHub, regulatory, etc. |
+| `processors/` | Dedup, scoring, reinforcement, chain analysis, prompt synthesis |
+| `output/` | Weekly digest builder (reads 7 days of persisted daily prompts) |
+| `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml` |
+| `scripts/` | `setup.py`, `doctor.py`, `chain_monitor_cli.py` |
+| `storage/` | Events, health logs, narrative history, agent prompts |
 
-### Adding a New Chain
-
-1. Add entry to `config/chains.yaml`:
-```yaml
-newchain:
-  category: "high_tps"
-  tier: 3
-  coingecko_id: "newchain"
-  defillama_slug: "newchain"
-  github_repos:
-    - "newchain-org/newchain"
-  blog_rss: "https://newchain.io/blog/rss.xml"
-```
-
-2. Add baseline to `config/baselines.yaml`:
-```yaml
-newchain:
-  tvl_absolute_milestone: 100000000
-  tvl_change_notable: 25
-  tvl_change_spike: 50
-  regulatory_sensitivity: "LOW"
-```
-
-## Architecture
-
-```
-collectors/     → Data ingestion (8 collectors)
-processors/     → Categorizer, scorer, reinforcer, narrative tracker
-output/         → Digest formatting and agent-native delivery
-config/         → YAML configuration
-storage/        → Event data, health logs, narrative history
-scripts/        → Setup and verification scripts
-tests/          → Unit, integration, system tests
-```
+---
 
 ## Collectors
 
-| Collector | Source | Method | Signals |
-|-----------|--------|--------|---------|
-| DefiLlama | TVL, fees, volume, protocol attribution | REST API | FINANCIAL |
-| CoinGecko | Price, market cap anomalies | REST API | FINANCIAL |
-| GitHub | Version tags, high-signal PRs, EIP descriptions | REST API | TECH_EVENT |
-| RSS | 11 news feeds + 54 chain blog feeds + 13 podcast feeds | RSS/Atom | All categories |
-| Regulatory | SEC EDGAR filings, CoinCenter policy | RSS | REGULATORY |
-| Risk Alert | DeFiLlama hacks, TVL crashes, Immunefi | REST API | RISK_ALERT |
-| TradingView | News flow from 16+ providers | Playwright (Chromium) | All categories |
-| Events | ethereum.org conferences, ETHGlobal hackathons | Camoufox (anti-detect) | VISIBILITY |
+| Collector | Source | Signals |
+|-----------|--------|---------|
+| DefiLlama | TVL, fees, volume | FINANCIAL |
+| CoinGecko | Price, market cap anomalies | FINANCIAL |
+| GitHub | Version tags, PRs, EIPs | TECH_EVENT |
+| RSS | 80+ feeds across 27 chains | All categories |
+| Regulatory | SEC EDGAR, policy | REGULATORY |
+| Risk Alert | Hack/vulnerability feeds | RISK_ALERT |
+| TradingView | News flow via Playwright | All categories |
+| Events | Conferences, hackathons | VISIBILITY |
+| Twitter | 138 chain accounts via Playwright | All categories |
 
-## Event Categories
+---
 
-| Category | What It Captures | Sources |
-|----------|-----------------|---------|
-| Tech event | Mainnet launches, upgrades, releases, EIPs, audits | GitHub, RSS, TradingView |
-| Partnership | Integrations, collaborations, deployments, co-launches | RSS keyword matching, TradingView |
-| Regulatory | SEC filings, licenses, approvals, bans, enforcement | SEC EDGAR, CoinCenter, RSS, TradingView |
-| Risk alert | Hacks, exploits, outages, critical bugs | DeFiLlama, RSS, TradingView |
-| Visibility | Conferences, hackathons, AMAs, hires, departures | ethereum.org, ETHGlobal, RSS, TradingView |
-| Financial | TVL milestones, volume spikes, funding, airdrops, TGEs | DefiLlama, CoinGecko, RSS, TradingView |
-| News | General crypto news without specific chain attribution | RSS keyword matching |
-| AI narrative | AI agent activity, LLM integrations | RSS keyword matching |
+## Configuration
 
-## Data Sources Detail
+`config/pipeline.yaml` holds all tunable constants (workers, thresholds, retention). `config/loader.py` reads YAML + `.env` with sensible defaults. No hardcoded values in Python.
 
-### Financial
-- **DefiLlama**: TVL per chain (with top protocol attribution), fees, revenue, stablecoin flows
-- **CoinGecko**: Price, market cap anomaly detection
+Key env vars (`.env`):
 
-### Technical
-- **GitHub**: Version tags (major releases only), high-signal PRs (EIPs, security, breaking changes)
-- **EIP context**: Auto-fetches EIP descriptions and release notes from GitHub
+```
+LOG_LEVEL=INFO
+DATA_RETENTION_DAYS=90
+TWITTER_MAX_WORKERS=15
+TWITTER_NUM_BATCHES=10
+TWITTER_LOOKBACK_HOURS=24
 
-### News & Events
-- **RSS feeds**: CoinDesk, The Block, Cointelegraph, NewsBTC, 99Bitcoins, Decrypt, Blockworks, CryptoSlate, CoinGape, Bitcoin.com, AMBCrypto
-- **Chain blog feeds (68 total)**: Each chain may publish via blog, Medium, Substack, or podcast — all sources are checked independently (peer-level, no fallback hierarchy)
-- **Podcast feeds (13 total)**: Bankless, Unchained, What Bitcoin Did, Lightspeed, The Defiant, The Scoop, Empire, 0xResearch, Bell Curve, Tales from the Crypt, Thinking Crypto, Week in Ethereum, The Breakdown
-- **TradingView**: Playwright scraper for crypto news flow (bypasses JS rendering)
-- **ethereum.org**: 38+ upcoming conferences with dates, locations, tags (Camoufox anti-detect)
-- **ETHGlobal**: Hackathons, meetups, conferences (Camoufox anti-detect)
+# Optional data source keys
+COINGECKO_API_KEY=***
+YOUTUBE_API_KEY=***
+GITHUB_TOKEN=***
+```
 
-### Regulatory
-- **SEC EDGAR**: Recent filings for crypto-related entities
-- **CoinCenter**: Policy analysis and developer rights advocacy
-- **DeFi Education Fund**: Legislative tracking
-
-### Risk
-- **DeFiLlama hacks**: Known hack incidents
-- **TVL crashes**: Automated detection of >15% TVL drops
-- **Immunefi**: Bug bounty and vulnerability disclosures
-
-## Scoring
-
-Every event gets an **Impact** (1-5) × **Urgency** (1-3) = **Priority Score**.
-
-| Score | Delivery |
-|-------|----------|
-| ≥10 | Immediate Telegram alert |
-| 6-9 | Daily digest |
-| 3-5 | Weekly report |
-| <3 | Log only |
-
-Thresholds are per-chain (configurable in baselines.yaml).
-
-## Keyword Matching (Partnership & Visibility)
-
-The categorizer uses expanded keyword sets to catch announcements from RSS/TradingView:
-
-**Partnership keywords**: partnership, partners with, integration, deployed on, live on, launches on, available on, adds support for, expands to, migrates to, built on, powered by, alliance, consortium, strategic, ecosystem partner
-
-**Visibility keywords**: conference, hackathon, ama, keynote, speaker, podcast, live stream, community call, new ceo/cto, hired, appointed, resigned, stepped down
+---
 
 ## Agent-Native Delivery
 
-Digests are saved as structured prompts in `storage/agent_input/`. The running agent reads the prompt and writes prose directly into the active chat. No external LLM calls. No Telegram bot.
+The pipeline writes a structured Markdown prompt (`storage/agent_input/daily_prompt_*.md`) containing:
 
-- Markdown links: `[Word](URL)` embedded on first content-bearing word per chain
-- No HTML `<a>` tags (use native Markdown)
-- No price/financial content in digests
-- Partnerships shown as separate section
-- Only major releases with release notes in tech events
+- Per-chain event summaries with URLs
+- Source health report
+- Cross-chain theme prompt
 
-## Data Retention
+The running agent reads this file and produces the final digest prose directly in chat. Zero external LLM dependencies. Zero Telegram bot.
 
-- Raw events: 90 days
-- Aggregated metrics: 90 days
-- Weekly reports (narrative history): 90 days
+---
 
 ## Testing
 
 ```bash
-python3 -m pytest tests/
-python3 -m pytest tests/unit/
-python3 -m pytest tests/ --cov=collectors --cov=processors --cov=output
+python3 -m pytest tests/ -q
 ```
 
-## API Keys Required
+254 tests cover unit, integration, system, and regression suites.
 
-| Key | Cost | Where to Get |
-|-----|------|-------------|
-| CoinGecko | Free (30 req/min, 10K/mo) | coingecko.com/api |
-| GitHub Token | Free (5000 req/hr) | github.com/settings/tokens |
-| Telegram Bot | Free | @BotFather |
+---
+
+## License
+
+MIT

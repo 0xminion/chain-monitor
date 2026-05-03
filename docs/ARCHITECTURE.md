@@ -1,150 +1,213 @@
-# Chain Monitor Architecture — v0.1.0
+# Chain Monitor — Architecture
 
-## Pipeline Stages
+**Version:** v0.1.0-agent-native
+**Last updated:** May 2026
+
+---
+
+## Pipeline Overview
+
+7-stage deterministic pipeline. The running agent is the only reasoning engine — there are no external LLM calls, no Telegram bot, and no inline model inference.
 
 ```
-┌─────────────────┐
-│  Stage 1: Collect │ ← parallel (async, 10 collectors, semaphore=5)
-│  O(k) collectors │     k=10
-└────────┬────────┘
-         │ list[RawEvent]
-         v
-┌─────────────────┐
-│  Stage 2: Dedup   │ ← O(n) single pass
-│  URL index + FP  │     n = total raw events
-└────────┬────────┘
-         │ list[RawEvent]
-         v
-┌─────────────────┐
-│ Stage 3: Categorize│ ← agent-native checkpoint
-│ + Score + Reinforce│     agent provides categories; deterministic scoring 
-└────────┬────────┘
-         │ list[Signal]
-         v
-┌─────────────────┐
-│ Stage 4: Chain   │ ← deterministic O(c), c=27 chains
-│      Analyze     │     merges related cross-source events with
-│  Merge signals   │     confidence threshold
-│  into narratives │
-└────────┬────────┘
-         │ list[ChainDigest]
-         v
-┌─────────────────┐
-│ Stage 5: Digest   │ ← agent-native prompt synthesis; per-chain prose
-│    Synthesize     │     Markdown links embedded on first word. (300-600 words)
-└────────┬────────┘
-         │ str (Markdown)
-         v
-┌─────────────────┐
-│ Stage 6: Weekly   │ ← agent-native thematic synthesis
-│    Synthesize     │     Reads 7 days of persisted daily digests.
-│                   │     Up to 10 thematic sections with emoji headers.
-└────────┬────────┘
-         │ str (Markdown)
-         v
-┌─────────────────┐
-│ Stage 7: Deliver  │ ← agent-native delivery + JSON run log + daily digest persistence
-│                  │     Prompt saved in storage/agent_input/ for the running agent
-└─────────────────┘
+┌────────────────────┐
+│ Stage 0: Collect     │ ← asyncio.gather across 9 collectors
+│    (parallel)        │     RSS, DefiLlama, GitHub, TradingView, Events,
+│                      │     Risk Alert, Regulatory, Twitter, CoinGecko
+└──────────┬──────────┘
+           │ list[RawEvent]
+           v
+┌────────────────────┐
+│ Stage 1: Dedup       │ ← O(n) hash-based dedup (URL + fingerprint)
+│                      │     Source health computed.
+└──────────┬──────────┘
+           │ list[RawEvent] + health report
+           v
+┌────────────────────┐
+│ Stage 2: Categorize  │ ← deterministic keyword + source-provided category
+│                      │     fallback. No LLM. No agent blocking.
+└──────────┬──────────┘
+           │ list[RawEvent] with category/subcategory
+           v
+┌────────────────────┐
+│ Stage 3: Score       │ ← rule-based P2-P9 scoring + chain mapping
+│                      │     Baselines sourced from config/baselines.yaml
+└──────────┬──────────┘
+           │ list[Signal]
+           v
+┌────────────────────┐
+│ Stage 4: Reinforce   │ ← cross-source merge (dedup on fingerprint)
+│                      │     Same event from RSS + GitHub = one reinforced signal
+└──────────┬──────────┘
+           │ dict[chain, list[Signal]]
+           v
+┌────────────────────┐
+│ Stage 5: Analyze     │ ← per-chain deterministic analysis
+│                      │     builds ChainDigest (summary, events, score)
+└──────────┬──────────┘
+           │ list[ChainDigest]
+           v
+┌────────────────────┐
+│ Stage 6: Synthesize  │ ← AgentDigestRunner builds markdown prompt
+│                      │     Prompt saved to storage/agent_input/
+└──────────┬──────────┘
+           │ str (Markdown prompt)
+           v
+┌────────────────────┐
+│ Stage 7: Deliver     │ ← Agent-native prose synthesis
+│                      │     The running agent reads prompt, writes digest
+└────────────────────┘
 ```
+
+---
+
+## Design Decisions
+
+### Agent-Native Architecture
+
+The traditional LLM-in-pipeline approach (calling OpenAI/Ollama during each run) was removed because:
+
+1. **Hallucination risk:** inline LLM calls fabricate URLs, dollar amounts, and partnerships
+2. **Latency:** 30-120s blocking calls slow a pipeline that should finish in ~5min
+3. **Token cost:** daily + weekly synthesis consumes ~50K tokens/day per model provider
+4. **Reliability:** local Ollama models crash on 16GB Steam Deck under concurrent browser load
+
+The agent-native model inverts this: the pipeline produces deterministic structured data, the running agent (you) reads a rich prompt and writes prose. Trust moves from opaque model inference to explicit prompt + human reasoning.
+
+### Why ProcessPoolExecutor for Twitter (not async)
+
+X throttles concurrent tabs within a single browser context. A single Playwright `Browser` + 5+ concurrent `Page` objects yields degraded or empty timelines. Each `ProcessPoolExecutor` worker gets its own isolated browser + temp Chrome profile, bypassing server-side detection entirely. This costs RAM (~200MB/worker) but produces reliable tweet extraction on Steam Deck (16GB total).
+
+---
+
+## Stage-by-Stage Details
+
+### Stage 0: Parallel Collect
+
+All collectors implement `BaseCollector` with `async collect()` returning `list[RawEvent]`. `parallel_runner.collect_all()` gathers them with `asyncio.gather(return_exceptions=True)` so one broken collector cannot crash the pipeline.
+
+Twitter is the only collector using synchronous Playwright via `ProcessPoolExecutor`. It batches 138 handles across 15 workers × 10 batches. Each worker gets a lightweight Chrome profile copy (no caches, no IndexedDB) to keep `/tmp` usage under 1.5GB.
+
+### Stage 1: Dedup
+
+`dedup_engine.py` maintains a rolling hash set across pipeline runs. Deduplication keys:
+
+- Primary: `hashlib.sha256(url + normalized_text[:120])`
+- Fallback: `hashlib.sha256(normalized_text[:200])` for events without URLs
+
+Complexity: O(n) single pass. Old approach was O(n×m) pairwise similarity — abandoned because it was ~40% of runtime on 200+ events.
+
+### Stage 2: Categorize
+
+`EventCategorizer.apply_categories()` maps events using source-provided categories. A deterministic keyword dictionary (`CATEGORY_KEYWORDS` in `categorizer.py`) provides fallback when the collector didn't set a category. No blocking agent checkpoint in production — the "agent checkpoint" pattern in `agent_native.py` is reserved for manual override workflows.
+
+### Stage 3–4: Score + Reinforce
+
+`SignalScorer.score()` converts a categorized event into a `Signal` with `impact` (1-5), `urgency` (1-3), and `priority_score = impact × urgency`. Chain mapping uses `primary_chain` from config, then keyword mentions, then description heuristics.
+
+`SignalReinforcer.process()` merges signals with identical fingerprints. A signal reinforced by 3+ sources gets `composite_confidence = min(0.95, max_reliability × 1.3)`.
+
+### Stage 5: Per-chain Analyze
+
+`chain_analyzer.analyze_all_chains()` iterates each configured chain and builds a `ChainDigest` from its signals. Deterministic rules pick:
+
+- `dominant_topic`: category with most signals
+- `key_events`: top-N by priority (sorted descending, max 5)
+- `priority_score`: highest individual signal priority + source-count bonus
+
+### Stage 6: Prompt Synthesis
+
+`AgentDigestRunner.synthesize()` calls `summary_engine._build_daily_prompt()` to produce a markdown prompt containing:
+
+1. Date header
+2. Source health summary
+3. One `### ChainName (Score: X)` section per active chain
+4. Per-event `URL:` and `Detail:` fields for every signal
+5. Strict output format instructions (word count, link placement, prose rules)
+
+The prompt is saved to `storage/agent_input/daily_prompt_YYYYmmDD_HHMMSS.md`.
+
+### Stage 7: Agent-native Delivery
+
+The running agent reads the saved prompt and writes the final digest prose directly into the active chat. No code invocation — the agent is the synthesis engine.
+
+---
 
 ## Data Flow
 
-### Stage 1 → 2: RawEvent contract
-Every collector (legacy or new) must produce output that can become a `RawEvent`.
-The `RawEvent.from_collector_dict()` adapter bridges legacy dict-returning collectors.
-
-### Stage 2 → 3: Deduplication keys
-- **Primary key**: `url:{chain}:{normalized_url}`
-- **Secondary key**: `fp:{chain}:{category}:{sha256(description[:200])[:24]}`
-
-Collision resolution keeps the event with highest evidence weight.
-Tie-breaker: most recent published_at.
-
-### Stage 3 → 4: Signal to events_by_chain
-After scoring, events are re-grouped by chain from the *unique* (not reinforced) set,
-so the LLM sees all distinct observations for cross-source merging.
-
-### Stage 4 → 5: ChainDigest
-- `priority_score`: 0-15 (chain total, not per-event)
-- `confidence`: 0.0-1.0 (how well sources agree)
-- `summary`: prose narrative, 2-4 sentences (from deterministic builder)
-- `key_events`: merged observations with `sources`, `why_it_matters`
-
-### Stage 5 → 6: Final digest
-Agent-native synthesis: rich markdown prompt saved to `storage/agent_input/` for the running agent.
-Fallback: structured bullet list when no agent is available.
-
-## Parallelization Strategy
-
-| Stage | Parallelization | Bottleneck | Mitigation |
-|-------|------------------|------------|------------|
-| 1 Collect | asyncio.gather + ThreadPoolExecutor | I/O wait on APIs | Semaphore(5) to avoid rate limits |
-| 2 Dedup | Single-threaded (O(n), fast) | None | None needed |
-| 3 Categorize | Single-threaded (O(n)) | None | None needed |
-| 4 Chain analyze | asyncio.gather | data volume | deterministic, fast |
-| 5 Digest synthesize | Single-threaded | disk write | instant |
-| 6 Deliver | Single-threaded | disk write | instant |
-
-## Agent-Native Synthesis Budget
-
-No external LLM calls are made during pipeline execution. The running agent reads
-persisted prompts and produces prose digests independently.
-
-- Stage 4: deterministic rule-based ChainDigest building (zero tokens)
-- Stage 5: prompt written to disk for agent consumption (zero tokens)
-- Stage 6: prompt written to disk for weekly consumption (zero tokens)
-
-Daily prompt size: ~5-15K chars per chain (up to 30 chains).
-Weekly prompt size: up to 200K chars of daily digest text (truncated).
-
-## Configuration Files
-
-| File | Purpose |
-|------|---------|
-| `config/chains.yaml` | 27 chain definitions |
-| `config/baselines.yaml` | Per-chain scoring thresholds |
-| `config/narratives.yaml` | Narrative categories and keywords |
-| `config/sources.yaml` | RSS feeds, API endpoints |
-| `.env` | Secrets (data source APIs, Twitter settings) |
-
-## Security & Error Isolation
-
-- Each collector runs in its own task (isolated exceptions)
-- `asyncio.gather(return_exceptions=True)` prevents one collector from crashing the pipeline
-- Collector tasks isolated: `asyncio.gather(return_exceptions=True)` prevents one failed collector from crashing the pipeline
-- Signal storage uses `FileLock` to prevent Coroutine/json corruption under cron overlap
-
-## Testing
-
-```bash
-# Unit tests (fast, no external deps)
-python3 -m pytest tests/unit/ -q
-
-# Integration tests (real collectors, but mocked I/O)
-python3 -m pytest tests/integration/ -q
-
-# System tests (full pipeline, slow)
-python3 -m pytest tests/system/ -q
-
-# All tests
-python3 -m pytest tests/ -q
 ```
+RawEvent → Dedup → CategorizedEvent → Signal → ReinforcedSignal → ChainDigest → Prompt
+```
+
+Persistence points (all atomic via `safe_text_write` / `safe_json_write`):
+
+| Artifact | Path | Purpose |
+|----------|------|---------|
+| Raw events | `storage/events/<id>.json` | Reinforcer reloads on restart |
+| Health log | `storage/health/run_*.json` | Per-run stats + timing |
+| Metrics | `storage/metrics/metrics.jsonl` | `PipelineMetrics` telemetry |
+| Agent prompt | `storage/agent_input/daily_prompt_*.md` | Prompt for agent synthesis |
+| Daily digest | `storage/daily_digests/daily_digest_*.md` | Weekly builder input |
+
+---
+
+## Concurrency & Resource Budget
+
+| Stage | Concurrency | Bottleneck | Mitigation |
+|-------|-------------|------------|------------|
+| Collect | asyncio.gather + `ProcessPoolExecutor` for Twitter | API rate limits | Configured semaphore + batching |
+| Dedup | Single-threaded (O(n)) | None | None |
+| Score | Single-threaded (O(n)) | None | None |
+| Reinforce | Single-threaded | Disk I/O | FileLock on signal storage |
+| Analyze | asyncio.gather | Data volume | Deterministic, fast |
+| Synthesize | Single-threaded | Disk write | Instant |
+| Deliver | Agent-native (chat) | None | Prompt persisted for retry |
+
+Steam Deck-specific constraints enforced in `config/pipeline.yaml`:
+
+- `memory_throttle_mb: 500` — when `<500MB` free, concurrency drops to 2
+- Twitter lite profile copy — excludes `GPUCache`, `blob_storage`, `Code Cache`, `IndexedDB`, etc.
+- Chrome process cleanup: `pkill -9 chrome` pre-run if zombies detected
+
+---
 
 ## Extension Points
 
-- Add a collector: subclass `BaseCollector`, implement `collect()`, register in `main.py`
-- Add a chain: use `scripts/chain_monitor_cli.py chains add` or edit `config/chains.yaml`
-- Change prompt format: edit `processors/chain_analyzer.py` or `processors/summary_engine.py`
-- Change weekly digest format: edit `output/weekly_digest.py` `build_digest()`
-- Change scoring: edit `processors/scoring.py`
-- Add new event category: update `processors/categorizer.py` CATEGORY_KEYWORDS
+- **Add collector:** subclass `BaseCollector`, implement `collect()`, add to `main.py` collector list
+- **Add chain:** `scripts/chain_monitor_cli.py chains add <name>` or edit `config/chains.yaml`
+- **Change prompt:** edit `processors/summary_engine.py` `_build_daily_prompt()`
+- **Change scoring:** edit `processors/scoring.py`
+- **Add event category:** update `processors/categorizer.py` `CATEGORY_KEYWORDS`
 
-## Key Scripts
+---
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/setup.py` | Interactive `.env` generator |
-| `scripts/doctor.py` | End-to-end health check with auto-fix hints |
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | 7-stage pipeline orchestrator |
+| `processors/parallel_runner.py` | `collect_all()` async gather |
+| `processors/dedup_engine.py` | O(n) hash dedup |
+| `processors/scoring.py` | Rule-based signal scoring |
+| `processors/reinforcement.py` | Cross-source signal merge |
+| `processors/chain_analyzer.py` | Per-chain digest building |
+| `processors/summary_engine.py` | Markdown prompt builder |
+| `processors/agent_runner.py` | Prompt persister (agent-native only) |
+| `collectors/twitter_collector.py` | Playwright-based extraction with ProcessPoolExecutor |
+| `config/pipeline.yaml` | Centralized tunables (workers, thresholds, retention) |
 | `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
-| `output/weekly_digest.py` | Weekly digest builder (reads 7 days of daily prompts) |
+
+---
+
+## Agent-Native Synthesis Budget
+
+No external LLM calls during pipeline execution. Token count: zero.
+
+- Stage 0–5: pure computation, no tokens
+- Stage 6: prompt written to disk (zero tokens consumed by pipeline)
+- Stage 7: the running agent synthesizes prose independently
+
+Prompt sizes for context sizing:
+
+- Daily: ~5-15K chars per active chain
+- Weekly: up to 200K chars of digest text (truncated by builder)
