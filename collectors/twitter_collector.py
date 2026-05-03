@@ -3,9 +3,6 @@
 Uses Playwright with existing browser session cookies for authentication.
 Anti-detection strategy: Camoufox -> Chromium persistent context -> standard Chromium.
 
-v0.2.0 — async refactor: ONE browser context + concurrent pages (semaphore).
-   Replaces ProcessPoolExecutor (15 separate browser processes) with asyncio.
-
 Author: 0xminion
 """
 
@@ -15,7 +12,8 @@ import os
 import random
 import subprocess
 import time
-import asyncio
+import concurrent.futures
+import multiprocessing as mp
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -147,8 +145,8 @@ class TwitterCollector(BaseCollector):
         Args:
             standalone_mode: If True, skips dedup/reinforcement and writes to own JSON.
             lookback_hours: Override global default. Defaults to env TWITTER_LOOKBACK_HOURS or config.
-            max_workers: Number of concurrent Playwright pages (NOT processes). Defaults to config (15).
-            num_batches: Ignored in v0.2.0+ (kept for API compat).
+            max_workers: Number of parallel Playwright workers. Defaults to config (15).
+            num_batches: Number of handle batches. Defaults to config (10).
         """
         super().__init__(name="twitter")
         self.standalone_mode = standalone_mode
@@ -156,13 +154,13 @@ class TwitterCollector(BaseCollector):
                                                            str(get_pipeline_value("twitter.lookback_hours", 24))))
         self.max_workers = int(get_env("TWITTER_MAX_WORKERS",
                                        str(max_workers if max_workers is not None else get_pipeline_value("twitter.max_workers", 15))))
-        # num_batches kept for API compat but unused in v0.2.0+
         self.num_batches = int(get_env("TWITTER_NUM_BATCHES",
                                        str(num_batches if num_batches is not None else get_pipeline_value("twitter.num_batches", 10))))
         self._playwright = None
         self._browser = None
         self._context = None
-        self._accounts: dict[str, list[dict]] = {}  # chain -> list of handle configs
+        self._last_profile_copy: Optional[Path] = None
+        self._accounts: dict[str, list[dict]] = {}  # chain -> list of handle configs        
         # Load accounts from YAML
         self._load_accounts()
 
@@ -187,31 +185,41 @@ class TwitterCollector(BaseCollector):
         logger.info(f"[twitter] Loaded {len(self._accounts)} chains, {total} total accounts")
 
     # -----------------------------------------------------------------------
-    # Browser lifecycle — kept for backward compat; collect() now uses async
+    # Browser lifecycle — anti-detection tiered fallback
     # -----------------------------------------------------------------------
     def _start_browser(self):
         """Launch browser with best available anti-detection strategy."""
         from playwright.sync_api import sync_playwright
+        import multiprocessing
 
+        in_forked_worker = multiprocessing.current_process().name != "MainProcess"
         self._playwright = sync_playwright().start()
 
-        # --- Tier 1: Camoufox (anti-detect) -----------------
-        try:
-            from camoufox.sync_api import Camoufox
-            logger.info("[twitter] Using Camoufox (anti-detect)")
-            self._browser = Camoufox(headless=True).__enter__()
-            self._context = self._browser
-            return
-        except Exception as e:
-            logger.info(f"[twitter] Camoufox failed ({e}), trying Chromium persistent context")
-
-        # --- Tier 2: Chromium persistent context with user profile ---
-        profile_path = self._find_chrome_profile()
-        if profile_path:
+        # --- Tier 1: Camoufox (anti-detect) — main process only -----------------
+        if not in_forked_worker:
             try:
-                logger.info(f"[twitter] Using Chromium persistent profile: {profile_path}")
+                from camoufox.sync_api import Camoufox
+                logger.info("[twitter] Using Camoufox (anti-detect)")
+                self._browser = Camoufox(headless=True).__enter__()
+                self._context = self._browser
+                return
+            except Exception as e:
+                logger.info(f"[twitter] Camoufox failed ({e}), trying Chromium persistent context")
+
+        # --- Tier 2: Chromium persistent context with temp copy or user profile ---
+        # Workers receive a pre-copied profile so they bypass the original lock.
+        # Main process tries the temp copy first (pre-copied before spawning),
+        # then falls back to the original.
+        for label, ppath in [
+            ("temp copy", self._last_profile_copy),
+            ("original", None if in_forked_worker else self._find_chrome_profile()),
+        ]:
+            if ppath is None:
+                continue
+            try:
+                logger.info(f"[twitter] Using Chromium persistent profile ({label}): {ppath}")
                 self._context = self._playwright.chromium.launch_persistent_context(
-                    profile_path,
+                    str(ppath),
                     headless=True,
                     viewport={"width": 1280, "height": 800},
                     locale="en-US",
@@ -220,9 +228,10 @@ class TwitterCollector(BaseCollector):
                 self._browser = self._context
                 return
             except Exception as e:
-                logger.info(f"[twitter] Persistent context failed ({e}), falling back to plain Chromium")
+                logger.info(f"[twitter] Persistent context ({label}) failed ({e})")
+        logger.info("[twitter] All persistent context attempts failed, falling back to plain Chromium")
 
-        # --- Tier 3: Plain Chromium + storage state ---------------
+        # --- Tier 3: Plain Chromium + storage state -------------------------------
         storage_state = self._find_storage_state()
         ss = storage_state if storage_state else None
         if ss:
@@ -264,11 +273,48 @@ class TwitterCollector(BaseCollector):
             Path.home() / ".config" / "chromium" / "Default",
             Path.home() / ".config" / "BraveSoftware" / "Brave-Browser" / "Default",
             Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default",  # macOS
+            # Flatpak paths (Steam Deck, Linux)
+            Path.home() / ".var" / "app" / "com.google.Chrome" / "config" / "google-chrome" / "Default",
+            Path.home() / ".var" / "app" / "org.chromium.Chromium" / "config" / "chromium" / "Default",
+            Path.home() / ".var" / "app" / "com.brave.Browser" / "config" / "BraveSoftware" / "Brave-Browser" / "Default",
         ]
         for c in candidates:
             if c.exists():
                 return c.parent.parent  # Return the *profile root* ( e.g. ~/.config/google-chrome )
         return None
+
+    def _copy_profile_to_temp(self, profile_root: Path) -> Path:
+        """Copy Chrome profile to a temp dir for concurrent worker access.
+
+        Excludes lock files, caches, and heavy data dirs (GPUCache, blob_storage,
+        Code Cache, etc.) to keep the copy small — critical for Steam Deck /tmp.
+        """
+        import shutil
+        import tempfile
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="chain_monitor_profile_"))
+        target = tmp_dir / "profile"
+
+        def ignore_filter(_dir, files):
+            skip_names = {
+                "SingletonLock", "SingletonSocket", "SingletonCookie", "LOCK", "LOG", "LOG.old",
+                "Code Cache", "GPUCache", "blob_storage", "Media Cache", "optimization_guide",
+                "Service Worker", "Session Storage", "Sessions", "WebStorage", "databases",
+                "IndexedDB", "Local Storage", "Network", "Sync Data", "shared_proto_db",
+                "Websocket", "Application Cache", "File System", "Favicons", "History",
+                "History-journal", "Shortcuts", "Shortcuts-journal", "Visited Links",
+                "Login Data", "Login Data For Account", "Top Sites", "Top Sites-journal",
+                "BudgetDatabase", "Reporting and NEL", "Reporting and NEL-journal",
+                "Safe Browsing Cookies", "Safe Browsing Cookies-journal", "DownloadMetadata",
+                "AutofillAiModelCache", "AutofillStrikeDatabase", "commerce_subscription_db",
+                "discount_infos_db", "discounts_db", "parcel_tracking_db", "GCM Store",
+            }
+            return [f for f in files if f.endswith(".lock") or f.endswith("-journal")
+                    or f in skip_names]
+
+        shutil.copytree(profile_root, target, ignore=ignore_filter)
+        logger.info(f"[twitter] Copied profile (lite) → {target}")
+        return target
 
     def _find_storage_state(self) -> Optional[str]:
         """Find exported storage_state.json for cookie injection."""
@@ -340,143 +386,15 @@ class TwitterCollector(BaseCollector):
         except Exception:
             pass
 
-    # =====================================================================
-    # ASYNC BROWSER LIFECYCLE (v0.2.0+)
-    # =====================================================================
-    async def _start_browser_async(self):
-        """Launch async browser with best available anti-detection strategy."""
-        from playwright.async_api import async_playwright
+    # -----------------------------------------------------------------------
+    # Collection loop
+    # -----------------------------------------------------------------------
+    def collect(self) -> list[dict]:
+        """Run Twitter collection with parallel batching.
 
-        self._playwright = await async_playwright().start()
-
-        # --- Tier 1: Camoufox (anti-detect) -----------------
-        try:
-            # Note: camoufox async API may not exist; fall through to plain Chromium
-            from camoufox.async_api import Camoufox
-            logger.info("[twitter] Using Camoufox (anti-detect)")
-            self._browser = Camoufox(headless=True).__enter__()
-            self._context = self._browser
-            return
-        except Exception as e:
-            logger.info(f"[twitter] Camoufox async not available ({e}), trying Chromium persistent context")
-
-        # --- Tier 2: Chromium persistent context with user profile ---
-        profile_path = self._find_chrome_profile()
-        if profile_path:
-            try:
-                logger.info(f"[twitter] Using Chromium persistent profile: {profile_path}")
-                self._context = await self._playwright.chromium.launch_persistent_context(
-                    profile_path,
-                    headless=True,
-                    viewport={"width": 1280, "height": 800},
-                    locale="en-US",
-                    args=["--disable-blink-features=AutomationControlled"],
-                )
-                self._browser = self._context
-                return
-            except Exception as e:
-                logger.info(f"[twitter] Persistent context failed ({e}), falling back to plain Chromium")
-
-        # --- Tier 3: Plain Chromium + storage state ---------------
-        storage_state = self._find_storage_state()
-        ss = storage_state if storage_state else None
-        if ss:
-            logger.info(f"[twitter] Using Chromium with storage_state: {ss}")
-        else:
-            logger.info("[twitter] Using plain Chromium (no cookies — may hit login wall)")
-
-        self._browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--single-process",
-                "--no-sandbox",
-                "--no-zygote",
-                "--disable-dev-shm-usage",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--max_old_space_size=256",
-            ],
-        )
-        self._context = await self._browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            locale="en-US",
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            storage_state=ss,
-        )
-
-    async def _cleanup_async(self):
-        """Close async browser resources and clean up any orphaned Chrome processes."""
-        import signal
-        our_pid = os.getpid()
-        for sig, label in [(signal.SIGTERM, "TERM"), (signal.SIGKILL, "KILL")]:
-            try:
-                ps_out = subprocess.run(
-                    ["ps", "-eo", "pid,ppid,comm"],
-                    capture_output=True, text=True, check=False,
-                )
-                pid_to_ppid = {}
-                pid_to_comm = {}
-                for line in ps_out.stdout.strip().split("\n")[1:]:
-                    parts = line.strip().split()
-                    if len(parts) >= 3:
-                        try:
-                            p, pp = int(parts[0]), int(parts[1])
-                            pid_to_ppid[p] = pp
-                            pid_to_comm[p] = parts[2]
-                        except ValueError:
-                            pass
-                descendants = set()
-                stack = [our_pid]
-                while stack:
-                    cur = stack.pop()
-                    for child_pid, ppid in pid_to_ppid.items():
-                        if ppid == cur and child_pid not in descendants:
-                            descendants.add(child_pid)
-                            stack.append(child_pid)
-                for pid in descendants:
-                    if "chrome" in pid_to_comm.get(pid, "").lower():
-                        try:
-                            os.kill(pid, sig)
-                        except (ProcessLookupError, PermissionError):
-                            pass
-            except Exception:
-                pass
-            if sig == signal.SIGTERM:
-                await asyncio.sleep(0.5)
-
-        # Graceful Playwright cleanup
-        try:
-            if self._context and hasattr(self._context, "close"):
-                await self._context.close()
-        except Exception:
-            pass
-        try:
-            if self._browser and hasattr(self._browser, "close"):
-                await self._browser.close()
-        except Exception:
-            pass
-        try:
-            if self._playwright:
-                await self._playwright.stop()
-        except Exception:
-            pass
-
-    # =====================================================================
-    # ASYNC COLLECTION (v0.2.0+)
-    # =====================================================================
-    async def collect_async(self) -> list[dict]:
-        """Run Twitter collection with async concurrent pages.
-
-        Launches ONE browser context, then scrapes all handles concurrently
-        using up to `max_workers` pages (controlled by semaphore).
+        Splits handles into `num_batches` batches, spawns up to `max_workers`
+        processes. Each worker gets its own browser context + one reused page.
+        Workers are independent (no shared state).
         """
         cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
 
@@ -493,44 +411,83 @@ class TwitterCollector(BaseCollector):
         if not all_handles:
             return []
 
-        sem = asyncio.Semaphore(self.max_workers)
-        all_tweets: list[dict] = []
-        start_time = time.time()
-        hard_deadline = start_time + 600  # 10 min total
-
-        try:
-            await self._start_browser_async()
-
-            coros = [
-                self._scrape_handle_async(chain_name, hdl, cutoff, sem)
-                for chain_name, hdl in all_handles
+        # Split into batches
+        if self.num_batches >= len(all_handles):
+            batches = [[h] for h in all_handles]
+        else:
+            batch_size = max(1, len(all_handles) // self.num_batches)
+            batches = [
+                all_handles[i:i + batch_size]
+                for i in range(0, len(all_handles), batch_size)
             ]
 
-            # Process results as they complete
-            pending = set(asyncio.create_task(c) for c in coros)
+        logger.info(
+            f"[twitter] {len(all_handles)} handles into {len(batches)} batches, "
+            f"max_workers={self.max_workers}"
+        )
+
+        # Pre-copy Chrome profile so workers don't fight over the locked original
+        profile_root = self._find_chrome_profile()
+        if profile_root:
+            try:
+                self._last_profile_copy = self._copy_profile_to_temp(profile_root)
+                logger.info(f"[twitter] Profile copied for workers: {self._last_profile_copy}")
+            except Exception as e:
+                logger.warning(f"[twitter] Failed to copy profile ({e}), workers will use fallback")
+                self._last_profile_copy = None
+
+        ctx = mp.get_context("spawn")
+        executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=self.max_workers,
+            mp_context=ctx,
+        )
+
+        all_tweets: list[dict] = []
+        futures: dict = {}
+        deadline = time.time() + 600  # 10 min hard wall-clock deadline for all futures
+
+        try:
+            futures = {
+                executor.submit(
+                    TwitterCollector._run_batch,
+                    batch_id,
+                    batch,
+                    self.lookback_hours,
+                    self.standalone_mode,
+                    self._last_profile_copy,
+                ): batch_id
+                for batch_id, batch in enumerate(batches)
+            }
+
+            pending = set(futures.keys())
             while pending:
-                done, pending = await asyncio.wait(
-                    pending, timeout=5.0, return_when=asyncio.FIRST_COMPLETED
+                done, pending = concurrent.futures.wait(
+                    pending, timeout=5
                 )
-                for task in done:
+                for future in done:
+                    batch_id = futures[future]
                     try:
-                        tweets = task.result()
-                        all_tweets.extend(tweets)
-                    except asyncio.CancelledError:
-                        pass
+                        batch_tweets = future.result()
+                        all_tweets.extend(batch_tweets)
+                        logger.info(
+                            f"[twitter] Batch-{batch_id} returned {len(batch_tweets)} tweets"
+                        )
                     except Exception as exc:
-                        logger.error(f"[twitter] Handle scrape failed: {exc}")
+                        logger.error(f"[twitter] Batch-{batch_id} failed: {exc}")
 
-                if time.time() > hard_deadline:
-                    logger.error(f"[twitter] HARD DEADLINE ({600}s) — cancelling remaining")
-                    for task in pending:
-                        task.cancel()
+                if time.time() > deadline:
+                    logger.error(f"[twitter] HARD DEADLINE ({600}s) — cancelling remaining batches")
+                    for future in pending:
+                        future.cancel()
                     break
-
         except Exception as exc:
-            logger.error(f"[twitter] Async collection failed: {exc}")
+            logger.error(f"[twitter] Parallel execution failed: {exc}")
+            logger.info("[twitter] Falling back to sequential collection...")
+            all_tweets = self._collect_single_worker(all_handles, cutoff)
         finally:
-            await self._cleanup_async()
+            executor.shutdown(wait=False, cancel_futures=True)
+            time.sleep(2)
+            self._cleanup()
 
         logger.info(f"[twitter] Total tweets collected: {len(all_tweets)}")
         if all_tweets:
@@ -540,77 +497,113 @@ class TwitterCollector(BaseCollector):
         events = self._tweets_to_events(all_tweets)
         return events
 
-    async def _scrape_handle_async(
-        self,
-        chain_name: str,
-        hdl_cfg: dict,
-        cutoff: datetime,
-        sem: asyncio.Semaphore,
+    def _collect_single_worker(
+        self, handles: list[tuple[str, dict]], cutoff: datetime
     ) -> list[dict]:
-        """Scrape a single Twitter handle under a semaphore (one page)."""
-        async with sem:
-            handle = hdl_cfg["handle"].lstrip("@")
-            return await self._scrape_profile_async(handle, hdl_cfg, chain_name, cutoff)
-
-    def collect(self) -> list[dict]:
-        """Sync entry point — delegates to collect_async."""
-        return asyncio.run(self.collect_async())
-
-    async def collect_raw_async(self) -> list[dict]:
-        """Run collection and return raw tweets (no event conversion)."""
+        """Sequential fallback: one browser context, one reused page."""
         all_tweets: list[dict] = []
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
-
-        if not self._accounts:
-            return []
-
-        sem = asyncio.Semaphore(self.max_workers)
+        self._start_browser()
+        page = self._context.new_page() if self._context else None
         try:
-            await self._start_browser_async()
-            coros = [
-                self._scrape_handle_async(chain_name, hdl, cutoff, sem)
-                for chain_name, cfg in self._accounts.items()
-                for hdl in cfg.get("official", []) + cfg.get("contributors", [])
-            ]
-            results = await asyncio.gather(*coros, return_exceptions=True)
-            for r in results:
-                if isinstance(r, list):
-                    all_tweets.extend(r)
+            for chain_name, hdl in handles:
+                handle = hdl["handle"].lstrip("@")
+                tweets = self._scrape_profile(
+                    handle, hdl, chain_name, cutoff, page=page
+                )
+                all_tweets.extend(tweets)
+                time.sleep(random.randint(3, 7))
         finally:
-            await self._cleanup_async()
-
-        self._persist_raw(all_tweets)
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            self._cleanup()
         return all_tweets
 
-    def collect_raw(self) -> list[dict]:
-        """Sync wrapper for collect_raw_async."""
-        return asyncio.run(self.collect_raw_async())
-
-    async def _scrape_profile_async(
-        self,
-        handle: str,
-        hdl_cfg: dict,
-        chain_name: str,
-        cutoff: datetime,
+    @classmethod
+    def _run_batch(
+        cls,
+        batch_id: int,
+        batch: list[tuple[str, dict]],
+        lookback_hours: int,
+        standalone_mode: bool,
+        profile_copy_path: Optional[Path] = None,
     ) -> list[dict]:
-        """Two-phase scrape: quick sniff (6-8s) then full scroll only if recent activity.
+        """Worker function for ProcessPoolExecutor.
 
-        Phase 1 — Quick sniff: load page, check newest tweet timestamp. If too old,
-        bail immediately (~6s total) instead of scrolling 12 times.
-        Phase 2 — Full scroll: only if Phase 1 finds recent tweets in window.
+        Each worker gets its own browser context + one reused page.
+        Instantiates a fresh TwitterCollector with no shared state.
+        """
+        import logging
+
+        worker_logger = logging.getLogger(f"twitter-batch-{batch_id}")
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+        collector = cls(
+            standalone_mode=standalone_mode,
+            lookback_hours=lookback_hours,
+        )
+        # Use provided profile copy if available
+        if profile_copy_path:
+            collector._last_profile_copy = profile_copy_path
+        all_tweets: list[dict] = []
+
+        try:
+            collector._start_browser()
+            page = collector._context.new_page() if collector._context else None
+            for chain_name, hdl in batch:
+                handle = hdl["handle"].lstrip("@")
+                worker_logger.info(
+                    f"[batch-{batch_id}] Scraping @{handle} for {chain_name}"
+                )
+                tweets = collector._scrape_profile(
+                    handle, hdl, chain_name, cutoff, page=page
+                )
+                all_tweets.extend(tweets)
+                worker_logger.info(
+                    f"[batch-{batch_id}] @{handle}: {len(tweets)} tweets"
+                )
+                time.sleep(random.randint(3, 7))
+        except Exception as exc:
+            worker_logger.error(f"[batch-{batch_id}] Error: {exc}")
+        finally:
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            collector._cleanup()
+
+        return all_tweets
+
+    def _scrape_profile(self, handle: str, hdl_cfg: dict, chain_name: str, cutoff: datetime, page=None) -> list[dict]:
+        """Open a profile, scroll, extract tweets within time window.
+        If page is provided, reuses it instead of creating a new page each time.
         """
         if not self._context:
             return []
 
-        page = await self._context.new_page()
+        new_page = page is None
+        if new_page:
+            page = self._context.new_page()
         try:
             url = f"https://x.com/{handle}"
-            t0 = time.time()
-            await page.goto(url, timeout=45000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(3500)  # Hydration wait (reduced for sniff)
+            logger.info(f"[twitter] Navigating {url}")
+            page.goto(url, timeout=45000, wait_until="domcontentloaded")
+            # Wait for React SPA hydration — articles usually mount within 4-6s on Steam Deck
+            page.wait_for_timeout(random.randint(6000, 9000))
+
+            # Detect slow hydration: if < 2 articles, wait more then reload once
+            articles = page.query_selector_all('article[data-testid="tweet"]')
+            if len(articles) < 2:
+                page.wait_for_timeout(random.randint(3000, 5000))
+                articles = page.query_selector_all('article[data-testid="tweet"]')
+                if len(articles) < 2:
+                    page.reload(wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(random.randint(6000, 9000))
 
             # Check for login wall / suspension
-            body_text = (await page.inner_text("body") or "").lower()
+            body_text = (page.inner_text("body") or "").lower()
             if "sign in" in body_text and "x" in body_text[:500]:
                 logger.warning(f"[twitter] @{handle} — login wall detected (no valid session)")
                 return []
@@ -618,83 +611,15 @@ class TwitterCollector(BaseCollector):
                 logger.warning(f"[twitter] @{handle} — account suspended")
                 return []
 
-            # ── PHASE 1: Quick sniff — grab timestamps of visible tweets ──
-            timestamps_js = """() => {
-                const times = document.querySelectorAll('article[data-testid="tweet"] time');
-                return Array.from(times).map(t => t.getAttribute('datetime')).filter(Boolean);
-            }"""
-            ts_list = await page.evaluate(timestamps_js)
-            newest_ts = None
-            for ts_str in ts_list:
-                try:
-                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    if newest_ts is None or ts > newest_ts:
-                        newest_ts = ts
-                except ValueError:
-                    continue
-
-            # If newest visible tweet is older than cutoff → no need to scroll
-            if newest_ts is not None and newest_ts < cutoff:
-                logger.info(f"[twitter] @{handle} — reached cutoff after 0 scrolls")
-                return []
-
-            # If no timestamps found at all, try one reload then give up
-            if newest_ts is None:
-                await page.wait_for_timeout(3000)
-                ts_list = await page.evaluate(timestamps_js)
-                for ts_str in ts_list:
-                    try:
-                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                        if newest_ts is None or ts > newest_ts:
-                            newest_ts = ts
-                    except ValueError:
-                        continue
-                if newest_ts is None or newest_ts < cutoff:
-                    logger.info(f"[twitter] @{handle} — no recent tweets after reload")
-                    return []
-
-            # ── PHASE 2: Full scroll-extract only if Phase 1 found recent tweets ──
             tweets: list[dict] = []
             last_count = 0
             scrolls_no_new = 0
-            max_scrolls = 8 if self.lookback_hours > 48 else 5  # Reduced from 12
-
-            # First batch already on page from Phase 1; use JS to extract full data
-            batch = await page.evaluate(EXTRACT_TWEETS_JS)
-            if batch:
-                for t in batch:
-                    ts_str = t.get("timestamp", "")
-                    try:
-                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    except ValueError:
-                        continue
-                    if not t.get("text", "").strip() and not t.get("media_urls"):
-                        continue
-                    if ts < cutoff:
-                        scrolls_no_new += 1
-                        continue
-                    # Enrich
-                    t["chain"] = chain_name
-                    t["account_handle"] = handle
-                    t["account_role"] = "official" if hdl_cfg in self._accounts.get(chain_name, {}).get("official", []) else "contributor"
-                    t["account_name"] = hdl_cfg.get("name", handle)
-                    t["account_reliability"] = hdl_cfg.get("reliability", 0.75)
-                    t["scraped_at"] = datetime.now(timezone.utc).isoformat()
-                    if not any(existing["tweet_id"] == t["tweet_id"] for existing in tweets):
-                        tweets.append(t)
-                if scrolls_no_new >= 3:
-                    logger.info(f"[twitter] @{handle}: {len(tweets)} tweets within window")
-                    return tweets
-                scrolls_no_new = 0
-
-            last_count = len(tweets)
+            max_scrolls = 20 if self.lookback_hours > 48 else 12
 
             for scroll in range(max_scrolls):
-                await page.evaluate(SCROLL_JS)
-                await page.wait_for_timeout(random.randint(1500, 3000))  # faster scroll
-                batch = await page.evaluate(EXTRACT_TWEETS_JS)
+                batch = page.evaluate(EXTRACT_TWEETS_JS)
                 if not batch:
-                    await asyncio.sleep(random.randint(500, 1000) / 1000)
+                    time.sleep(random.randint(1000, 2000) / 1000)
                     continue
 
                 fresh_in_batch = 0
@@ -704,20 +629,26 @@ class TwitterCollector(BaseCollector):
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                     except ValueError:
                         continue
+                    # Skip empty-text tweets unless they have media (signal that X suppressed text via JS)
                     if not t.get("text", "").strip() and not t.get("media_urls"):
                         continue
                     if ts < cutoff:
+                        # Too old — but keep scrolling a bit more to be sure we didn't miss anything
                         scrolls_no_new += 1
                         if scrolls_no_new >= 3:
                             logger.info(f"[twitter] @{handle} — reached cutoff after {scroll} scrolls")
                             break
                         continue
+
+                    # Enrich tweet metadata
                     t["chain"] = chain_name
                     t["account_handle"] = handle
                     t["account_role"] = "official" if hdl_cfg in self._accounts.get(chain_name, {}).get("official", []) else "contributor"
                     t["account_name"] = hdl_cfg.get("name", handle)
                     t["account_reliability"] = hdl_cfg.get("reliability", 0.75)
                     t["scraped_at"] = datetime.now(timezone.utc).isoformat()
+
+                    # Deduplicate within this run
                     if not any(existing["tweet_id"] == t["tweet_id"] for existing in tweets):
                         tweets.append(t)
                         fresh_in_batch += 1
@@ -735,22 +666,21 @@ class TwitterCollector(BaseCollector):
                     logger.info(f"[twitter] @{handle} — hit 100 tweet cap")
                     break
 
-            elapsed = time.time() - t0
-            logger.info(f"[twitter] @{handle}: {len(tweets)} tweets within window ({elapsed:.1f}s)")
+                page.evaluate(SCROLL_JS)
+                page.wait_for_timeout(random.randint(2000, 4500))
+
+            logger.info(f"[twitter] @{handle}: {len(tweets)} tweets within window")
             return tweets
 
         except Exception as e:
             logger.error(f"[twitter] Error scraping @{handle}: {e}")
             return []
         finally:
-            try:
-                await page.close()
-            except Exception:
-                pass
-
-    def _scrape_profile(self, handle: str, hdl_cfg: dict, chain_name: str, cutoff: datetime, page=None) -> list[dict]:
-        """DEPRECATED: Sync wrapper for backward compat. Prefer _scrape_profile_async."""
-        return asyncio.run(self._scrape_profile_async(handle, hdl_cfg, chain_name, cutoff))
+            if new_page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
     # -----------------------------------------------------------------------
     # Persistence — JSON + Markdown summaries for trending analysis
@@ -881,3 +811,29 @@ class TwitterCollector(BaseCollector):
             events.append(event)
 
         return events
+
+    # -----------------------------------------------------------------------
+    # For standalone script: expose raw collector without pipeline conversion
+    # -----------------------------------------------------------------------
+    def collect_raw(self) -> list[dict]:
+        """Run collection and return raw tweets (no event conversion)."""
+        all_tweets: list[dict] = []
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+
+        if not self._accounts:
+            return []
+
+        self._start_browser()
+        try:
+            for chain_name, cfg in self._accounts.items():
+                handles = cfg.get("official", []) + cfg.get("contributors", [])
+                for hdl in handles:
+                    handle = hdl["handle"].lstrip("@")
+                    tweets = self._scrape_profile(handle, hdl, chain_name, cutoff)
+                    all_tweets.extend(tweets)
+                    time.sleep(random.randint(3, 7))
+        finally:
+            self._cleanup()
+
+        self._persist_raw(all_tweets)
+        return all_tweets

@@ -118,34 +118,6 @@ def check_storage() -> list[tuple[str, bool, str]]:
     return results
 
 
-def check_telegram() -> list[tuple[str, bool, str]]:
-    """Check Telegram credentials."""
-    results = []
-    from config.loader import get_env
-    token = get_env("TELEGRAM_BOT_TOKEN")
-    if not token or token.startswith("your_"):
-        results.append(("telegram_token", False, "TELEGRAM_BOT_TOKEN not set"))
-        return results
-
-    try:
-        import requests
-        resp = requests.get(
-            f"https://api.telegram.org/bot{token}/getMe",
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("ok"):
-                results.append(("telegram_api", True, f"Bot: @{data['result']['username']}"))
-            else:
-                results.append(("telegram_api", False, f"getMe error: {data}"))
-        elif resp.status_code == 401:
-            results.append(("telegram_api", False, "Telegram token invalid (401)"))
-        else:
-            results.append(("telegram_api", False, f"Telegram check returned {resp.status_code}"))
-    except Exception as exc:
-        results.append(("telegram_api", False, f"Telegram check failed: {exc}"))
-    return results
 
 
 def check_config_files() -> list[tuple[str, bool, str]]:
@@ -163,7 +135,7 @@ def check_config_files() -> list[tuple[str, bool, str]]:
 def _run_checks() -> list[tuple[str, bool, str]]:
     """Run all check groups and flatten."""
     results = []
-    for fn in (check_env, check_python_deps, check_llm, check_storage, check_telegram, check_config_files):
+    for fn in (check_env, check_python_deps, check_llm, check_storage, check_config_files):
         results.extend(fn())
     return results
 

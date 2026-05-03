@@ -84,11 +84,6 @@ def main():
     youtube = getpass("  YouTube Data API key: ") or ""
     github = getpass("  GitHub token: ") or ""
 
-    # ── Telegram ────────────────────────────────────────────────
-    print("\n📬 Telegram Delivery")
-    tg_token = getpass("  Telegram bot token: ")
-    tg_chat = prompt("  Telegram chat ID")
-
     # ── Optional settings ─────────────────────────────────────
     print("\n⚙️  Optional Settings")
     log_level = prompt("  Log level", "INFO")
@@ -128,9 +123,6 @@ def main():
         lines.append(f"GITHUB_TOKEN={github}")
 
     lines.extend([
-        "",
-        f"TELEGRAM_BOT_TOKEN={tg_token}",
-        f"TELEGRAM_CHAT_ID={tg_chat}",
         "",
         f"LOG_LEVEL={log_level}",
         f"DATA_RETENTION_DAYS={retention}",
@@ -181,28 +173,15 @@ def main():
         p.mkdir(parents=True, exist_ok=True)
         print(f"  ✓ {subdir}")
 
-    # ── Validate Telegram ───────────────────────────────────────
-    print("\n📬 Validating Telegram...")
-    try:
-        import requests
-        resp = requests.get(
-            f"https://api.telegram.org/bot{tg_token}/getMe",
-            timeout=10,
-        )
-        if resp.status_code == 200 and resp.json().get("ok"):
-            bot_name = resp.json()["result"]["username"]
-            print(f"  ✓ Bot connected: @{bot_name}")
-        else:
-            print(f"  ✗ Telegram validation failed: {resp.status_code}")
-    except Exception as exc:
-        print(f"  ✗ Telegram validation failed: {exc}")
+    # ── Validate Telegram removed — agent-native delivery only ──
+    print("\n📬 Note: Delivery is agent-native (no Telegram bot required)")
 
     print("\n" + "=" * 50)
     print("✅ Setup complete!")
     print("\nNext steps:")
     print("  1. python3 scripts/doctor.py")
-    print("  2. python3 scripts/chain_monitor_cli.py digest --dry-run")
-    print("  3. python3 main.py")
+    print("  2. python3 main.py")
+    print("  3. The agent running this chat will read prompts and synthesize digests")
     return 0
 
 

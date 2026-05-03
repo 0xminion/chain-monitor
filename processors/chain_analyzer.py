@@ -76,20 +76,28 @@ async def analyze_chain(chain: str, signals: list[Signal]) -> ChainDigest:
     # Key events: top 5 signals with full metadata
     key_events = []
     for s in signals[:5]:
-        evidence = {}
-        if s.activity and isinstance(s.activity[0], dict):
-            raw_evidence = s.activity[0].get("evidence", "")
-            if isinstance(raw_evidence, dict):
-                evidence = raw_evidence
-            else:
-                evidence = {}
-
+        # Search ALL activities for a URL, not just activity[0]
         url = ""
-        for key in ("url", "html_url", "pr_url", "link", "feed_url", "tweet_url"):
-            val = evidence.get(key)
-            if val and isinstance(val, str) and val.startswith("http"):
-                url = val
+        for act in (s.activity if isinstance(s.activity, list) else []):
+            if not isinstance(act, dict):
+                continue
+            evidence = act.get("evidence", "")
+            if isinstance(evidence, dict):
+                for key in ("url", "html_url", "pr_url", "link", "feed_url", "tweet_url"):
+                    val = evidence.get(key)
+                    if val and isinstance(val, str) and val.startswith("http"):
+                        url = val
+                        break
+            elif isinstance(evidence, str) and evidence.startswith("http"):
+                url = evidence
+            if url:
                 break
+        if not url:
+            # Fallback: try to regex a URL out of the description
+            import re
+            m = re.search(r"https?://[^\s\"]+", s.description)
+            if m:
+                url = m.group(0).rstrip(".,;:)")
 
         key_events.append({
             "topic": s.description[:120],

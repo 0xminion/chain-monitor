@@ -353,8 +353,8 @@ twitter_accounts:
         reliability: 0.85
   megaeth:
     official:
-      - handle: megaeth_labs
-        name: MegaETH Labs
+      - handle: megaeth
+        name: MegaETH
         reliability: 0.95
     contributors:
       - handle: YilunC
