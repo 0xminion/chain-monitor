@@ -107,7 +107,7 @@ def _build_daily_prompt(
 {chain_block}
 
 ## Instructions
-You are a senior crypto market analyst. Write the daily Chain Monitor digest for Telegram.
+You are a senior crypto market analyst. Write the daily Chain Monitor digest.
 
 OUTPUT FORMAT — MANDATORY. Follow this exactly. No deviations.
 

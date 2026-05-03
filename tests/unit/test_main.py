@@ -153,7 +153,7 @@ class TestRunPipeline:
 
     @pytest.mark.asyncio
     async def test_pipeline_skips_send_when_no_activity(self, mock_config):
-        """If fewer than 3 chains have activity, don't send Telegram."""
+        """If fewer than 3 chains have activity, digest notes quiet day."""
         with (
             patch("main.collect_all", new_callable=AsyncMock) as mock_collect_all,
             patch("main.deduplicate_events") as mock_dedup,

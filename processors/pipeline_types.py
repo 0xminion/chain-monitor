@@ -142,7 +142,7 @@ class KeyEvent(BaseModel):
 
 
 class ChainDigest(BaseModel):
-    """Per-chain LLM-synthesized summary."""
+    """Per-chain structured summary ready for agent-native synthesis."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -99,8 +99,7 @@ def cmd_digest(args) -> int:
     from main import run_pipeline
 
     if args.dry_run:
-        print("🧪 Dry run — disabling Telegram send...")
-        os.environ["TELEGRAM_BOT_TOKEN"] = ""
+        print("🧪 Dry run — running pipeline without delivery")
 
     ctx = asyncio.run(run_pipeline())
 
@@ -251,7 +250,7 @@ def main():
 
     # digest
     digest_p = subparsers.add_parser("digest", help="Run the full digest pipeline")
-    digest_p.add_argument("--dry-run", action="store_true", help="Run without sending Telegram")
+    digest_p.add_argument("--dry-run", action="store_true", help="Run pipeline without any delivery")
     digest_p.add_argument("--preview", action="store_true", help="Print digest to stdout")
     digest_p.add_argument("--json", action="store_true", help="Dump JSON output to storage/health/")
 

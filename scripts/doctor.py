@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chain Monitor — Health check and auto-fix doctor.
 
-Checks .env, Python deps, LLM connectivity, storage dirs, Telegram bot.
+Checks .env, Python deps, storage dirs, and config files.
 Attempts automated fixes where safe.
 
 Usage:

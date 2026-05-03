@@ -33,18 +33,18 @@
 │ Stage 5: Digest   │ ← agent-native prompt synthesis; per-chain prose
 │    Synthesize     │     Markdown links embedded on first word. (300-600 words)
 └────────┬────────┘
-         │ str (Telegram Markdown)
+         │ str (Markdown)
          v
 ┌─────────────────┐
 │ Stage 6: Weekly   │ ← agent-native thematic synthesis
 │    Synthesize     │     Reads 7 days of persisted daily digests.
 │                   │     Up to 10 thematic sections with emoji headers.
 └────────┬────────┘
-         │ str (Telegram Markdown)
+         │ str (Markdown)
          v
 ┌─────────────────┐
-│ Stage 7: Deliver  │ ← Telegram + JSON run log + daily digest persistence
-│                  │     Send if ≥2 chains have significant activity
+│ Stage 7: Deliver  │ ← agent-native delivery + JSON run log + daily digest persistence
+│                  │     Prompt saved in storage/agent_input/ for the running agent
 └─────────────────┘
 ```
 
@@ -84,7 +84,7 @@ Fallback: structured bullet list when no agent is available.
 | 3 Categorize | Single-threaded (O(n)) | None | None needed |
 | 4 Chain analyze | asyncio.gather | data volume | deterministic, fast |
 | 5 Digest synthesize | Single-threaded | disk write | instant |
-| 6 Deliver | Single-threaded | Telegram API | Auto-split + retry |
+| 6 Deliver | Single-threaded | disk write | instant |
 
 ## Agent-Native Synthesis Budget
 
@@ -106,7 +106,7 @@ Weekly prompt size: up to 200K chars of daily digest text (truncated).
 | `config/baselines.yaml` | Per-chain scoring thresholds |
 | `config/narratives.yaml` | Narrative categories and keywords |
 | `config/sources.yaml` | RSS feeds, API endpoints |
-| `.env` | Secrets, LLM provider, Telegram |
+| `.env` | Secrets (data source APIs, Twitter settings) |
 
 ## Security & Error Isolation
 
@@ -135,17 +135,16 @@ python3 -m pytest tests/ -q
 
 - Add a collector: subclass `BaseCollector`, implement `collect()`, register in `main.py`
 - Add a chain: use `scripts/chain_monitor_cli.py chains add` or edit `config/chains.yaml`
-- Change LLM prompt: edit `processors/chain_analyzer.py` or `processors/summary_engine.py`
+- Change prompt format: edit `processors/chain_analyzer.py` or `processors/summary_engine.py`
 - Change weekly digest format: edit `output/weekly_digest.py` `build_digest()`
 - Change scoring: edit `processors/scoring.py`
-- Add new event category: update `processors/categorizer.py` CATEGORY_KEYWORDS + LLM prompts
+- Add new event category: update `processors/categorizer.py` CATEGORY_KEYWORDS
 
 ## Key Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/setup.py` | Interactive `.env` generator with LLM validation |
+| `scripts/setup.py` | Interactive `.env` generator |
 | `scripts/doctor.py` | End-to-end health check with auto-fix hints |
 | `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
-| `scripts/run_all_chains.py` | Full pipeline for all 27 chains (batch Twitter, divide & conquer) |
 | `output/weekly_digest.py` | Weekly digest builder (reads 7 days of daily prompts) |

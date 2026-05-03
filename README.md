@@ -1,6 +1,6 @@
 # Chain Monitor
 
-Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 6 event categories, scores events, and delivers daily/weekly digests to Telegram. Agent-native: no inline LLM calls, the running agent handles all semantic synthesis.
+Multi-chain strategic intelligence system. Monitors 27 blockchain chains across 6 event categories, scores events, and delivers daily/weekly digests via the running agent. Fully agent-native: no inline LLM calls, no external Telegram bot.
 
 ## v0.1.0 — Chain-Centric Agent-Native Pipeline
 
@@ -9,21 +9,21 @@ The pipeline now treats every chain as a unit of intelligence:
 1. **Parallel Collect** — all 10 collectors run concurrently via `asyncio.gather()`
 2. **Dedup** — O(n) hash-based deduplication (URL + fingerprint index)
 3. **Categorize + Score** — keyword categorization + rule-based scoring
-4. **Per-chain deterministic analyze** — deterministic scoring merges related signals into ChainDigests
-5. **Agent-native synthesis** — the running agent reads a rich prompt and writes prose directly. No external LLM subprocess calls.
-6. **Weekly synthesize** — Event-driven thematic sections fed from 7 days of persisted daily digests
-7. **Deliver** — Telegram send + run log + daily digest persistence
+4. **Per-chain deterministic analyze** — merges related signals into ChainDigests
+5. **Agent-native synthesis** — the running agent reads a rich prompt and writes prose directly
+6. **Weekly synthesize** — thematic sections from 7 days of persisted daily digests
+7. **Deliver** — agent-native delivery (this chat) + run log + daily digest persistence
 
 ### What's New in v0.1.0
 
-- **Per-chain narrative**: Instead of raw signal bullets, the digest tells you *"Polygon activated Visa rails for global stablecoin settlement — watch for transaction volume."*
-- **Cross-source merging**: GitHub release + tweet + blog post about the same event = ONE merged observation with multiple sources
+- **Per-chain narrative**: Instead of raw signal bullets, the digest tells you what's actually happening
+- **Cross-source merging**: Multiple sources about the same event = ONE reinforced observation
 - **Parallel everything**: Collectors and chain analyzers both run concurrently
 - **O(n) dedup**: Single-pass hash dedup replaces the old O(n*m) text similarity loop
-- **Event-driven weekly digest**: Thematic sections (up to 10) with LLM-assigned emojis, not chain-by-chain breakdown
-- **Markdown links on first word**: Evidence-backed hyperlinks embedded via `[Word](URL)` format
+- **Event-driven weekly digest**: Thematic sections with assigned emojis, not chain-by-chain breakdown
+- **Markdown links on first word**: Evidence-backed hyperlinks embedded via `[Word](URL)`
 - **Management CLI**: `scripts/chain_monitor_cli.py` for chains, cron, digest, health
-- **Setup wizard**: `scripts/setup.py` interactive `.env` generator with LLM validation
+- **Setup wizard**: `scripts/setup.py` interactive `.env` generator
 - **Doctor**: `scripts/doctor.py` end-to-end health check with auto-fix hints
 
 ## Quick Start
@@ -40,7 +40,7 @@ python -m playwright install chromium
 # Install Camoufox (anti-detect browser for Cloudflare-protected sites)
 camoufox fetch
 
-# Interactive setup (creates .env, validates LLM, checks Telegram)
+# Interactive setup (creates .env and checks storage dirs)
 python3 scripts/setup.py
 
 # Edit .env with your API keys
@@ -53,10 +53,7 @@ python3 scripts/doctor.py
 # Run the full pipeline (daily digest)
 python3 main.py
 
-# Full pipeline for all chains (batch Twitter + non-Twitter)
-python3 scripts/run_all_chains.py
-
-# Dry-run digest (no Telegram, print to stdout)
+# Dry-run digest (print to stdout)
 python3 scripts/chain_monitor_cli.py digest --dry-run --preview
 
 # Install daily cron at 9am UTC
@@ -149,7 +146,7 @@ newchain:
 ```
 collectors/     → Data ingestion (8 collectors)
 processors/     → Categorizer, scorer, reinforcer, narrative tracker
-output/         → Digest formatting and Telegram delivery
+output/         → Digest formatting and agent-native delivery
 config/         → YAML configuration
 storage/        → Event data, health logs, narrative history
 scripts/        → Setup and verification scripts
@@ -231,11 +228,12 @@ The categorizer uses expanded keyword sets to catch announcements from RSS/Tradi
 
 **Visibility keywords**: conference, hackathon, ama, keynote, speaker, podcast, live stream, community call, new ceo/cto, hired, appointed, resigned, stepped down
 
-## Telegram Delivery
+## Agent-Native Delivery
 
-Digests are sent via Telegram Bot API using **Markdown** parse mode with clickable `[Title](URL)` links embedded on signal titles.
+Digests are saved as structured prompts in `storage/agent_input/`. The running agent reads the prompt and writes prose directly into the active chat. No external LLM calls. No Telegram bot.
 
-- Links must be Markdown format: `[Title](URL)` — never HTML `<a>` tags (Telegram doesn't render them)
+- Markdown links: `[Word](URL)` embedded on first content-bearing word per chain
+- No HTML `<a>` tags (use native Markdown)
 - No price/financial content in digests
 - Partnerships shown as separate section
 - Only major releases with release notes in tech events

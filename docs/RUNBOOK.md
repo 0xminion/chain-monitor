@@ -158,18 +158,18 @@ The venv isn't activated in cron or subprocess.
 
 ```bash
 # Always use .venv/bin/python explicitly in cron
-.venv/bin/python -m pytest tests/ -q
+.venv/bin/python3 -m pytest tests/ -q
 ```
 
-### `LLM returned empty response`
-Ollama model not loaded, or context window too small.
+---
+
+### `Agent returned empty digest`
+The prompt was saved but the agent did not produce prose. Check:
 
 ```bash
-# Check Ollama
-ollama list | grep minimax
-
-# Pull if missing
-ollama pull minimax-m2.7:cloud
+# Verify prompt exists
+ls -l storage/agent_input/daily_prompt_*.md
+# If missing, pipeline failed before stage 5
 ```
 
 ---
