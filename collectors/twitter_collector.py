@@ -280,7 +280,7 @@ class TwitterCollector(BaseCollector):
         ]
         for c in candidates:
             if c.exists():
-                return c.parent.parent  # Return the *profile root* ( e.g. ~/.config/google-chrome )
+                return c.parent  # Return the *profile root* (e.g. ~/.config/google-chrome)
         return None
 
     def _copy_profile_to_temp(self, profile_root: Path) -> Path:
@@ -435,13 +435,16 @@ class TwitterCollector(BaseCollector):
 
         # Pre-copy Chrome profile so workers don't fight over the locked original
         profile_root = self._find_chrome_profile()
+        shared_profile_copy: Path | None = None
         if profile_root:
             try:
-                self._last_profile_copy = self._copy_profile_to_temp(profile_root)
-                logger.info(f"[twitter] Profile copied for workers: {self._last_profile_copy}")
+                shared_profile_copy = self._copy_profile_to_temp(profile_root)
+                logger.info(f"[twitter] Pre-copied profile → {shared_profile_copy} (all workers share this copy)")
             except Exception as e:
-                logger.warning(f"[twitter] Failed to copy profile ({e}), workers will use fallback")
-                self._last_profile_copy = None
+                logger.warning(f"[twitter] Pre-copy failed ({e}), workers will copy independently")
+                shared_profile_copy = None
+        else:
+            logger.warning("[twitter] No Chrome profile found — workers will use cookies.json fallback")
 
         ctx = mp.get_context("spawn")
         executor = concurrent.futures.ProcessPoolExecutor(
@@ -461,7 +464,7 @@ class TwitterCollector(BaseCollector):
                     batch,
                     self.lookback_hours,
                     self.standalone_mode,
-                    self._last_profile_copy,
+                    str(shared_profile_copy) if shared_profile_copy else None,
                 ): batch_id
                 for batch_id, batch in enumerate(batches)
             }
@@ -495,6 +498,14 @@ class TwitterCollector(BaseCollector):
             executor.shutdown(wait=False, cancel_futures=True)
             time.sleep(2)
             self._cleanup()
+            # Clean up the shared pre-copied profile
+            if shared_profile_copy and shared_profile_copy.exists():
+                try:
+                    import shutil
+                    shutil.rmtree(shared_profile_copy)
+                    logger.info(f"[twitter] Cleaned up shared profile copy: {shared_profile_copy}")
+                except Exception:
+                    pass
 
         logger.info(f"[twitter] Total tweets collected: {len(all_tweets)}")
         if all_tweets:
@@ -535,7 +546,7 @@ class TwitterCollector(BaseCollector):
         batch: list[tuple[str, dict]],
         lookback_hours: int,
         standalone_mode: bool,
-        profile_copy_path: Optional[Path] = None,
+        profile_root_path: str | None = None,
     ) -> list[dict]:
         """Worker function for ProcessPoolExecutor.
 
@@ -550,9 +561,25 @@ class TwitterCollector(BaseCollector):
             standalone_mode=standalone_mode,
             lookback_hours=lookback_hours,
         )
-        # Use provided profile copy if available
-        if profile_copy_path:
-            collector._last_profile_copy = profile_copy_path
+
+        # Each worker copies the PRE-COPIED snapshot to its own directory to avoid
+        # SQLite locking conflicts when multiple Chromiums open the same profile.
+        worker_profile: Path | None = None
+        if profile_root_path:
+            ppath = Path(profile_root_path)
+            if ppath.exists():
+                try:
+                    import shutil, tempfile
+                    worker_tmp = Path(tempfile.mkdtemp(prefix=f"profile_batch_{batch_id}_"))
+                    worker_profile = worker_tmp / "profile"
+                    shutil.copytree(ppath, worker_profile)
+                    collector._last_profile_copy = worker_profile
+                    worker_logger.info(f"[batch-{batch_id}] Copied profile → {worker_profile}")
+                except Exception as e:
+                    worker_logger.warning(f"[batch-{batch_id}] Profile copy failed ({e}), using fallback")
+            else:
+                worker_logger.warning(f"[batch-{batch_id}] Pre-copied profile not found, falling back")
+
         all_tweets: list[dict] = []
 
         try:
@@ -580,6 +607,14 @@ class TwitterCollector(BaseCollector):
                 except Exception:
                     pass
             collector._cleanup()
+            # Clean up worker-local profile copy
+            if worker_profile and worker_profile.exists():
+                try:
+                    import shutil
+                    shutil.rmtree(worker_profile.parent)
+                    worker_logger.info(f"[batch-{batch_id}] Cleaned up profile copy")
+                except Exception:
+                    pass
 
         return all_tweets
 
