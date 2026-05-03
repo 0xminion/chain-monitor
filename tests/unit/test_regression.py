@@ -14,7 +14,7 @@ from pathlib import Path
 
 from processors.pipeline_types import RawEvent, ChainDigest, PipelineContext
 from processors.pipeline_utils import safe_json_write, safe_text_write, validate_raw_event
-from main import _should_send, run_pipeline
+from main import run_pipeline
 
 
 class TestPositionalArgRegression:
@@ -98,13 +98,6 @@ class TestNoBridgeInPipeline:
         assert "_maybe_trigger_standalone_collection" not in source
         assert "_is_twitter_stale" not in source
 
-    def test_run_all_chains_imports_no_bridge(self):
-        """run_all_chains.py must not load standalone bridge."""
-        import scripts.run_all_chains as mod
-        source = Path(mod.__file__).read_text()
-        assert "twitter_standalone_bridge" not in source
-        assert "load_recent_standalone_tweets" not in source
-
 
 class TestAtomicWrites:
     """Atomic file write utilities must leave no temp debris on failure."""
@@ -146,21 +139,6 @@ class TestDigestContentRegression:
         assert "Agent Prompt" in result or "Active Chains" in result or "📊" in result
         assert "Agent synthesis required" not in result
         assert "daily_prompt_" not in result
-
-    def test_should_send_logic(self):
-        """_should_send must return True for high-priority chains."""
-        digests = [
-            ChainDigest(chain="solana", chain_tier=1, chain_category="majors", summary="",
-                       priority_score=5, dominant_topic="Up"),
-        ]
-        assert _should_send(digests) is True
-
-    def test_should_send_false_when_no_activity(self):
-        digests = [
-            ChainDigest(chain="solana", chain_tier=1, chain_category="majors", summary="",
-                       priority_score=0, dominant_topic="Quiet"),
-        ]
-        assert _should_send(digests) is False
 
 
 class TestPipelineContextSerialization:

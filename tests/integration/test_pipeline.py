@@ -10,7 +10,6 @@ import pytest
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
 from processors.signal import Signal
-from main import _should_send
 
 
 @pytest.fixture
@@ -142,37 +141,6 @@ class TestFullPipeline:
         assert signal.impact == 5  # hyperliquid regulatory override
         assert signal.urgency == 3  # enforcement urgency = 3
         assert signal.priority_score == 15
-
-    def test_digest_should_send(self, pipeline_components):
-        """Verify _should_send logic with real signals."""
-        scorer = pipeline_components["scorer"]
-
-        events = [
-            _make_categorized_event("ethereum", "TVL crosses milestone", "FINANCIAL", "tvl_milestone", "DL", 0.9),
-            _make_categorized_event("solana", "Funding raised $50M", "FINANCIAL", "funding_round", "RSS", 0.7),
-            _make_categorized_event("arbitrum", "New upgrade released", "TECH_EVENT", "upgrade", "GH", 0.9),
-        ]
-
-        from processors.pipeline_types import ChainDigest
-        digests = []
-        for evt in events:
-            s = scorer.score(evt)
-            # Build a minimal ChainDigest for _should_send
-            digests.append(ChainDigest(
-                chain=s.chain,
-                chain_tier=1,
-                chain_category="L1",
-                summary="",
-                key_events=[],
-                priority_score=s.priority_score,
-                dominant_topic="",
-                sources_seen=1,
-                event_count=1,
-                confidence=0.8,
-            ))
-
-        result = _should_send(digests)
-        assert result is True
 
     def test_echo_detection_in_pipeline(self, pipeline_components):
         """Repeated similar events should be detected as echoes."""

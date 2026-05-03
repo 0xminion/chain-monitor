@@ -2,7 +2,6 @@
 
 
 import hashlib
-import html
 from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass, field, asdict
@@ -84,23 +83,18 @@ class Signal:
         d["priority_score"] = self.impact * self.urgency
         return d
 
-    def to_telegram(self) -> str:
-        """Format for Telegram daily digest."""
+    def to_markdown(self) -> str:
+        """Format signal for markdown digest."""
         impact_labels = {1: "LOW", 2: "MODERATE", 3: "NOTABLE", 4: "HIGH", 5: "CRITICAL"}
         sources_str = ", ".join(set(a["source"] for a in self.activity))
         rein_str = f" — {self.source_count}x" if self.source_count > 1 else ""
 
-        safe_desc = html.escape(self.description)
-        safe_chain = html.escape(self.chain.capitalize())
-        safe_sources = html.escape(sources_str)
-
         lines = [
-            f"• {safe_chain}: {safe_desc} [{safe_sources}{rein_str}]",
+            f"• {self.chain.capitalize()}: {self.description} [{sources_str}{rein_str}]",
             f"  {self.category} | Impact: {self.impact} ({impact_labels.get(self.impact, '?')}) | Urgency: {self.urgency}",
         ]
         if self.trader_context:
-            safe_ctx = html.escape(self.trader_context)
-            lines.append(f"  → So what: {safe_ctx}")
+            lines.append(f"  → So what: {self.trader_context}")
         return "\n".join(lines)
 
     @staticmethod

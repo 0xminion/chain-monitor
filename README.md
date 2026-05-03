@@ -83,29 +83,6 @@ Every tweet, retweet, and quote-tweet is enriched with semantic understanding:
   - Deterministic keyword + rule-based fallback if agent results absent
 - **Engagement filtering**: Regex filters out "gm", "wagmi", emoji-only noise
 
-### LLM Configuration
-All LLM settings configurable via `.env`:
-
-```bash
-# Semantic enrichment
-LLM_PROVIDER=ollama
-LLM_MODEL=minimax-m2.7:cloud
-LLM_FALLBACK_MODEL=gemma4:31b-cloud
-LLM_TEMPERATURE=0.1
-LLM_TIMEOUT=30
-LLM_CACHE_TTL_HOURS=168
-
-# Digest generation
-LLM_DIGEST_ENABLED=false
-LLM_DIGEST_PROVIDER=ollama
-LLM_DIGEST_MODEL=glm-5.1:cloud
-LLM_DIGEST_TEMPERATURE=0.4
-LLM_DIGEST_MAX_TOKENS=1500
-LLM_DIGEST_TIMEOUT=45
-```
-
-To switch providers: change `LLM_PROVIDER` and `LLM_MODEL`. Zero code changes.
-
 ---
 
 ## Quick Start

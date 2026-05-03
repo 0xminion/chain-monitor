@@ -193,10 +193,6 @@ github:
 youtube:
   api_base: https://www.googleapis.com/youtube/v3
   daily_quota: 10000
-telegram:
-  parse_mode: Markdown
-  max_message_length: 4096
-  split_on_overflow: true
 health:
   max_retries: 3
   backoff_base_seconds: 2

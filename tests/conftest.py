@@ -179,7 +179,4 @@ def mock_config(monkeypatch):
     monkeypatch.setattr(loader_mod, "_narratives", narratives)
     monkeypatch.setattr(loader_mod, "_sources", sources)
 
-    # Disable LLM digest generation in unit tests to avoid hanging on Ollama calls
-    monkeypatch.setenv("LLM_DIGEST_ENABLED", "false")
-
     return {"chains": chains, "baselines": baselines, "narratives": narratives, "sources": sources}

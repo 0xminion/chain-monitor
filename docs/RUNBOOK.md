@@ -95,8 +95,7 @@ for pid in $(ps --no-headers -eo pid,etimes,comm | awk '$3 ~ /chrome/ && $2 >= 6
 |-----|---------|------------------|---------------|
 | CoinGecko | `COINGECKO_API_KEY` | coingecko.com/en/api/pricing | `python3 -c "from collectors.coingecko_collector import CoinGeckoCollector; print(CoinGeckoCollector().collect()[:1])"` |
 | CryptoRank | `CRYPTORANK_API_KEY` | cryptorank.io/public-api/pricing | Check events_collector output |
-| YouTube | `YOUTUBE_API_KEY` | console.cloud.google.com | `curl "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=UC...&key=$YOUTUBE_API_KEY"` |
-| Telegram | `TELEGRAM_BOT_TOKEN` | @BotFather → /newbot | `curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"` |
+| YouTube | `YOUTUBE_API_KEY` | console.cloud.google.com | `curl "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=UC...&key=YOUR_KEY"` |
 | GitHub | `GITHUB_TOKEN` or `gh auth token` | Already have `gh` CLI | `gh auth status` |
 
 After rotation, run `python3 scripts/doctor.py`.
@@ -133,8 +132,8 @@ ps aux | grep -i chain-monitor
 | 3 Categorize | Agent or source categories | Agent missing | Falls through to source categories |
 | 4 Score | Rule-based priority | Bad baseline | Check `config/baselines.yaml` |
 | 5 Analyze | Per-chain digest build | Missing chain config | `chains.yaml` entry absent |
-| 6 Synthesize | Agent or LLM writes prose | LLM down | Returns prompt for manual review |
-| 7 Deliver | Telegram + persistence | Bot token invalid | Check `TELEGRAM_BOT_TOKEN` |
+| 6 Synthesize | Agent-native synthesis | N/A | Prompt saved to storage/agent_input/ |
+| 7 Deliver | Agent-native persistence | N/A | N/A |
 
 ---
 
@@ -171,20 +170,6 @@ ollama list | grep minimax
 
 # Pull if missing
 ollama pull minimax-m2.7:cloud
-
-# Or switch to fallback in .env
-LLM_FALLBACK_MODEL=gemma4:31b-cloud
-```
-
-### `Telegram delivery failed`
-Token wrong, or bot can't access chat.
-
-```bash
-# Validate token
-curl "https://api.telegram.org/bot<TOKEN>/getMe"
-
-# Get chat ID
-curl "https://api.telegram.org/bot<TOKEN>/getUpdates"
 ```
 
 ---

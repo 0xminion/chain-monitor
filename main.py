@@ -247,15 +247,6 @@ async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = Fa
     return ctx
 
 
-def _should_send(chain_digests: list) -> bool:
-    """Send digest if ≥2 chains have significant activity or ≥1 high-priority (≥5)."""
-    min_chains = get_pipeline_value("pipeline.min_chains_for_telegram", 2)
-    min_priority = get_pipeline_value("pipeline.min_priority_for_telegram", 5)
-    significant = [d for d in chain_digests if d.has_significant_activity()]
-    high = [d for d in chain_digests if d.priority_score >= min_priority]
-    return len(significant) >= min_chains or len(high) >= 1
-
-
 def _save_run_log(ctx: PipelineContext):
     """Write pipeline statistics to storage/health/ atomically."""
     log_dir = Path(__file__).parent / "storage" / "health"

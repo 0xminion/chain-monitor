@@ -26,17 +26,13 @@ def check_env() -> list[tuple[str, bool, str]]:
 
     content = env_path.read_text()
     required_keys = [
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "LLM_MODEL",
+        "LOG_LEVEL",
     ]
     for key in required_keys:
         if f"{key}=" not in content:
             results.append((key, False, f"{key} not configured in .env"))
-        elif f"{key}=" in content and (f"{key}=***" in content or f"{key}=your_" in content):
-            results.append((key, False, f"{key} has placeholder value"))
         else:
-            results.append((key, True, f"{key} configured"))
+            results.append((key, True, f"{key} present"))
     return results
 
 
@@ -61,43 +57,8 @@ def check_python_deps() -> list[tuple[str, bool, str]]:
 
 
 def check_llm() -> list[tuple[str, bool, str]]:
-    """Check LLM connectivity."""
-    results = []
-    from config.loader import get_env
-    provider = get_env("LLM_PROVIDER", "ollama")
-
-    if provider != "ollama":
-        results.append(("llm_provider", True, f"Provider={provider}, skipping Ollama check"))
-        return results
-
-    host = get_env("OLLAMA_HOST", "http://localhost:11434")
-    try:
-        import requests
-        resp = requests.get(f"{host}/api/tags", timeout=5)
-        if resp.status_code != 200:
-            results.append(("llm_connect", False, f"Ollama returned HTTP {resp.status_code}"))
-            return results
-
-        data = resp.json()
-        models = {m.get("name", "") for m in data.get("models", [])}
-        model = get_env("LLM_MODEL", "")
-        fallback = get_env("LLM_FALLBACK_MODEL", "")
-
-        if model:
-            if model in models:
-                results.append(("llm_primary", True, f"Model '{model}' available"))
-            else:
-                results.append(("llm_primary", False, f"Model '{model}' not pulled — run: ollama pull {model}"))
-        if fallback:
-            if fallback in models:
-                results.append(("llm_fallback", True, f"Fallback '{fallback}' available"))
-            else:
-                results.append(("llm_fallback", False, f"Fallback '{fallback}' not pulled — run: ollama pull {fallback}"))
-    except requests.exceptions.ConnectionError:
-        results.append(("llm_connect", False, f"Cannot connect to Ollama at {host} — is it running?"))
-    except Exception as exc:
-        results.append(("llm_connect", False, f"LLM check error: {exc}"))
-    return results
+    """No LLM in agent-native pipeline."""
+    return [("llm", True, "Agent-native — no external LLM required")]
 
 
 def check_storage() -> list[tuple[str, bool, str]]:

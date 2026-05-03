@@ -184,12 +184,12 @@ class TestPriorityScore:
         assert d["priority_score"] == 15
 
 
-class TestToTelegram:
-    """Test to_telegram formatting."""
+class TestToMarkdown:
+    """Test to_markdown formatting."""
 
     def test_basic_format(self, make_signal):
         sig = make_signal(chain="ethereum", category="TECH_EVENT", description="Test event", impact=2, urgency=1)
-        text = sig.to_telegram()
+        text = sig.to_markdown()
         assert "Ethereum" in text
         assert "Test event" in text
         assert "TECH_EVENT" in text
@@ -200,26 +200,26 @@ class TestToTelegram:
         labels = {1: "LOW", 2: "MODERATE", 3: "NOTABLE", 4: "HIGH", 5: "CRITICAL"}
         for impact, label in labels.items():
             sig = make_signal(impact=impact)
-            text = sig.to_telegram()
+            text = sig.to_markdown()
             assert label in text
 
     def test_trader_context_included(self, make_signal):
         sig = make_signal(trader_context="Watch gas fees")
-        text = sig.to_telegram()
+        text = sig.to_markdown()
         assert "So what: Watch gas fees" in text
 
     def test_trader_context_omitted_when_empty(self, make_signal):
         sig = make_signal(trader_context="")
-        text = sig.to_telegram()
+        text = sig.to_markdown()
         assert "So what" not in text
 
     def test_reinforcement_indicator(self, make_signal):
         sig = make_signal()
         sig.add_activity("s2", 0.7, "e2")
-        text = sig.to_telegram()
+        text = sig.to_markdown()
         assert "2x" in text
 
     def test_sources_listed(self, make_signal):
         sig = make_signal(source="GitHub")
-        text = sig.to_telegram()
+        text = sig.to_markdown()
         assert "GitHub" in text
