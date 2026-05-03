@@ -612,64 +612,61 @@ class TwitterCollector(BaseCollector):
                 return []
 
             tweets: list[dict] = []
-            last_count = 0
-            scrolls_no_new = 0
-            max_scrolls = 20 if self.lookback_hours > 48 else 12
+            seen_ids: set[str] = set()
+            scrolls_without_fresh = 0
+            MAX_CONSECUTIVE_EMPTY = 3
 
-            for scroll in range(max_scrolls):
+            for scroll in range(999):  # effectively unlimited; stop condition is the real break
                 batch = page.evaluate(EXTRACT_TWEETS_JS)
                 if not batch:
+                    scrolls_without_fresh += 1
+                    if scrolls_without_fresh >= MAX_CONSECUTIVE_EMPTY:
+                        logger.info(f"[twitter] @{handle} — {MAX_CONSECUTIVE_EMPTY} empty scrolls, stopping")
+                        break
                     time.sleep(random.randint(1000, 2000) / 1000)
                     continue
 
-                fresh_in_batch = 0
+                fresh_in_scroll = 0
                 for t in batch:
                     ts_str = t.get("timestamp", "")
                     try:
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                     except ValueError:
                         continue
-                    # Skip empty-text tweets unless they have media (signal that X suppressed text via JS)
+                    # Skip empty-text tweets unless they have media
                     if not t.get("text", "").strip() and not t.get("media_urls"):
                         continue
+                    # Within lookback window?
                     if ts < cutoff:
-                        # Too old — but keep scrolling a bit more to be sure we didn't miss anything
-                        scrolls_no_new += 1
-                        if scrolls_no_new >= 3:
-                            logger.info(f"[twitter] @{handle} — reached cutoff after {scroll} scrolls")
-                            break
                         continue
-
-                    # Enrich tweet metadata
+                    # Deduplicate
+                    tid = t.get("tweet_id")
+                    if not tid or tid in seen_ids:
+                        continue
+                    seen_ids.add(tid)
+                    # Enrich
                     t["chain"] = chain_name
                     t["account_handle"] = handle
                     t["account_role"] = "official" if hdl_cfg in self._accounts.get(chain_name, {}).get("official", []) else "contributor"
                     t["account_name"] = hdl_cfg.get("name", handle)
                     t["account_reliability"] = hdl_cfg.get("reliability", 0.75)
                     t["scraped_at"] = datetime.now(timezone.utc).isoformat()
+                    tweets.append(t)
+                    fresh_in_scroll += 1
 
-                    # Deduplicate within this run
-                    if not any(existing["tweet_id"] == t["tweet_id"] for existing in tweets):
-                        tweets.append(t)
-                        fresh_in_batch += 1
-
-                if scrolls_no_new >= 3:
-                    break
-
-                if len(tweets) == last_count:
-                    scrolls_no_new += 1
+                if fresh_in_scroll > 0:
+                    scrolls_without_fresh = 0
                 else:
-                    scrolls_no_new = 0
-                last_count = len(tweets)
-
-                if len(tweets) >= 100:
-                    logger.info(f"[twitter] @{handle} — hit 100 tweet cap")
-                    break
+                    # Entire scroll had zero tweets within the window
+                    scrolls_without_fresh += 1
+                    if scrolls_without_fresh >= MAX_CONSECUTIVE_EMPTY:
+                        logger.info(f"[twitter] @{handle} — reached cutoff after {scroll} scrolls ({len(tweets)} tweets)")
+                        break
 
                 page.evaluate(SCROLL_JS)
                 page.wait_for_timeout(random.randint(2000, 4500))
 
-            logger.info(f"[twitter] @{handle}: {len(tweets)} tweets within window")
+            logger.info(f"[twitter] @{handle}: {len(tweets)} tweets within {self.lookback_hours}h window")
             return tweets
 
         except Exception as e:
