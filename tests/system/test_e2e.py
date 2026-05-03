@@ -130,11 +130,10 @@ class TestE2EPipeline:
 
         # Seed previous run state with consecutive empties for defillama
         import json
-        metrics_dir = Path(__file__).parent.parent / "storage" / "metrics"
-        metrics_dir.mkdir(parents=True, exist_ok=True)
-        state_file = metrics_dir / "collector_run_state.json"
-        seed_state = {"defillama": {"events": 0, "errors": 0, "consecutive_empty_runs": 2, "status": "healthy"}}
-        state_file.write_text(json.dumps(seed_state))
+        from processors.metrics import METRICS_DIR, RUN_STATE_FILE
+        METRICS_DIR.mkdir(parents=True, exist_ok=True)
+        seed_state = {"DefiLlama": {"events": 0, "errors": 0, "consecutive_empty_runs": 2, "status": "healthy"}}
+        RUN_STATE_FILE.write_text(json.dumps(seed_state))
 
         with (
             patch("main.collect_all", new_callable=AsyncMock) as mock_collect_all,
@@ -176,7 +175,7 @@ class TestE2EPipeline:
 
             # Build metrics manually to seed defillama as empty
             metrics = PipelineMetrics()
-            metrics.record_collector("defillama", events=0, error=False)
+            metrics.record_collector("DefiLlama", events=0, error=False)
             metrics.record_collector("rss", events=2, error=False)
 
             from main import run_pipeline
@@ -186,5 +185,5 @@ class TestE2EPipeline:
             assert "DefiLlama" in ctx.final_digest
 
         # Cleanup
-        if state_file.exists():
-            state_file.unlink()
+        if RUN_STATE_FILE.exists():
+            RUN_STATE_FILE.unlink()
