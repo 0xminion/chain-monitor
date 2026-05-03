@@ -317,12 +317,14 @@ class EventCategorizer:
         for cat in CATEGORY_ORDER:
             desc = CATEGORY_DESCRIPTIONS.get(cat, "")
             cat_lines.append(f"  - {cat}: {desc}")
+        cat_text = "\n".join(cat_lines)
 
         subcat_lines = []
         for cat, subcats in SUBCATEGORY_MAP.items():
             subcat_lines.append(f"  {cat}:")
             for sub, desc in subcats.items():
                 subcat_lines.append(f"    - {sub}: {desc}")
+        subcat_text = "\n".join(subcat_lines)
 
         noise_lines = "\n    ".join(f"- '{phrase}'" for phrase in TWITTER_NOISE_PHRASES[:10])
         price_lines = "\n    ".join(f"- '{kw}'" for kw in PRICE_NOISE_KEYWORDS[:10])
@@ -330,9 +332,9 @@ class EventCategorizer:
         return (
             "You are an expert crypto-industry analyst. Categorize each event into exactly one category and subcategory, then score impact, urgency, and trader relevance.\n\n"
             "Categories (ordered by priority — first match wins when multiple could apply):\n"
-            f"{'\n'.join(cat_lines)}\n\n"
+            f"{cat_text}\n\n"
             "Subcategories:\n"
-            f"{'\n'.join(subcat_lines)}\n\n"
+            f"{subcat_text}\n\n"
             "Scoring rules:\n"
             "  impact (1-9): How much this event affects the chain/token/network.\n"
             "    9: Official mainnet / regulatory approval / $100M+ hack / tier-1 CEX listing\n"
