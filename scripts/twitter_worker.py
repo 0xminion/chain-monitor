@@ -262,7 +262,22 @@ def main() -> int:
         context = browser.new_context(**ctx_kwargs)
         page = context.new_page()
 
+        BATCH_HANDLE_CAP = 20  # restart browser every N handles to prevent EPIPE/memory leaks
+
         for idx, handle in enumerate(handles):
+            # Periodic browser restart to prevent EPIPE on long runs
+            if idx > 0 and idx % BATCH_HANDLE_CAP == 0:
+                logger.info(f"Restarting browser after {BATCH_HANDLE_CAP} handles (pre-EPIPE guard)")
+                for obj in (page, context, browser):
+                    if obj:
+                        try: obj.close()
+                        except: pass
+                time.sleep(2)
+                browser = camoufox.NewBrowser(sp, headless=True, window=(1366, 768),
+                                               block_webgl=False, humanize=True, os=("windows",))
+                context = browser.new_context(**ctx_kwargs)
+                page = context.new_page()
+
             tweets = _scrape_one_handle(page, handle, cutoff, args.max_scrolls)
             chain = chains[idx] if idx < len(chains) else "unknown"
             for t in tweets:
