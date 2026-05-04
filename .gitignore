@@ -18,6 +18,9 @@ storage/twitter/raw/
 storage/twitter/enriched/
 storage/twitter/summaries/*.json
 storage/twitter/summaries/*.txt
+storage/twitter/summaries/*.md
+storage/twitter/cookies*
+storage/twitter/*.bak
 storage/llm_cache/
 storage/health/*.json
 storage/health/*.txt
@@ -25,10 +28,15 @@ storage/health/*.log
 storage/agent_input/*.md
 storage/agent_input/*.txt
 storage/metrics/*
-storage/twitter/cookies.json
-storage/twitter/summaries/*.md
-storage/twitter/summaries/*.txt
 storage/daily_digests/*.md
 storage/weekly_digests/*.md
+storage/latest/*
 storage/agent_input/daily_prompt_*.md
 storage/agent_input/weekly_digest_*.md
+
+# Output artifacts
+output/digests/*.md
+output/digests/*.txt
+
+# Backup files
+*.bak
