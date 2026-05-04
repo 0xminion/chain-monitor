@@ -15,7 +15,7 @@ pipeline:
 
 # Twitter collector settings
 twitter:
-  max_workers: 15
+  max_workers: 3
   num_batches: 15
   lookback_hours: 72
 

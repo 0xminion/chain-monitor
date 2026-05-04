@@ -54,7 +54,7 @@ class TwitterCollector(BaseCollector):
         ))
         self.max_workers = int(get_env(
             "TWITTER_MAX_WORKERS",
-            str(max_workers if max_workers is not None else get_pipeline_value("twitter.max_workers", 15))
+            str(max_workers if max_workers is not None else get_pipeline_value("twitter.max_workers", 3))
         ))
         self.num_batches = int(get_env(
             "TWITTER_NUM_BATCHES",

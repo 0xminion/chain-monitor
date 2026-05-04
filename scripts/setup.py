@@ -54,8 +54,8 @@ def main():
     print("\n⚙️  Optional Settings")
     log_level = prompt("  Log level", "INFO")
     retention = prompt("  Data retention (days)", "90")
-    twitter_workers = prompt("  Twitter workers", "15")
-    twitter_batches = prompt("  Twitter batches", "10")
+    twitter_workers = prompt("  Twitter workers", "3")
+    twitter_batches = prompt("  Twitter batches", "15")
     lookback = prompt("  Twitter lookback hours", "24")
 
     # ── Build .env ────────────────────────────────────────────
