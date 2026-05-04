@@ -333,7 +333,7 @@ class TestTwitterScoring:
         assert signal.urgency == 2
         assert signal.priority_score == 6
 
-    def test_engagement_only_twitter_is_p3(self, scorer):
+    def test_engagement_only_twitter_is_low_priority(self, scorer):
         event = {
             "chain": "base",
             "category": "NEWS",
@@ -342,11 +342,11 @@ class TestTwitterScoring:
             "evidence": {"role": "unknown"},
         }
         signal = scorer.score(event)
-        assert signal.impact == 3
+        assert signal.impact == 2
         assert signal.urgency == 1
-        assert signal.priority_score == 3
+        assert signal.priority_score == 2
 
-    def test_empty_text_twitter_is_p3(self, scorer):
+    def test_empty_text_twitter_is_low(self, scorer):
         event = {
             "chain": "arbitrum",
             "category": "NEWS",
@@ -355,11 +355,11 @@ class TestTwitterScoring:
             "evidence": {"role": "community"},
         }
         signal = scorer.score(event)
-        assert signal.impact == 3
+        assert signal.impact == 2
         assert signal.urgency == 1
-        assert signal.priority_score == 3
+        assert signal.priority_score == 2
 
-    def test_short_nonsubstantive_twitter_is_p3(self, scorer):
+    def test_short_nonsubstantive_twitter_is_low(self, scorer):
         event = {
             "chain": "optimism",
             "category": "NEWS",
@@ -368,9 +368,9 @@ class TestTwitterScoring:
             "evidence": {"role": "community"},
         }
         signal = scorer.score(event)
-        assert signal.impact == 3
+        assert signal.impact == 2
         assert signal.urgency == 1
-        assert signal.priority_score == 3
+        assert signal.priority_score == 2
 
     def test_fallback_twitter_is_p3(self, scorer):
         event = {

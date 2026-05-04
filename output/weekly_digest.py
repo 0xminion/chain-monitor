@@ -179,8 +179,8 @@ def _parse_standalone_json(path: Path) -> list[dict]:
                 "likes": t.get("likes", 0) or 0,
                 "source_type": "standalone",
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"Failed to parse standalone JSON {path.name}: {exc}")
     return events
 
 
@@ -281,8 +281,8 @@ def build_digest() -> str:
             if mtime < cutoff:
                 continue
             all_events.extend(_parse_daily_prompt(path))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"Failed to parse {path.name}: {exc}")
 
     # Standalone summary JSONs (Twitter raw)
     for path in DAILY_DIGEST_DIR.glob("standalone_summary_*.json"):

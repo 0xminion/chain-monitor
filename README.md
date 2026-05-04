@@ -8,9 +8,9 @@ The running agent is the only reasoning engine in the loop: it reads the generat
 
 ## Pipeline (7 stages)
 
-1. **Parallel Collect** — 10 collectors run concurrently via `asyncio.gather`
+1. **Parallel Collect** — 9 collectors run concurrently via `asyncio.gather`
 2. **Dedup** — O(n) hash-based deduplication
-3. **Categorize** — source-provided categories with agent-native checkpoint
+3. **Categorize** — source-provided categories with agent-native checkpoint override
 4. **Score + Reinforce** — rule-based heuristics merge similar signals across sources
 5. **Per-chain Analyze** — deterministic analysis builds `ChainDigest` objects
 6. **Agent Prompt Synthesis** — structured markdown prompt saved to `storage/agent_input/`
@@ -26,7 +26,7 @@ cd chain-monitor
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Playwright browsers
+# Install Playwright browsers + Camoufox
 python -m playwright install chromium
 
 # Setup .env (data source API keys only; no LLM config needed)
@@ -38,11 +38,12 @@ python3 scripts/doctor.py
 # Run the full pipeline
 python3 main.py
 
-# With resource profiling
-python3 scripts/chain_monitor_cli.py digest --preview
+# Skip Twitter (faster, no Playwright needed)
+python3 main.py --skip-twitter
 
-# Install daily cron at 9am UTC
-python3 scripts/chain_monitor_cli.py cron install --hour 9
+# With resource profiling
+python3 run_pipeline_live.py
+python3 run_pipeline_live.py --skip-twitter
 
 # Run tests
 python3 -m pytest tests/ -q
@@ -54,12 +55,12 @@ python3 -m pytest tests/ -q
 
 | Directory | Purpose |
 |-----------|---------|
-| `collectors/` | 10 data ingestors: RSS, Twitter, DefiLlama, regulatory, etc. |
+| `collectors/` | 9 data ingestors: RSS, Twitter, DefiLlama, regulatory, etc. |
 | `processors/` | Dedup, scoring, reinforcement, chain analysis, prompt synthesis |
 | `output/` | Weekly digest builder (reads 7 days of persisted daily prompts) |
-| `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml` |
-| `scripts/` | `setup.py`, `doctor.py`, `chain_monitor_cli.py` |
-| `storage/` | Events, health logs, narrative history, agent prompts |
+| `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml`, `twitter_accounts.yaml` |
+| `scripts/` | `setup.py`, `doctor.py`, `chain_monitor_cli.py`, `twitter_worker.py` |
+| `storage/` | Events, health logs, narrative history, agent prompts, raw tweets |
 
 ---
 
@@ -69,14 +70,13 @@ python3 -m pytest tests/ -q
 |-----------|--------|---------|
 | DefiLlama | TVL, fees, volume | FINANCIAL |
 | CoinGecko | Price, market cap anomalies | FINANCIAL |
-
-| Hackathon Outcomes | DevPost competitions | VISIBILITY |
 | RSS | 80+ feeds across 27 chains | All categories |
 | Regulatory | SEC EDGAR, policy | REGULATORY |
 | Risk Alert | Hack/vulnerability feeds | RISK_ALERT |
 | TradingView | News flow via Playwright | All categories |
 | Events | Conferences, hackathons | VISIBILITY |
-| Twitter | 138 chain accounts via Playwright | All categories |
+| Hackathon Outcomes | DevPost competitions | VISIBILITY |
+| Twitter | 138 chain accounts via Camoufox subprocess workers | All categories |
 
 ---
 
@@ -90,14 +90,15 @@ Key env vars (`.env`):
 LOG_LEVEL=INFO
 DATA_RETENTION_DAYS=90
 TWITTER_MAX_WORKERS=15
-TWITTER_NUM_BATCHES=10
-TWITTER_LOOKBACK_HOURS=24
+TWITTER_NUM_BATCHES=15
+TWITTER_LOOKBACK_HOURS=72
 
 # Optional data source keys
 COINGECKO_API_KEY=***
-YOUTUBE_API_KEY=***
 GITHUB_TOKEN=***
 ```
+
+Twitter cookies: `storage/twitter/cookies.json` (Playwright `storage_state` format). Required for authenticated scraping. See `scripts/export_cookies.py` for export from Chrome.
 
 ---
 
@@ -119,7 +120,7 @@ The running agent reads this file and produces the final digest prose directly i
 python3 -m pytest tests/ -q
 ```
 
-254 tests cover unit, integration, system, and regression suites.
+250 tests cover unit, integration, system, and regression suites.
 
 ---
 

@@ -4,6 +4,7 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from time import mktime
 from typing import Optional
 from dataclasses import dataclass
 
@@ -108,3 +109,15 @@ class BaseCollector(ABC):
 
     def get_health(self) -> dict:
         return self.health.to_dict()
+
+    @staticmethod
+    def parse_feed_date(entry) -> Optional[datetime]:
+        """Extract published date from a feedparser entry."""
+        for field in ("published_parsed", "updated_parsed"):
+            ts = getattr(entry, field, None)
+            if ts:
+                try:
+                    return datetime.fromtimestamp(mktime(ts), tz=timezone.utc)
+                except (OverflowError, ValueError, OSError):
+                    continue
+        return None

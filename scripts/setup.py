@@ -88,7 +88,6 @@ def main():
     lines.extend([
         "",
         "# Data source APIs (optional)",
-        "# OPENROUTER_API_KEY=***",
     ])
 
     env_path.write_text("\n".join(lines) + "\n")

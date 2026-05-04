@@ -15,9 +15,9 @@ pipeline:
 
 # Twitter collector settings
 twitter:
-  max_workers: 10
+  max_workers: 15
   num_batches: 15
-  lookback_hours: 24
+  lookback_hours: 72
 
 # Scoring thresholds
 scoring:

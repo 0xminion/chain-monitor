@@ -52,7 +52,8 @@ logger = logging.getLogger("chain-monitor")
 __version__ = "0.1.0"
 
 
-async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = False) -> PipelineContext:
+async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = False,
+                       skip_twitter: bool = False) -> PipelineContext:
     """Execute the full 7-stage agent-native pipeline.
 
     Args:
@@ -81,8 +82,9 @@ async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = Fa
         TradingViewCollector(),
         EventsCollector(),
         HackathonOutcomesCollector(),
-        TwitterCollector(standalone_mode=False),
     ]
+    if not skip_twitter:
+        collectors.append(TwitterCollector(standalone_mode=False))
 
     ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(
         collectors, max_concurrent=get_pipeline_value("pipeline.max_concurrent_collectors", 4)
@@ -291,8 +293,9 @@ async def main():
     import argparse
     parser = argparse.ArgumentParser(description="Chain Monitor Agent-Native Pipeline")
     parser.add_argument("--weekly", action="store_true", help="Run weekly digest synthesis")
+    parser.add_argument("--skip-twitter", action="store_true", help="Skip Twitter collector")
     args = parser.parse_args()
-    await run_pipeline(weekly=args.weekly)
+    await run_pipeline(weekly=args.weekly, skip_twitter=args.skip_twitter)
 
 
 if __name__ == "__main__":

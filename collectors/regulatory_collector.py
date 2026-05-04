@@ -65,14 +65,7 @@ class RegulatoryCollector(BaseCollector):
         }
 
     def _parse_date(self, entry) -> Optional[datetime]:
-        for field in ("published_parsed", "updated_parsed"):
-            ts = getattr(entry, field, None)
-            if ts:
-                try:
-                    return datetime.fromtimestamp(mktime(ts), tz=timezone.utc)
-                except (OverflowError, ValueError, OSError):
-                    continue
-        return None
+        return self.parse_feed_date(entry)
 
     def _match_chain(self, text: str) -> Optional[str]:
         text_lower = text.lower()

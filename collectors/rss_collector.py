@@ -106,14 +106,7 @@ class RSSCollector(BaseCollector):
 
     def _parse_date(self, entry) -> Optional[datetime]:
         """Extract published date from a feed entry."""
-        for field in ("published_parsed", "updated_parsed"):
-            time_struct = getattr(entry, field, None)
-            if time_struct:
-                try:
-                    return datetime.fromtimestamp(mktime(time_struct), tz=timezone.utc)
-                except (OverflowError, ValueError, OSError):
-                    continue
-        return None
+        return self.parse_feed_date(entry)
 
     def _match_narratives(self, text: str) -> list[str]:
         """Return list of narrative keys whose keywords appear in text."""

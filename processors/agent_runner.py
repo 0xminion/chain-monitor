@@ -17,7 +17,6 @@ from processors.pipeline_utils import safe_text_write
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
-DAILY_DIGEST_DIR = REPO_ROOT / "storage" / "daily_digests"
 
 
 class AgentDigestRunner:

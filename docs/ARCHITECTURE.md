@@ -11,7 +11,7 @@
 
 ```
 ┌────────────────────┐
-│ Stage 0: Collect     │ ← asyncio.gather across 10 collectors
+│ Stage 0: Collect     │ ← asyncio.gather across 9 collectors
 │    (parallel)        │     RSS, DefiLlama, CoinGecko, TradingView, Events,
 │                      │     Hackathon Outcomes, Risk Alert, Regulatory, Twitter
 └──────────┬──────────┘
@@ -24,8 +24,8 @@
            │ list[RawEvent] + health report
            v
 ┌────────────────────┐
-│ Stage 2: Categorize  │ ← deterministic keyword + source-provided category
-│                      │     fallback. No LLM. No agent blocking.
+│ Stage 2: Categorize  │ ← source-provided categories with agent-native
+│                      │     checkpoint override. No LLM blocking.
 └──────────┬──────────┘
            │ list[RawEvent] with category/subcategory
            v
@@ -74,9 +74,21 @@ The traditional LLM-in-pipeline approach (calling OpenAI/Ollama during each run)
 
 The agent-native model inverts this: the pipeline produces deterministic structured data, the running agent (you) reads a rich prompt and writes prose. Trust moves from opaque model inference to explicit prompt + human reasoning.
 
-### Why ProcessPoolExecutor for Twitter (not async)
+### Twitter: Subprocess Workers with Camoufox
 
-X throttles concurrent tabs within a single browser context. A single Playwright `Browser` + 5+ concurrent `Page` objects yields degraded or empty timelines. Each `ProcessPoolExecutor` worker gets its own isolated browser + temp Chrome profile, bypassing server-side detection entirely. This costs RAM (~200MB/worker) but produces reliable tweet extraction on Steam Deck (16GB total).
+X throttles concurrent tabs within a single browser context. A single Playwright `Browser` + 5+ concurrent `Page` objects yields degraded or empty timelines. The Twitter collector uses **subprocess-based isolation**:
+
+- `collectors/twitter_collector.py` batches 138 handles across N batches
+- Each batch spawns `scripts/twitter_worker.py` via `asyncio.create_subprocess_exec`
+- Workers use **Camoufox** anti-detect browser with `storage_state` cookies
+- Concurrency controlled by `asyncio.Semaphore(max_workers)` — default 15
+- No `ProcessPoolExecutor` — avoids Playwright EPIPE crashes on SteamOS
+- Each worker reuses a single browser context across its batch of handles
+
+**Why subprocess over ProcessPoolExecutor:**
+- `fork()` inherits parent's Playwright event loop → EPIPE on page close
+- `spawn()` via multiprocessing works but adds complexity vs. clean subprocess
+- Subprocess isolation means a crashed worker doesn't take down the pipeline
 
 ---
 
@@ -86,7 +98,7 @@ X throttles concurrent tabs within a single browser context. A single Playwright
 
 All collectors implement `BaseCollector` with `async collect()` returning `list[RawEvent]`. `parallel_runner.collect_all()` gathers them with `asyncio.gather(return_exceptions=True)` so one broken collector cannot crash the pipeline.
 
-Twitter is the only collector using synchronous Playwright via `ProcessPoolExecutor`. It batches 138 handles across 15 workers × 10 batches. Each worker gets a lightweight Chrome profile copy (no caches, no IndexedDB) to keep `/tmp` usage under 1.5GB.
+Twitter uses subprocess workers. Each worker scrapes a batch of handles sequentially with a single Camoufox browser context, printing newline-delimited JSON to stdout. The collector parses stdout and converts tweets to `RawEvent` dicts.
 
 ### Stage 1: Dedup
 
@@ -95,15 +107,17 @@ Twitter is the only collector using synchronous Playwright via `ProcessPoolExecu
 - Primary: `hashlib.sha256(url + normalized_text[:120])`
 - Fallback: `hashlib.sha256(normalized_text[:200])` for events without URLs
 
-Complexity: O(n) single pass. Old approach was O(n×m) pairwise similarity — abandoned because it was ~40% of runtime on 200+ events.
+Complexity: O(n) single pass.
 
 ### Stage 2: Categorize
 
-`EventCategorizer.apply_categories()` maps events using source-provided categories. A deterministic keyword dictionary (`CATEGORY_KEYWORDS` in `categorizer.py`) provides fallback when the collector didn't set a category. No blocking agent checkpoint in production — the "agent checkpoint" pattern in `agent_native.py` is reserved for manual override workflows.
+`EventCategorizer.apply_categories()` maps events using source-provided categories. When agent categorization results exist on disk, they override source defaults. No blocking agent checkpoint in production — the pipeline flows through with source-provided categories when no agent output exists.
 
 ### Stage 3–4: Score + Reinforce
 
-`SignalScorer.score()` converts a categorized event into a `Signal` with `impact` (1-5), `urgency` (1-3), and `priority_score = impact × urgency`. Chain mapping uses `primary_chain` from config, then keyword mentions, then description heuristics.
+`SignalScorer.score()` converts a categorized event into a `Signal` with `impact` (1-5), `urgency` (1-3), and `priority_score = impact × urgency`. Twitter events get role-aware scoring (official=high impact, contributor=medium) that preserves category-based urgency (e.g., RISK_ALERT hack events keep urgency=3).
+
+Agent-native semantic scores (from `event["semantic"]`) override deterministic scoring when available.
 
 `SignalReinforcer.process()` merges signals with identical fingerprints. A signal reinforced by 3+ sources gets `composite_confidence = min(0.95, max_reliability × 1.3)`.
 
@@ -147,7 +161,8 @@ Persistence points (all atomic via `safe_text_write` / `safe_json_write`):
 | Health log | `storage/health/run_*.json` | Per-run stats + timing |
 | Metrics | `storage/metrics/metrics.jsonl` | `PipelineMetrics` telemetry |
 | Agent prompt | `storage/agent_input/daily_prompt_*.md` | Prompt for agent synthesis |
-| Daily digest | `storage/daily_digests/daily_digest_*.md` | Weekly builder input |
+| Daily digest | `storage/twitter/summaries/daily_digest_*.txt` | Weekly builder input |
+| Raw tweets | `storage/twitter/raw/tweets_*.json` | Twitter persistence |
 
 ---
 
@@ -155,7 +170,7 @@ Persistence points (all atomic via `safe_text_write` / `safe_json_write`):
 
 | Stage | Concurrency | Bottleneck | Mitigation |
 |-------|-------------|------------|------------|
-| Collect | asyncio.gather + `ProcessPoolExecutor` for Twitter | API rate limits | Configured semaphore + batching |
+| Collect | asyncio.gather + subprocess workers for Twitter | API rate limits | Configured semaphore + batching |
 | Dedup | Single-threaded (O(n)) | None | None |
 | Score | Single-threaded (O(n)) | None | None |
 | Reinforce | Single-threaded | Disk I/O | FileLock on signal storage |
@@ -166,8 +181,8 @@ Persistence points (all atomic via `safe_text_write` / `safe_json_write`):
 Steam Deck-specific constraints enforced in `config/pipeline.yaml`:
 
 - `memory_throttle_mb: 500` — when `<500MB` free, concurrency drops to 2
-- Twitter lite profile copy — excludes `GPUCache`, `blob_storage`, `Code Cache`, `IndexedDB`, etc.
-- Chrome process cleanup: `pkill -9 chrome` pre-run if zombies detected
+- Twitter worker timeout: 300s per batch
+- Chrome zombie cleanup via `_kill_zombie_chrome()` in workers
 
 ---
 
@@ -193,7 +208,8 @@ Steam Deck-specific constraints enforced in `config/pipeline.yaml`:
 | `processors/chain_analyzer.py` | Per-chain digest building |
 | `processors/summary_engine.py` | Markdown prompt builder |
 | `processors/agent_runner.py` | Prompt persister (agent-native only) |
-| `collectors/twitter_collector.py` | Playwright-based extraction with ProcessPoolExecutor |
+| `collectors/twitter_collector.py` | Subprocess-based Twitter extraction |
+| `scripts/twitter_worker.py` | Camoufox worker for batch handle scraping |
 | `config/pipeline.yaml` | Centralized tunables (workers, thresholds, retention) |
 | `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
 

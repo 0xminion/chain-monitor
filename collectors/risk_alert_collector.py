@@ -132,16 +132,7 @@ class RiskAlertCollector(BaseCollector):
                     link = getattr(entry, "link", "")
 
                     # Date filter — skip old posts
-                    pub_date = None
-                    for field in ("published_parsed", "updated_parsed"):
-                        ts = getattr(entry, field, None)
-                        if ts:
-                            try:
-                                from time import mktime
-                                pub_date = datetime.fromtimestamp(mktime(ts), tz=timezone.utc)
-                                break
-                            except (OverflowError, ValueError):
-                                pass
+                    pub_date = self.parse_feed_date(entry)
                     if pub_date and pub_date < cutoff:
                         continue
 

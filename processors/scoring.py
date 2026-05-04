@@ -56,14 +56,18 @@ class SignalScorer:
         description = event.get("description", "")
         source = event.get("source", "unknown")
         reliability = event.get("reliability", 0.7)
-        evidence = event.get("evidence", description)
+        evidence = event.get("evidence") or {}
 
         baseline = self.baselines.get(chain, {})
         impact, urgency = self._calculate_scores(event, category, baseline)
 
-        # Twitter nuanced override — role-aware, not blanket
+        # Twitter nuanced override — role-aware, not blanket.
+        # Preserve category-based urgency (e.g. RISK_ALERT hack/exploit = 3)
+        # only override impact and use max(urgency) to avoid killing high-urgency events.
         if "twitter" in str(source).lower():
-            impact, urgency = self._score_twitter(event)
+            tw_impact, tw_urgency = self._score_twitter(event)
+            impact = tw_impact
+            urgency = max(urgency, tw_urgency)
 
         # --- AGENT-NATIVE SEMANTIC OVERRIDE ---
         # If the agent already scored this event via semantic enrichment,
@@ -155,7 +159,7 @@ class SignalScorer:
         if role in ("contributor", "core contributor"):
             return 3, 2
         if self._is_engagement_only(text):
-            return 3, 1
+            return 2, 1
         return 3, 1
 
     _ENGAGEMENT_ONLY_RE = re.compile(

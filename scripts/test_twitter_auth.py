@@ -4,6 +4,7 @@
 Usage: .venv/bin/python scripts/test_twitter_auth.py [@handle] [--workers N] [--batches N]
 """
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -18,6 +19,26 @@ logging.basicConfig(
 )
 
 
+async def run_test(handle: str, workers: int, batches: int, hours: int) -> int:
+    c = TwitterCollector(
+        standalone_mode=False,
+        lookback_hours=hours,
+        max_workers=workers,
+        num_batches=batches,
+    )
+
+    # Monkey-patch accounts to only the single handle we want
+    c._accounts = {"TestChain": {"official": [{"handle": handle}], "contributors": []}}
+
+    results = await c.collect()
+    print(f"\n✅ @{handle}: {len(results)} tweets found")
+    for r in results[:5]:
+        ts = r.get("timestamp", "")
+        text = r.get("text", "")[:80]
+        print(f"  {ts} → {text}...")
+    return len(results)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("handle", nargs="?", default="solana")
@@ -26,25 +47,9 @@ def main():
     parser.add_argument("--hours", type=int, default=24)
     args = parser.parse_args()
 
-    c = TwitterCollector(
-        standalone_mode=False,
-        lookback_hours=args.hours,
-        max_workers=args.workers,
-        num_batches=args.batches,
-    )
-
-    # Monkey-patch accounts to only the single handle we want
-    c._accounts = {"TestChain": {"official": [{"handle": args.handle}], "contributors": []}}
-
-    results = c.collect()
-    print(f"\n✅ @{args.handle}: {len(results)} tweets found")
-    for r in results[:5]:
-        ts = r.get("timestamp", "")
-        text = r.get("text", "")[:80]
-        print(f"  {ts} → {text}...")
-    return len(results)
+    n = asyncio.run(run_test(args.handle, args.workers, args.batches, args.hours))
+    sys.exit(0 if n > 0 else 1)
 
 
 if __name__ == "__main__":
-    n = main()
-    sys.exit(0 if n > 0 else 1)
+    main()
