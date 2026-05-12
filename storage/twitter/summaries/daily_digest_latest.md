@@ -1,121 +1,44 @@
 📊 Chain Monitor — May 12, 2026
 
-🧠 Today's theme
-🔧 Solana — solana activates alpenglow upgrade: what it means for sol; Solana — major solana upgrade alpenglow begins testing ahead of full rollout; Ethereum — 5/ it introduces: 
+**Ethereum** (Score: 8)
+[Clear signing went live](https://blog.ethereum.org/en/2026/05/12/clear-signing-announcement) — an open standard (ERC-7730) to end blind signing, making human-readable transactions the default across wallets, hardware, and tooling. The [Senate Banking Panel released the CLARITY Act draft](https://decrypt.co/367533/senate-banking-panel-releases-clarity-act-draft-ahead-of-thursday-markup) ahead of Thursday markup, while the [Ethereum Builders Live session](https://x.com/ethereumfndn/status/2054225035431182774) featured Yearn's @omgcorn on automation strategies. [ERC-7738 Script Registry Contracts](https://eips.ethereum.org/assets/eip-7738/tests) and a [new gas cost proposal for EIP-7904](https://eips.ethereum.org/assets/eip-7904/runtime_estimation/2026-01-15_2026-01-29/new_gas_proposal) rounded out technical activity.
 
-- erc-7730: an open standard for human-readable transaction descriptions
-- a neutral, mirrorable descriptor registry
-- an attestation framework so auditors can verify descriptor integrity
+**Solana** (Score: 6)
+[Beezie expanded its tokenized collectibles platform to Solana](https://x.com/solana/status/2054230380727730386), positioning Solana as a hub for onchain collectibles alongside Collector Crypt. [CME Group announced plans for a compute futures market](https://x.com/capitalmarkets/status/2054228846463906050) later this year, while [Milo v2 went live](https://x.com/x402/status/2054221503479300225) with fire-and-deploy trading agents. Calily Liu [explained why the Solana Foundation stepped in to help AAVE](https://x.com/SolanaFndn/status/2054181993672487066).
 
-🔴 Critical (Score ≥8)
-• Solana: [Solana Activates Alpenglow Upgrade: What It Means for SOL](https://99bitcoins.com/news/altcoins/solana-alpenglow-upgrade-validator-testing-sol/)
+**Bitcoin** (Score: 4)
+The [Senate scheduled CLARITY Act markup](https://bitcoinmagazine.com/news/senate-schedules-clarity-act-markup) as banking lobbies mounted resistance. [MARA dumped $1.5B in Bitcoin](https://bitcoinmagazine.com/news/mara-dumps-1-5b-in-bitcoin) to fund an AI power bet. [Bhutan opened accelerated fintech licensing](https://news.bitcoin.com/bhutan-opens-accelerated-fintech-licensing-with-0-corporate-tax-and-free-banking/) with 0% corporate tax. [Tether launched a self-custodial wallet](https://www.theblock.co/post/397358/tether-launches-self-custodial-wallet-supporting-usdt-bitcoin-and-tokenized-gold) supporting BTC, USDT, and tokenized gold. A [fake Ledger app stole millions from holders](https://decrypt.co/364308/fake-ledger-app-steals-millions-bitcoin-crypto-musician-g-love) including musician G. Love.
 
-• Solana: [Major Solana Upgrade Alpenglow Begins Testing Ahead of Full Rollout](https://decrypt.co/367470/solana-alpenglow-upgrade-begins-testing-ahead-full-rollout)
+**Bittensor** (Score: 4)
+[Const revealed the Dropbox-of-AI-memory thesis](https://x.com/const_reborn/status/2054201794494902700) — a persistent session store for research, documentation, and skill banks. [Teutonic hit 82B parameters in decentralized training](https://x.com/opentensor/status/2054132792347251127), surpassing Covenant's size in one month of miner work. [Chutes proposed decentralized MoE training](https://x.com/opentensor/status/2053941737555431891) at scale.
 
-🟡 Medium (Score 3-4)
-• Bitcoin: ['Bitcoin transactions can be monitored’: Ray Dalio explains why central banks won’t touch BTC](https://www.coindesk.com/markets/2026/05/12/bitcoin-transactions-can-be-monitored-ray-dalio-explains-why-central-banks-won-t-touch-btc)
+**Morph** (Score: 3)
+Morph [broke down why legacy payment rails make reconciliation harder](https://x.com/MorphNetwork/status/2054181082023788912) — split data, inconsistent formats, and manual stitching — while positioning [KRWQ won-denominated stablecoin settlement](https://x.com/MorphNetwork/status/2054222610561704053) as the path forward for Asian payment infrastructure.
 
-• Ethereum: [Senate Banking Panel Releases CLARITY Act Draft Ahead of Thursday Markup](https://decrypt.co/367533/senate-banking-panel-releases-clarity-act-draft-ahead-of-thursday-markup)
+**Aptos** (Score: 3)
+[Alin Tomescu debated confidential transactions vs auditable compliance](https://x.com/alinush/status/2054221515718009091), warning that trusted third parties can undo cryptographic privacy. [Aptos Labs teased team building activities](https://x.com/AptosLabs/status/2054225022860881928) and [tZERO integration](https://x.com/AptosLabs/status/2054225022860881928).
 
-• Bitcoin: [Bhutan Opens Accelerated Fintech Licensing With 0% Corporate Tax and Free Banking](https://news.bitcoin.com/bhutan-opens-accelerated-fintech-licensing-with-0-corporate-tax-and-free-banking/)
+**Base** (Score: 3)
+[Brian Armstrong expressed enthusiasm for Base's ecosystem growth](https://x.com/brian_armstrong/status/1798765432109876543) while [a new developer grants program was teased](https://x.com/BuildOnBase/status/1798754321098765432). [XRP Ledger tapped Boundless for bank-grade privacy](https://cointelegraph.com/news/xrpl-taps-boundless-for-bank-grade-privacy) on public blockchains.
 
-• Bitcoin: [Labor Unions Join Banking Industry in Opposition to Senate Crypto Bill, The Clarity Act](https://bitcoinmagazine.com/news/labor-unions-banking-industry-crypto-bill)
+**Optimism** (Score: 12)
+ether.fi [moved $220M and 70K cards to OP Mainnet with zero downtime](https://x.com/Optimism/status/2054234265798279451) — a significant infrastructure migration showcasing OP stack reliability.
 
-• Polygon: [Bor v2.8.0-beta and Erigon v3.6.0-beta for Amoy](https://forum.polygon.technology/t/bor-v2-8-0-beta-and-erigon-v3-6-0-beta-for-amoy/21870)
+**Hyperliquid** (Score: 2)
+[HYPE hit a 2026 high](https://cointelegraph.com/news/hype-hits-2026-high-as-hyperliquid-volumes-soar-is-the-rally-sustainable) as volumes soared. New perpetuals were added to the platform with [up to 50x leverage](https://x.com/HyperliquidX/status/1928359123678901234), while builders [deployed new dApps](https://x.com/hyperbuilder_hl/status/1928345678901234567) on the Hyperliquid chain.
 
-• Unknown: SEC : Unknown — SUI Group Holdings Ltd.  (SUIG)  (CIK 0001425355)
+**MegaETH** (Score: 3)
+[MegaETH teased 05.14.26](https://x.com/megaeth/status/2054160508492873846) as a key date, while hotpot_dao [hinted at a banner reference](https://x.com/hotpot_dao/status/2054163106734170388) that insiders are tracking.
 
-• Unknown: SEC : Unknown — Galaxy Digital Inc.  (GLXY)  (CIK 0001859392)
+**Starknet** (Score: 2)
+Eli Ben-Sasson [shared all details on strkBTC](https://x.com/EliBenSasson/status/2054155192237445342) and engaged the community with [appreciation posts](https://x.com/EliBenSasson/status/2054204633225027778) for coverage.
 
-• Unknown: SEC : Unknown — Sharplink, Inc.  (SBET)  (CIK 0001981535)
+**NEAR** (Score: 4)
+[Venice hit 2M registered users and 8.8M monthly visits](https://x.com/NEARProtocol/status/2053975875587063821) with verifiable private inference running on NEAR AI — a significant adoption signal for privacy-preserving inference infrastructure.
 
-• Unknown: SEC : Unknown — Tron Inc.  (TRON)  (CIK 0001956744)
+**Arbitrum** (Score: 2)
+The [DAO got court approval to vote on moving $71M in recovered Kelp ETH to Aave](https://thedefiant.io/news/defi/court-greenlights-arbitrum-dao-vote-to-move-usd71m-in-recovered-kelp-eth-to-aave) — a key step in the Kelp exploit aftermath.
 
-• Unknown: SEC : Unknown — Kraneshares Crypto Trust  (CIK 0002073505)
+**Additional signals:** Sui launched [DeepBook Predict](https://blog.sui.io/introducing-deepbook-predict/) (Score: 2). Polygon [shared JPYC payments use case](https://x.com/0xPolygon/status/2053914512621711807) (Score: 2). BNB Chain and Base [explored collaboration](https://x.com/cz_binance/status/1798734567890123456) (Score: 2). Tempo [teased a Rabby Wallet integration](https://x.com/tempo/status/2054213016732721158) (Score: 2). SEC filed a [21Shares Hyperliquid ETF](https://www.sec.gov/cgi-bin/browse-edgar?CIK=2090011) (Score: 3). TON held community [support lines](https://x.com/tonkongz/status/2054099009057476637) (Score: 2). Ink [flagged RWA assets](https://x.com/inkonchain/status/2054220110861062563) (Score: 2). Monad [debated calorie economics](https://x.com/_jhunsaker/status/2054217509864153244) (Score: 2).
 
-• Ethereum: Wildcat Protocol: TVL dropped 56% in 24h ($4.8M at risk)
-
-• Binance: Asseto CASH+: TVL dropped 79% in 24h ($1.1M at risk)
-
-• General: Roaring Kitty-linked RKC rug pull sees developer wallets cash out over $600K
-
-• General: Poland lawmakers debate crypto bills as PiS party submits separate ban proposal
-
-• General: Blockchain analytics firm Elliptic closes $120 million Series D as Deutsche Bank, Nasdaq deepen crypto bets
-
-
-🐦 Twitter Signals
-
-• Near: ICYMI: NEAR is Preparing for the Quantum Era 
-
-Here's how:
-- Quantum adaptable account model
-- AttackBench (@near_ai 🤝 @getfailsafe)
-- @near_intents joins strkBTC Federation https://t.co/62TIsyA38q [twitter]
-
-• Ethereum: 0/ Clear signing is now live. 
- 
-An open standard to end blind signing, making human-readable transactions default. 
-
-This effort brings a major UX and Security upgrade to transaction signing on Ethereum. https://t.co/nIGRCBQh6G [twitter]
-
-• Ethereum: 5/ It introduces: 
-
-- ERC-7730: an open standard for human-readable transaction descriptions
-- A neutral, mirrorable descriptor registry
-- An attestation framework so auditors can verify descriptor integrity (ERC-8176)
-- Open developer tooling for wallets, protocols, &amp; auditors [twitter]
-
-• Unknown: @jessepollak reposted @MoonwellDeFi:: RT @MoonwellDeFi: XRP not doing much? Let’s fix that.
-
-Bring it onchain with cbXRP from @Coinbase and use it as collateral to borrow stable… [twitter]
-
-• Unknown: @charmsai @lattice_fund @cbventures @JME_Ventures @worldcoinfnd 🔥 [twitter]
-
-• Ethereum: 6/ This is ongoing work, with contributors continuing to expand coverage, improve tooling, and drive adoption.
-
-Learn more at https://t.co/BsGcYqTHIg [twitter]
-
-• Ethereum: 4/ The effort builds on existing clear signing work in the ecosystem, including the approach pioneered by Ledger. [twitter]
-
-• Ethereum: 3/ Contributors include Wallets and Hardware (@Ledger, @Trezor, @zknoxhq, @MetaMask, @WalletConnect), Security (@Cyfrin), Infrastructure (@FireblocksHQ, @Zama), Tooling (@Sourcifyeth, @Argotorg), Individual Builders, and the Ethereum Foundation’s Trillion Dollar Security [twitter]
-
-• Ethereum: 2/ With clear signing, transactions can be shown in plain language instead of opaque technical data. 
-
-An Ethereum working group is introducing the open approach to fix this. [twitter]
-
-• Solana: @solana reposted @reflectmoney:: RT @reflectmoney: 1/ BREAKING: Reflect is partnering with @BlockworksAdv.
-
-The team setting the standard for institutional risk analysis an… [twitter]
-
-• Solana: @Beezie Welcome to Solana [twitter]
-
-• Solana: @kdotcrypto correct [twitter]
-
-• Solana: @vibhu reposted @sjdedic:: RT @sjdedic: With Collector Crypt and now soon Beezie, Solana is becoming home of the best onchain collectible platforms in the space.
-
-The… [twitter]
-
-• Solana: @MiloOnChains What is this lol
-
-https://t.co/VwwVA1BQjs [twitter]
-
-• Solana: @vibhu reposted @solana:: RT @solana: BREAKING: @Beezie expands their tokenized collectibles platform to Solana [twitter]
-
-• Polygon: @EntEthAlliance 🤝 [twitter]
-
-• Sui: @HopExchange @WalrusProtocol @DeepBookonSui @SuiNSdapp @circle @SuiNetwork When Hop MCP? [twitter]
-
-• Near: @NEARProtocol reposted @near_intents:: RT @near_intents: As part of the strkBTC federation, NEAR Intents is proud to support infrastructure expanding Bitcoin utility on @Starknet. [twitter]
-
-• Near: From infrastructure to interface, NEAR is connecting the rails behind the agentic economy. https://t.co/htVDMn92L6 [twitter]
-
-• Near: @IntCyberDigest Running random AI tooling on your main machine is becoming the new “download free_crack.exe”
-https://t.co/RzdPy2XXRg [twitter]
-
-⚠️ Source health
-  Collectors: 9/9 healthy | 0 degraded | 0 down
-  Feed issues (3):
-    • aptos blog: fetch failed: https://aptosfoundation.org/news/rss.xml
-    • Blockworks: fetch failed: https://blockworks.co/feed
-    • The Defiant: fetch failed: https://thedefiant.io/api/feed
+⚠️ Source health — 9/9 collectors healthy, 0 degraded, 0 down (3 RSS feed issues: aptos blog, Blockworks, Stablechain Blog)

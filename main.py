@@ -148,6 +148,20 @@ async def main_async():
     digest_path.write_text(digest)
     logger.info(f"Digest saved to {digest_path}")
 
+    # Save structured signal bundle for agent-driven prose synthesis (cron)
+    signal_bundle = [s.to_dict() for s in signals]
+    bundle_path = Path(__file__).parent / "storage" / "twitter" / "summaries" / "signal_bundle.json"
+    import json
+    with open(bundle_path, "w") as f:
+        json.dump({
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "signal_count": len(signals),
+            "source_health": health,
+            "feed_health": feed_health,
+            "signals": signal_bundle,
+        }, f, indent=2)
+    logger.info(f"Signal bundle saved to {bundle_path}")
+
     if formatter.should_send(signals):
         sender = TelegramSender()
         success = await sender.send(digest)

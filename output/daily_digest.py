@@ -1,12 +1,18 @@
-"""Daily digest formatter — generates the daily Telegram digest."""
+"""Daily digest formatter — generates the daily Telegram digest.
 
+Produces prose-synthesized per-chain summaries with markdown source links.
+Uses the summarizer module for LLM-driven prose synthesis.
+"""
+
+import asyncio
 import logging
-import re
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
 from config.loader import get_chains
 from processors.signal import Signal
+from output.summarizer import summarize_chain
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +28,6 @@ def _extract_url(signal: Signal) -> Optional[str]:
         url = evidence.get(key)
         if url and url.startswith("http"):
             return url
-    # Fallback: check all activities for a URL
     for act in signal.activity:
         ev = act.get("evidence", {})
         if isinstance(ev, dict):
@@ -45,58 +50,46 @@ def _clean_description(desc: str) -> str:
 def _is_noise(signal: Signal) -> bool:
     """Filter out noisy signals that clutter the digest."""
     desc = signal.description
-    # Block any source labeled GitHub — collector removed but old signals may persist
     sources_str = ",".join(a["source"] for a in signal.activity).lower()
     if "github" in sources_str:
         return True
-    # EIPs RSS index pages — just category listings, not real content
     if "EIPs RSS" in desc:
         return True
-    # Generic RSS "New post" with no real title
     if desc.startswith("[") and "New post" in desc:
         return True
-    # Price/financial noise — user doesn't want price content
     if signal.category in ("FINANCIAL", "PRICE_NOISE"):
         return True
-    # Raw Devpost/hackathon text dumps — not formatted for digest
     if "FEATURED\n" in desc or "No hackathons found" in desc:
         return True
-    # Old hackathon outcome reports (Solana/ETHGlobal results from months ago)
-    if signal.category == "VISIBILITY" and any(kw in desc.lower() for kw in ["winners of", "results of", "announce the result"]):
+    if signal.category == "VISIBILITY" and any(
+        kw in desc.lower() for kw in ["winners of", "results of", "announce the result"]
+    ):
         return True
-    # Routine fixes/feats that aren't major releases
     if signal.category == "TECH_EVENT" and signal.activity:
         metric = signal.activity[0].get("evidence", {}).get("metric", "")
-        # Only keep major releases and high-signal PRs (EIP/fork/security/audit)
         if metric not in ("major_release", "new_release"):
             desc_lower = desc.lower()
-            # Skip routine fix/feat/build PRs
-            routine = ("fix:", "fix(", "feat:", "feat(", "build:", "build(",
-                       "backport ", "update ", "core/vm:", "core/eth:",
-                       "core/p2p:", "core/state:", "release rlock",
-                       "confidential asset")
+            routine = (
+                "fix:", "fix(", "feat:", "feat(", "build:", "build(",
+                "backport ", "update ", "core/vm:", "core/eth:",
+                "core/p2p:", "core/state:", "release rlock",
+                "confidential asset",
+            )
             if any(desc_lower.startswith(p) for p in routine):
                 return True
     return False
 
 
 def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
-    """Check if signal is recent enough for the daily digest.
-    
-    Filters based on the actual event age (from evidence), not detection time.
-    Signals without age data are allowed through (assume recent).
-    """
+    """Check if signal is recent enough for the daily digest."""
     if not signal.activity:
-        return True  # no data, allow
+        return True
     evidence = signal.activity[0].get("evidence", {})
     if not isinstance(evidence, dict):
         return True
-    
     age_hours = evidence.get("age_hours")
     if age_hours is not None:
         return age_hours <= max_age_hours
-    
-    # Check published_at timestamp
     published = evidence.get("published_at") or evidence.get("published")
     if published:
         try:
@@ -105,135 +98,115 @@ def _is_recent_for_digest(signal: Signal, max_age_hours: float = 24) -> bool:
             return age <= max_age_hours
         except (ValueError, TypeError):
             pass
-    
-    return True  # no age data, allow
-
-
-def _html_link(title: str, url: Optional[str]) -> str:
-    """Create an HTML-linked title for Telegram."""
-    if url and url.startswith("http"):
-        # Escape HTML entities in title
-        safe = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f'<a href="{url}">{safe}</a>'
-    return title
+    return True
 
 
 class DailyDigestFormatter:
-    """Formats signals into a daily Telegram digest."""
+    """Formats signals into a prose-synthesized daily Telegram digest.
 
-    def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
-        """Format signals into daily digest text — grouped by chain.
+    Calls the LLM summarizer per chain, then renders markdown output
+    with clickable source links.
+    """
+
+    def format(
+        self,
+        signals: list[Signal],
+        source_health: dict = None,
+        upcoming: list = None,
+        source_health_detail: dict = None,
+    ) -> str:
+        """Format signals into prose digest text — one paragraph per chain.
 
         Layout:
-          🧠 Today's theme
-          ## Ethereum
-            🐦 Twitter: ...
-            RSS/DeFiLlama: ...
-          ## Solana
-            🐦 Twitter: ...
-            RSS/DeFiLlama: ...
+          📊 Chain Monitor — date
+          **Ethereum** (Score: 8)
+          Prose summary with [markdown links](...).
+          **Solana** (Score: 6)
           ...
           ⚠️ Source health
         """
         signals = [s for s in signals if not _is_noise(s)]
 
-        # Deduplicate by signal ID — keep highest scoring instance
+        # Deduplicate by signal ID
         seen = {}
         for s in signals:
             if s.id not in seen or s.priority_score > seen[s.id].priority_score:
                 seen[s.id] = s
         signals = list(seen.values())
 
-        # Time filter: only include signals from past 24h
+        # Time filter
         signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
 
-        # Split Twitter vs non-Twitter
-        twitter_signals = [s for s in signals if any(a.get("source", "").lower() == "twitter" for a in s.activity)]
-        other_signals = [s for s in signals if s not in twitter_signals]
+        if not signals:
+            now = datetime.now(timezone.utc).strftime("%b %d, %Y")
+            return f"📊 Chain Monitor — {now}\n\n— No events in past 24h."
 
-        # Group both by chain
-        from collections import defaultdict
-        twitter_by_chain: dict[str, list[Signal]] = defaultdict(list)
-        other_by_chain: dict[str, list[Signal]] = defaultdict(list)
+        # Group by chain
+        by_chain: dict[str, list[Signal]] = defaultdict(list)
+        for s in signals:
+            by_chain[s.chain].append(s)
 
-        for s in twitter_signals:
-            twitter_by_chain[s.chain].append(s)
-        for s in other_signals:
-            other_by_chain[s.chain].append(s)
-
-        # Collect all chains that have any signal, ordered by total signal count
-        all_chains = set(twitter_by_chain) | set(other_by_chain)
-        chain_priority = []
-        for chain in all_chains:
-            total = len(twitter_by_chain.get(chain, [])) + len(other_by_chain.get(chain, []))
-            twitter_count = len(twitter_by_chain.get(chain, []))
-            chain_priority.append((chain, total, twitter_count))
-        chain_priority.sort(key=lambda x: (-x[1], -x[2], x[0]))
+        # Sort chains by signal count
+        chain_order = sorted(
+            by_chain.items(),
+            key=lambda x: (-len(x[1])),
+        )
 
         now = datetime.now(timezone.utc).strftime("%b %d, %Y")
 
-        sections = [f"📊 Chain Monitor — {now}", ""]
+        lines: list[str] = [
+            f"📊 Chain Monitor — {now}",
+            "",
+        ]
 
-        # Theme (from all signals)
-        theme = self._detect_theme(signals)
-        if theme:
-            sections.extend(["🧠 Today's theme", theme, ""])
+        # Summarize each chain via async LLM call
+        summaries = asyncio.run(self._summarize_all(chain_order))
 
-        if not signals:
-            sections.append("— No events in past 24h.")
-            if source_health:
-                sections.extend(self._format_health(source_health, detail=source_health_detail))
-            return "\n".join(sections)
+        # Separate high-signal sections vs tail
+        head_chains = []
+        tail_chains = []
+        for (chain, sigs), prose in zip(chain_order, summaries):
+            top_score = max((s.priority_score for s in sigs), default=0)
+            twitter_count = sum(
+                1 for s in sigs
+                if any(a.get("source", "").lower() == "twitter" for a in s.activity)
+            )
+            chain_display = chain.capitalize() if chain.lower() != "unknown" else "General"
 
-        # One section per chain
-        for chain, total, twitter_count in chain_priority:
-            tw = sorted(twitter_by_chain.get(chain, []), key=lambda x: -x.priority_score)
-            ot = sorted(other_by_chain.get(chain, []), key=lambda x: -x.priority_score)
+            entry = f"**{chain_display}** (Score: {top_score})\n{prose}"
+            if twitter_count >= 5 or top_score >= 5:
+                head_chains.append(entry)
+            else:
+                tail_chains.append(entry)
 
-            # Capitalize chain display name
-            chain_display = chain.capitalize() if chain.lower() != "unknown" else "🌐 General"
+        for entry in head_chains:
+            lines.append(entry)
+            lines.append("")
 
-            sections.append(f"## {chain_display} ({len(tw)} tweets, {len(ot)} other)")
-            sections.append("")
+        if tail_chains:
+            lines.append("**Additional signals:**")
+            tail_text = " ".join(
+                f"{e.split(chr(10))[0]}" for e in tail_chains
+            )
+            lines.append(tail_text)
+            lines.append("")
 
-            # Twitter first — 80% of content
-            if tw:
-                for s in tw[:5]:  # top 5 per chain
-                    sections.append(f"🐦 {self._format_signal_content(s)}")
-                    sections.append("")
-
-            # Non-Twitter supporting signals
-            if ot:
-                for s in ot[:3]:  # top 3 per chain
-                    sections.append(self._format_signal_content(s))
-                    sections.append("")
-
-            sections.append("")
-
-        # Source Health
+        # Source health
         if source_health:
-            sections.extend(self._format_health(source_health, detail=source_health_detail))
+            lines.extend(self._format_health(source_health, detail=source_health_detail))
 
-        return "\n".join(sections)
+        return "\n".join(lines)
 
-    def _format_signal_content(self, signal: Signal) -> str:
-        """Format a signal as a single digest line — no chain prefix needed."""
-        desc_clean = _clean_description(signal.description)
-        url = _extract_url(signal)
-        sources_str = ", ".join(set(a["source"] for a in signal.activity))
+    async def _summarize_all(
+        self, chain_order: list[tuple[str, list[Signal]]]
+    ) -> list[str]:
+        """Summarize all chains via LLM, collecting results concurrently."""
+        tasks = []
+        for chain, sigs in chain_order:
+            tasks.append(summarize_chain(chain, sigs))
 
-        # Truncate long descriptions
-        if len(desc_clean) > 200:
-            desc_clean = desc_clean[:197] + "..."
-
-        if url:
-            title = f"[{desc_clean}]({url})"
-        else:
-            title = desc_clean
-
-        if sources_str and sources_str.lower() not in ("twitter", ""):
-            return f"{title} [{sources_str}]"
-        return title
+        results = await asyncio.gather(*tasks)
+        return results
 
     def should_send(self, signals: list[Signal]) -> bool:
         """Determine if digest should be sent (3+ events score ≥3)."""
@@ -241,18 +214,13 @@ class DailyDigestFormatter:
         return count >= 3
 
     def _format_signal(self, signal: Signal, show_source: bool = False) -> str:
-        """Format a single signal with clickable link embedded in title.
-
-        Args:
-            show_source: if True, append source tag (e.g. [twitter]). Use sparingly.
-        """
+        """Format a single signal (legacy — used by weekly digest)."""
         chain = signal.chain.capitalize()
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
         sources_str = ", ".join(set(a["source"] for a in signal.activity))
 
         if url:
-            # Markdown link: [Title](URL) — Telegram renders as clickable
             title = f"[{desc_clean}]({url})"
         else:
             title = desc_clean
@@ -261,45 +229,8 @@ class DailyDigestFormatter:
             return f"• {chain}: {title} [{sources_str}]"
         return f"• {chain}: {title}"
 
-    def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
-        """Detect the single most important theme across ALL categories."""
-        if not signals:
-            return None
-
-        high_signals = [s for s in signals if s.priority_score >= 5]
-        if not high_signals:
-            tech = [s for s in signals if s.category == "TECH_EVENT"]
-            if tech:
-                top_tech = sorted(tech, key=lambda x: -x.priority_score)[0]
-                desc = _clean_description(top_tech.description).split("(")[0].strip()
-                return f"{top_tech.chain.capitalize()}: {desc.lower()}"
-            return None
-
-        cat_counts = {}
-        for s in high_signals:
-            cat_counts[s.category] = cat_counts.get(s.category, 0) + 1
-        dominant_cat = max(cat_counts, key=cat_counts.get)
-        dominant_signals = [s for s in high_signals if s.category == dominant_cat]
-
-        if dominant_cat == "RISK_ALERT":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"⚠️ Security incident on {', '.join(chains)}. Check exposure."
-
-        if dominant_cat == "REGULATORY":
-            chains = list(set(s.chain.capitalize() for s in dominant_signals[:3]))
-            return f"⚖️ Regulatory action affecting {', '.join(chains)}."
-
-        if dominant_cat == "TECH_EVENT":
-            items = []
-            for s in dominant_signals[:3]:
-                desc = _clean_description(s.description).split("(")[0].strip()
-                items.append(f"{s.chain.capitalize()} — {desc.lower()}")
-            return "🔧 " + "; ".join(items)
-
-        return None
-
     def _format_health(self, health: dict, detail: dict = None) -> list[str]:
-        """Format source health summary with per-feed detail."""
+        """Format source health summary."""
         lines = ["⚠️ Source health"]
 
         def _norm(status: str) -> str:
@@ -317,9 +248,11 @@ class DailyDigestFormatter:
 
         lines.append(f"  Collectors: {healthy}/{total} healthy | {degraded} degraded | {down} down")
 
-        # Per-feed detail from RSS and other collectors
         if detail:
-            feed_down = [name for name, h in detail.items() if _norm(h.get("status", "")) != "healthy"]
+            feed_down = [
+                name for name, h in detail.items()
+                if _norm(h.get("status", "")) != "healthy"
+            ]
             if feed_down:
                 lines.append(f"  Feed issues ({len(feed_down)}):")
                 for name in feed_down[:5]:
@@ -328,15 +261,6 @@ class DailyDigestFormatter:
                     lines.append(f"    • {name}: {error}")
                 if len(feed_down) > 5:
                     lines.append(f"    ... and {len(feed_down) - 5} more")
-
-        # Collector-level issues
-        issues = [
-            (name, h) for name, h in health.items()
-            if _norm(h.get("status", "")) != "healthy"
-        ]
-        if issues:
-            for name, h in issues[:3]:
-                lines.append(f"  {name}: {h.get('status', 'unknown')} ({h.get('failures_24h', 0)} failures)")
 
         lines.append("")
         return lines
