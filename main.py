@@ -15,7 +15,6 @@ from pathlib import Path
 from config.loader import get_chains, get_active_chains, get_env
 from collectors.defillama import DefiLlamaCollector
 from collectors.coingecko_collector import CoinGeckoCollector
-from collectors.github_collector import GitHubCollector
 from collectors.rss_collector import RSSCollector
 from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
@@ -43,7 +42,6 @@ async def run_collectors() -> tuple:
     sync_collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
-        GitHubCollector(),
         RSSCollector(),
         RegulatoryCollector(),
         RiskAlertCollector(),
@@ -146,7 +144,7 @@ async def main_async():
 
     if formatter.should_send(signals):
         sender = TelegramSender()
-        success = sender.send_sync(digest)
+        success = await sender.send(digest)
         logger.info(f"Daily digest sent: {success}")
     else:
         logger.info("No daily digest sent (< 3 events scored >=6)")
@@ -155,9 +153,8 @@ async def main_async():
     if now.weekday() == 6:
         weekly_formatter = WeeklyDigestFormatter()
         weekly = weekly_formatter.format(signals, narrative_tracker=narrative_tracker, source_health=health)
-        sender = TelegramSender()
-        success = sender.send_sync(weekly)
-        logger.info(f"Weekly digest sent: {success}")
+        weekly_success = await sender.send(weekly)
+        logger.info(f"Weekly digest sent: {weekly_success}")
 
     cleanup_old_signals()
     narrative_tracker.cleanup_old(retention_weeks=13)

@@ -60,21 +60,19 @@ def _is_noise(signal: Signal) -> bool:
     # Old hackathon outcome reports (Solana/ETHGlobal results from months ago)
     if signal.category == "VISIBILITY" and any(kw in desc.lower() for kw in ["winners of", "results of", "announce the result"]):
         return True
-    # Routine GitHub fixes/feats that aren't major releases
+    # Routine fixes/feats that aren't major releases
     if signal.category == "TECH_EVENT" and signal.activity:
-        source = signal.activity[0].get("source", "")
-        if source == "GitHub":
-            metric = signal.activity[0].get("evidence", {}).get("metric", "")
-            # Only keep major releases and high-signal PRs (EIP/fork/security/audit)
-            if metric not in ("major_release", "new_release"):
-                desc_lower = desc.lower()
-                # Skip routine fix/feat/build PRs
-                routine = ("fix:", "fix(", "feat:", "feat(", "build:", "build(",
-                           "backport ", "update ", "core/vm:", "core/eth:",
-                           "core/p2p:", "core/state:", "release rlock",
-                           "confidential asset")
-                if any(desc_lower.startswith(p) for p in routine):
-                    return True
+        metric = signal.activity[0].get("evidence", {}).get("metric", "")
+        # Only keep major releases and high-signal PRs (EIP/fork/security/audit)
+        if metric not in ("major_release", "new_release"):
+            desc_lower = desc.lower()
+            # Skip routine fix/feat/build PRs
+            routine = ("fix:", "fix(", "feat:", "feat(", "build:", "build(",
+                       "backport ", "update ", "core/vm:", "core/eth:",
+                       "core/p2p:", "core/state:", "release rlock",
+                       "confidential asset")
+            if any(desc_lower.startswith(p) for p in routine):
+                return True
     return False
 
 

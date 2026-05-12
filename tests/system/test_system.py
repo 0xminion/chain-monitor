@@ -54,7 +54,6 @@ class TestImportsWork:
         from collectors.base import BaseCollector, SourceHealth
         from collectors.defillama import DefiLlamaCollector
         from collectors.coingecko_collector import CoinGeckoCollector
-        from collectors.github_collector import GitHubCollector
         from collectors.rss_collector import RSSCollector
         assert BaseCollector is not None
 
@@ -74,7 +73,6 @@ class TestImportsWork:
         import collectors
         assert hasattr(collectors, "DefiLlamaCollector")
         assert hasattr(collectors, "CoinGeckoCollector")
-        assert hasattr(collectors, "GitHubCollector")
         assert hasattr(collectors, "RSSCollector")
 
 
@@ -82,6 +80,7 @@ class TestCollectorInstantiation:
     """Verify collector classes can be instantiated."""
 
     def test_defillama_collector(self):
+
         from collectors.defillama import DefiLlamaCollector
         c = DefiLlamaCollector()
         assert c.name == "DefiLlama"
@@ -91,12 +90,6 @@ class TestCollectorInstantiation:
         from collectors.coingecko_collector import CoinGeckoCollector
         c = CoinGeckoCollector()
         assert c.name == "CoinGecko"
-        assert c.health is not None
-
-    def test_github_collector(self):
-        from collectors.github_collector import GitHubCollector
-        c = GitHubCollector()
-        assert c.name == "GitHub"
         assert c.health is not None
 
     def test_rss_collector(self):

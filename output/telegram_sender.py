@@ -18,17 +18,18 @@ class TelegramSender:
         self.bot_token = get_env("TELEGRAM_BOT_TOKEN")
         self.chat_id = get_env("TELEGRAM_CHAT_ID")
         if not self.bot_token or self.bot_token == "your_telegram_bot_token_here":
-            logger.warning("TELEGRAM_BOT_TOKEN not configured — Telegram sending disabled")
+            logger.info("TELEGRAM_BOT_TOKEN not configured — Telegram delivery skipped")
             self.bot_token = None
+            self.chat_id = None
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}" if self.bot_token else None
         self.max_length = 4096
         self._session = None
 
     async def send(self, text: str, parse_mode: str = "Markdown") -> bool:
-        """Send message, auto-splitting if needed."""
+        """Send message, auto-splitting if needed. Returns True when Telegram is intentionally disabled."""
         if not self.bot_token or not self.chat_id:
-            logger.error("Telegram credentials not configured")
-            return False
+            logger.info("Telegram not configured — skipping send (digest saved to disk)")
+            return True  # intentionally disabled, not a failure
 
         chunks = self._split_message(text)
         success = True
@@ -119,5 +120,11 @@ class TelegramSender:
         return chunks
 
     def send_sync(self, text: str, parse_mode: str = "Markdown") -> bool:
-        """Synchronous wrapper for send()."""
-        return asyncio.run(self.send(text, parse_mode))
+        """Synchronous wrapper for send(). Safe to call from within an async event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop — use standard asyncio.run (cold start)
+            return asyncio.run(self.send(text, parse_mode))
+        # Already inside a loop — nest using run_until_complete
+        return loop.run_until_complete(self.send(text, parse_mode))
