@@ -137,15 +137,21 @@ class EventCategorizer:
     def categorize(self, event: dict) -> dict:
         """Add category and subcategory to event dict."""
         # Build text for matching from all available fields
+        # Priority: description (full tweet text, full RSS title) over evidence dict
         text_parts = [event.get("description", "")]
 
-        # Handle evidence as dict (extract title, summary) or string
+        # Handle evidence as dict (extract title, summary, text) or string
         evidence = event.get("evidence", "")
         if isinstance(evidence, dict):
-            text_parts.append(evidence.get("title", ""))
-            text_parts.append(evidence.get("summary", ""))
-            text_parts.append(evidence.get("pr_title", ""))
-            text_parts.append(evidence.get("link", ""))
+            # Prefer evidence.text if non-empty, otherwise rely on description
+            ev_text = evidence.get("text", "") or evidence.get("title", "")
+            if ev_text:
+                text_parts.append(ev_text)
+            text_parts.extend([
+                evidence.get("summary", ""),
+                evidence.get("pr_title", ""),
+                evidence.get("link", ""),
+            ])
         else:
             text_parts.append(str(evidence))
 

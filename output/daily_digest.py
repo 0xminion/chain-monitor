@@ -45,6 +45,10 @@ def _clean_description(desc: str) -> str:
 def _is_noise(signal: Signal) -> bool:
     """Filter out noisy signals that clutter the digest."""
     desc = signal.description
+    # Block any source labeled GitHub — collector removed but old signals may persist
+    sources_str = ",".join(a["source"] for a in signal.activity).lower()
+    if "github" in sources_str:
+        return True
     # EIPs RSS index pages — just category listings, not real content
     if "EIPs RSS" in desc:
         return True
@@ -138,56 +142,62 @@ class DailyDigestFormatter:
         high = [s for s in signals if 5 <= s.priority_score < 8]
         medium = [s for s in signals if 3 <= s.priority_score < 5]
 
+        # Separate Twitter signals — they have their own dedicated section below
+        twitter_signals = [
+            s for s in signals
+            if any(a.get("source", "").lower() == "twitter" for a in s.activity)
+        ]
+        other_signals = [s for s in signals if s not in twitter_signals]
+
+        # Theme (from all signals including Twitter)
+        theme = self._detect_theme(signals)
+
+        critical = [s for s in other_signals if s.priority_score >= 8]
+        high = [s for s in other_signals if 5 <= s.priority_score < 8]
+        medium = [s for s in other_signals if 3 <= s.priority_score < 5]
+
         sections = [
             f"📊 Chain Monitor — {now}",
             "",
         ]
 
         # Theme
-        theme = self._detect_theme(signals)
         if theme:
             sections.extend(["🧠 Today's theme", theme, ""])
 
-        # Critical
+        # Critical (non-Twitter only)
         if critical:
             sections.append("🔴 Critical (Score ≥8)")
             for s in sorted(critical, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # High
+        # High (non-Twitter only)
         if high:
             sections.append("🟠 High (Score 5-7)")
             for s in sorted(high, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Medium
+        # Medium (non-Twitter only)
         if medium:
             sections.append("🟡 Medium (Score 3-4)")
             for s in sorted(medium, key=lambda x: -x.priority_score):
                 sections.append(self._format_signal(s))
                 sections.append("")
 
-        # Dev activity (low-priority tech events not already surfaced)
-        dev_activity = [s for s in signals if s.category == "TECH_EVENT" and s.priority_score < 3]
-        if dev_activity:
-            sections.append("🔧 Dev activity")
-            for s in sorted(dev_activity, key=lambda x: -x.priority_score)[:3]:
-                sections.append(self._format_signal(s))
-                sections.append("")
-
-        # Partnerships
-        partnerships = [s for s in signals if s.category == "PARTNERSHIP"]
-        if partnerships:
-            sections.append("🤝 Partnerships")
-            for s in sorted(partnerships, key=lambda x: -x.priority_score)[:5]:
-                sections.append(self._format_signal(s))
-                sections.append("")
-
         # No events
-        if not critical and not high and not medium and not dev_activity and not partnerships:
+        if not critical and not high and not medium:
             sections.append("— No high-priority events. Quiet day.")
+
+        # Twitter signals — 80% of digest
+        if twitter_signals:
+            sections.append("")
+            sections.append("🐦 Twitter Signals")
+            sections.append("")
+            for s in sorted(twitter_signals, key=lambda x: -x.priority_score)[:20]:
+                sections.append(self._format_signal(s, show_source=True))
+                sections.append("")
 
         # Source Health
         if source_health:
@@ -200,8 +210,12 @@ class DailyDigestFormatter:
         count = sum(1 for s in signals if s.priority_score >= 3)
         return count >= 3
 
-    def _format_signal(self, signal: Signal) -> str:
-        """Format a single signal with clickable link embedded in title."""
+    def _format_signal(self, signal: Signal, show_source: bool = False) -> str:
+        """Format a single signal with clickable link embedded in title.
+
+        Args:
+            show_source: if True, append source tag (e.g. [twitter]). Use sparingly.
+        """
         chain = signal.chain.capitalize()
         desc_clean = _clean_description(signal.description)
         url = _extract_url(signal)
@@ -213,7 +227,9 @@ class DailyDigestFormatter:
         else:
             title = desc_clean
 
-        return f"• {chain}: {title} [{sources_str}]"
+        if show_source and sources_str:
+            return f"• {chain}: {title} [{sources_str}]"
+        return f"• {chain}: {title}"
 
     def _detect_theme(self, signals: list[Signal]) -> Optional[str]:
         """Detect the single most important theme across ALL categories."""

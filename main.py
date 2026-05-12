@@ -142,6 +142,12 @@ async def main_async():
     formatter = DailyDigestFormatter()
     digest = formatter.format(signals, source_health=health, source_health_detail=feed_health)
 
+    # Always save digest to disk
+    digest_path = Path(__file__).parent / "storage" / "twitter" / "summaries" / "daily_digest_latest.md"
+    digest_path.parent.mkdir(parents=True, exist_ok=True)
+    digest_path.write_text(digest)
+    logger.info(f"Digest saved to {digest_path}")
+
     if formatter.should_send(signals):
         sender = TelegramSender()
         success = await sender.send(digest)

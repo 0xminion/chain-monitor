@@ -107,6 +107,18 @@ class SignalScorer:
         else:
             urgency = 1
 
+        # Twitter urgency boost — social signals are inherently more time-sensitive
+        source = event.get("source", "") or ""
+        if source.lower() == "twitter":
+            evidence = event.get("evidence", {})
+            likes = int(evidence.get("likes", 0)) if isinstance(evidence, dict) else 0
+            retweets = int(evidence.get("retweets", 0)) if isinstance(evidence, dict) else 0
+            # High engagement or founder/lead accounts get urgency bump
+            if likes >= 500 or retweets >= 100 or evidence.get("role", "") in ("founder", "lead", "cto"):
+                urgency = max(urgency, 3)
+            else:
+                urgency = max(urgency, 2)
+
         # Hyperliquid regulatory override — only for enforcement, not approvals/licenses
         if event.get("chain") == "hyperliquid" and category == "REGULATORY":
             if event.get("subcategory") in ("enforcement", "general"):
