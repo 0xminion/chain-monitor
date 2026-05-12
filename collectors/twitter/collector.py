@@ -9,9 +9,12 @@ Architecture:
   provider.py          XSearchProvider (abstract)
   direct_xai.py        DirectXAIProvider  (api.x.ai)
   antseed_provider.py  AntseedBuyerProvider (antseed P2P proxy)
+  surplus_provider.py  SurplusIntelligenceProvider (Grok inference + x402)
+  surplus_twitter_provider.py  SurplusTwitterProvider (Twitter API v2 via x402)
   token_tracker.py     PipelineTokenTracker
 
-To swap providers: set XSEARCH_PROVIDER env var to "direct_xai" or "antseed_buyer".
+To swap providers: set XSEARCH_PROVIDER env var to "direct_xai", "antseed_buyer",
+"surplus_intelligence", or "surplus_twitter". Default: "surplus_twitter".
 """
 
 import asyncio
@@ -43,7 +46,7 @@ MAX_HANDLES_PER_CALL = 10
 
 def _get_provider() -> XSearchProvider:
     """Factory: instantiate the configured X Search provider."""
-    provider_name = os.environ.get("XSEARCH_PROVIDER", "antseed_buyer")
+    provider_name = os.environ.get("XSEARCH_PROVIDER", "surplus_twitter")
 
     if provider_name == "antseed_buyer":
         from collectors.twitter.antseed_provider import AntseedBuyerProvider
@@ -52,6 +55,10 @@ def _get_provider() -> XSearchProvider:
     if provider_name == "surplus_intelligence":
         from collectors.twitter.surplus_provider import SurplusIntelligenceProvider
         return SurplusIntelligenceProvider()
+
+    if provider_name == "surplus_twitter":
+        from collectors.twitter.surplus_twitter_provider import SurplusTwitterProvider
+        return SurplusTwitterProvider()
 
     if provider_name == "direct_xai":
         from collectors.twitter.direct_xai import DirectXAIProvider
