@@ -275,6 +275,12 @@ class TwitterCollector(BaseCollector):
     def _tweets_to_events(self, tweets: list[dict]) -> list[dict]:
         events = []
         for t in tweets:
+            # Skip _query marker placeholders — these signal "no tweets found"
+            # for this batch (SurplusIntelligence returns this when x_search
+            # produces no actual results and we pass empty [] back to the model)
+            if "_query" in t:
+                continue
+
             chain = t.get("chain", "unknown")
             text = t.get("text", "").strip()
             is_rt = t.get("is_retweet", False)
