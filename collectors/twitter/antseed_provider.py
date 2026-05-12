@@ -98,6 +98,26 @@ class AntseedBuyerProvider(XSearchProvider):
         if len(handles) > 10:
             raise ValueError(f"Max 10 handles per call, got {len(handles)}")
 
+        # Venice AI (surplusintelligence route) uses OpenAI-compatible function schema.
+        # The x_search tool is defined as a function call with these parameters.
+        x_search_tool = {
+            "type": "function",
+            "function": {
+                "name": "x_search",
+                "description": "Search X/Twitter posts and user profiles",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "X search query (e.g. 'from:username since:2026-05-11 until:2026-05-12')"
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        }
+
         payload = {
             "model": self._model,
             "messages": [
@@ -105,13 +125,14 @@ class AntseedBuyerProvider(XSearchProvider):
                 {
                     "role": "user",
                     "content": (
-                        f"Use the x_search tool to find all posts (tweets and retweets) "
-                        f"from these X/Twitter handles within {from_date} to {to_date}: "
-                        f"{', '.join(handles)}. "
-                        f"Return ALL matching posts as a JSON array."
+                        f"Find all posts (tweets and retweets) from these X/Twitter handles "
+                        f"between {from_date} and {to_date}: {', '.join(handles)}. "
+                        f"Return ALL matching posts as a raw JSON array. No commentary or markdown."
                     ),
                 },
             ],
+            "tools": [x_search_tool],
+            "tool_choice": {"type": "function", "function": {"name": "x_search"}},
             "temperature": 0.0,
             "stream": False,
         }
@@ -139,23 +160,65 @@ class AntseedBuyerProvider(XSearchProvider):
         usage_raw = data.get("usage", {})
         choices = data.get("choices", [])
         content = ""
-        if choices:
-            content = choices[0].get("message", {}).get("content", "")
+        tweets = []
 
+        if not choices:
+            return SearchResult(
+                tweets=[],
+                usage=TokenUsage(
+                    input_tokens=usage_raw.get("prompt_tokens", 0),
+                    output_tokens=usage_raw.get("completion_tokens", 0),
+                    cached_tokens=(
+                        usage_raw.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+                    ),
+                ),
+            )
+
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+
+        # Try 1: parse JSON from content (model generates tweet array directly)
         tweets = self._parse_tweets_json(content)
+
+        # Try 2: extract from tool_call result (Venice x_search invocation)
         if not tweets:
-            # Check for tool_calls in response
-            tool_calls = choices[0].get("message", {}).get("tool_calls", [])
+            tool_calls = message.get("tool_calls", [])
             for tc in tool_calls:
                 func = tc.get("function", {})
                 if func.get("name") == "x_search":
+                    raw_args = func.get("arguments", "{}")
                     try:
-                        args = json.loads(func.get("arguments", "{}"))
-                        results = args.get("results", args.get("tweets", []))
+                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        # x_search result may be in 'results', 'tweets', 'data', or the args itself
+                        results = (
+                            args.get("results")
+                            or args.get("tweets")
+                            or args.get("data")
+                            or []
+                        )
                         if isinstance(results, list):
                             tweets = results
-                    except json.JSONDecodeError:
+                        elif isinstance(args, list):
+                            # x_search returned the array directly as arguments
+                            tweets = args
+                    except (json.JSONDecodeError, TypeError):
                         pass
+
+        # Try 3: if content is empty but we have tool calls, the model may be asking
+        # the tool to run — check if there's a second message with the result
+        # (Venice returns tool call + content in one response for x_search)
+        if not tweets and not content:
+            # Last resort: look for any JSON array in the raw response
+            raw = json.dumps(data)
+            start = raw.find("[")
+            end = raw.rfind("]")
+            if start >= 0 and end > start:
+                try:
+                    potential = json.loads(raw[start:end + 1])
+                    if isinstance(potential, list) and len(potential) > 0:
+                        tweets = potential
+                except json.JSONDecodeError:
+                    pass
 
         return SearchResult(
             tweets=tweets,
