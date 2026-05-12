@@ -122,7 +122,19 @@ class DailyDigestFormatter:
     """Formats signals into a daily Telegram digest."""
 
     def format(self, signals: list[Signal], source_health: dict = None, upcoming: list = None, source_health_detail: dict = None) -> str:
-        """Format signals into daily digest text."""
+        """Format signals into daily digest text — grouped by chain.
+
+        Layout:
+          🧠 Today's theme
+          ## Ethereum
+            🐦 Twitter: ...
+            RSS/DeFiLlama: ...
+          ## Solana
+            🐦 Twitter: ...
+            RSS/DeFiLlama: ...
+          ...
+          ⚠️ Source health
+        """
         signals = [s for s in signals if not _is_noise(s)]
 
         # Deduplicate by signal ID — keep highest scoring instance
@@ -135,75 +147,93 @@ class DailyDigestFormatter:
         # Time filter: only include signals from past 24h
         signals = [s for s in signals if _is_recent_for_digest(s, max_age_hours=24)]
 
-        now = datetime.now(timezone.utc).strftime("%b %d, %Y")
-
-        # New scoring tiers
-        critical = [s for s in signals if s.priority_score >= 8]
-        high = [s for s in signals if 5 <= s.priority_score < 8]
-        medium = [s for s in signals if 3 <= s.priority_score < 5]
-
-        # Separate Twitter signals — they have their own dedicated section below
-        twitter_signals = [
-            s for s in signals
-            if any(a.get("source", "").lower() == "twitter" for a in s.activity)
-        ]
+        # Split Twitter vs non-Twitter
+        twitter_signals = [s for s in signals if any(a.get("source", "").lower() == "twitter" for a in s.activity)]
         other_signals = [s for s in signals if s not in twitter_signals]
 
-        # Theme (from all signals including Twitter)
+        # Group both by chain
+        from collections import defaultdict
+        twitter_by_chain: dict[str, list[Signal]] = defaultdict(list)
+        other_by_chain: dict[str, list[Signal]] = defaultdict(list)
+
+        for s in twitter_signals:
+            twitter_by_chain[s.chain].append(s)
+        for s in other_signals:
+            other_by_chain[s.chain].append(s)
+
+        # Collect all chains that have any signal, ordered by total signal count
+        all_chains = set(twitter_by_chain) | set(other_by_chain)
+        chain_priority = []
+        for chain in all_chains:
+            total = len(twitter_by_chain.get(chain, [])) + len(other_by_chain.get(chain, []))
+            twitter_count = len(twitter_by_chain.get(chain, []))
+            chain_priority.append((chain, total, twitter_count))
+        chain_priority.sort(key=lambda x: (-x[1], -x[2], x[0]))
+
+        now = datetime.now(timezone.utc).strftime("%b %d, %Y")
+
+        sections = [f"📊 Chain Monitor — {now}", ""]
+
+        # Theme (from all signals)
         theme = self._detect_theme(signals)
-
-        critical = [s for s in other_signals if s.priority_score >= 8]
-        high = [s for s in other_signals if 5 <= s.priority_score < 8]
-        medium = [s for s in other_signals if 3 <= s.priority_score < 5]
-
-        sections = [
-            f"📊 Chain Monitor — {now}",
-            "",
-        ]
-
-        # Theme
         if theme:
             sections.extend(["🧠 Today's theme", theme, ""])
 
-        # Critical (non-Twitter only)
-        if critical:
-            sections.append("🔴 Critical (Score ≥8)")
-            for s in sorted(critical, key=lambda x: -x.priority_score):
-                sections.append(self._format_signal(s))
-                sections.append("")
+        if not signals:
+            sections.append("— No events in past 24h.")
+            if source_health:
+                sections.extend(self._format_health(source_health, detail=source_health_detail))
+            return "\n".join(sections)
 
-        # High (non-Twitter only)
-        if high:
-            sections.append("🟠 High (Score 5-7)")
-            for s in sorted(high, key=lambda x: -x.priority_score):
-                sections.append(self._format_signal(s))
-                sections.append("")
+        # One section per chain
+        for chain, total, twitter_count in chain_priority:
+            tw = sorted(twitter_by_chain.get(chain, []), key=lambda x: -x.priority_score)
+            ot = sorted(other_by_chain.get(chain, []), key=lambda x: -x.priority_score)
 
-        # Medium (non-Twitter only)
-        if medium:
-            sections.append("🟡 Medium (Score 3-4)")
-            for s in sorted(medium, key=lambda x: -x.priority_score):
-                sections.append(self._format_signal(s))
-                sections.append("")
+            # Capitalize chain display name
+            chain_display = chain.capitalize() if chain.lower() != "unknown" else "🌐 General"
 
-        # No events
-        if not critical and not high and not medium:
-            sections.append("— No high-priority events. Quiet day.")
-
-        # Twitter signals — 80% of digest
-        if twitter_signals:
+            sections.append(f"## {chain_display} ({len(tw)} tweets, {len(ot)} other)")
             sections.append("")
-            sections.append("🐦 Twitter Signals")
+
+            # Twitter first — 80% of content
+            if tw:
+                for s in tw[:5]:  # top 5 per chain
+                    sections.append(f"🐦 {self._format_signal_content(s)}")
+                    sections.append("")
+
+            # Non-Twitter supporting signals
+            if ot:
+                for s in ot[:3]:  # top 3 per chain
+                    sections.append(self._format_signal_content(s))
+                    sections.append("")
+
             sections.append("")
-            for s in sorted(twitter_signals, key=lambda x: -x.priority_score)[:20]:
-                sections.append(self._format_signal(s, show_source=True))
-                sections.append("")
 
         # Source Health
         if source_health:
             sections.extend(self._format_health(source_health, detail=source_health_detail))
 
         return "\n".join(sections)
+
+    def _format_signal_content(self, signal: Signal) -> str:
+        """Format a signal as a single digest line — no chain prefix needed."""
+        desc_clean = _clean_description(signal.description)
+        url = _extract_url(signal)
+        sources_str = ", ".join(set(a["source"] for a in signal.activity))
+
+        # Truncate long descriptions
+        if len(desc_clean) > 200:
+            desc_clean = desc_clean[:197] + "..."
+
+        if url:
+            title = f"[{desc_clean}]({url})"
+        else:
+            title = desc_clean
+
+        if sources_str and sources_str.lower() not in ("twitter", ""):
+            return f"{title} [{sources_str}]"
+        return title
 
     def should_send(self, signals: list[Signal]) -> bool:
         """Determine if digest should be sent (3+ events score ≥3)."""
