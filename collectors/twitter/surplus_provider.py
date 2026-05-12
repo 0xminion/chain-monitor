@@ -1,36 +1,41 @@
 """Surplus Intelligence x402 provider — Grok inference via pay-per-request.
 
 Uses surplusintelligence.ai's x402 marketplace to call Grok models with
-x_search tool. Payments are signed with the antseed wallet private key.
+x_search tool. Payments are signed with the antseed wallet private key
+using the official x402 Python SDK v2.
 
-x402 flow:
+x402 flow (SDK-managed):
   1. POST without auth → 402 with PAYMENT-REQUIRED
-  2. Sign payment (EIP-3009 exact or Permit2 upto)
-  3. Resend with PAYMENT-SIGNATURE header
+  2. SDK creates payment payload (EIP-3009 exact or Permit2 upto)
+  3. Resend with PAYMENT-SIGNATURE header (base64-encoded JSON)
   4. Get OpenAI-compatible response
+
+Two-step x_search pattern:
+  Step 1: Grok generates a search query ({"query": "from:handle since:..."})
+  Step 2: Caller executes the query and returns results → Grok formats JSON
 
 Requirements:
   - ANTSEED_PRIVATE_KEY env var or identity.key in ~/.antseed/
-  - USDC balance on Base (0x215E...E3)
+  - x402>=2.0.0 Python package
+  - eth-account (for EthAccountSigner)
 
 Pricing (surplusintelligence.ai, May 2026):
   - grok-4.20-beta: $0.000625/1M prompt, $0.0025/1M completion
   - x402 facilitation fee: ~$0.003/request
-  - Total per call: ~$0.0033
-  - 14 batches × $0.0033 = ~$0.046 total
+  - Total per paid inference call: ~$0.0034
+  - 28 calls per full run (14 batches × 2 steps) = ~$0.095 total
 """
+
+from __future__ import annotations
 
 import base64
 import json
 import logging
 import os
-import re
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import httpx
-from eth_account import Account
 
 from collectors.twitter.provider import XSearchProvider, SearchResult, TokenUsage
 
@@ -40,52 +45,37 @@ logger = logging.getLogger(__name__)
 EXTRACTION_SYSTEM_PROMPT = (
     "Extract tweets from search results as a raw JSON array. "
     "Return ONLY the JSON. No markdown, no commentary, no code fences. "
-    'Schema per tweet: {'
-    '"id": "tweet_id_str", '
-    '"handle": "author_handle_without_@", '
-    '"text": "full_tweet_text", '
-    '"created_at": "ISO8601", '
-    '"is_retweet": bool, '
-    '"retweeted_handle": "original_author_or_null", '
-    '"likes": int, '
-    '"retweets": int, '
-    '"replies": int'
-    "}. Omit tweets not from the requested handles."
+    'Schema: {"id","handle","text","created_at","is_retweet",'
+    '"retweeted_handle","likes","retweets","replies"}.'
 )
-
-# EIP-3009 exact scheme typed data (for signing x402 exact payments)
-EIP3009_TYPES = {
-    "types": {
-        "EIP712Domain": [
-            {"name": "name", "type": "string"},
-            {"name": "version", "type": "string"},
-            {"name": "chainId", "type": "uint256"},
-            {"name": "verifyingContract", "type": "address"},
-        ],
-        "TransferWithAuthorization": [
-            {"name": "from", "type": "address"},
-            {"name": "to", "type": "address"},
-            {"name": "value", "type": "uint256"},
-            {"name": "validAfter", "type": "uint256"},
-            {"name": "validBefore", "type": "uint256"},
-            {"name": "nonce", "type": "bytes32"},
-        ],
-    },
-    "domain": {
-        "name": "USD Coin",
-        "version": "2",
-    },
-    "primaryType": "TransferWithAuthorization",
-}
 
 X402_BASE = "https://www.surplusintelligence.ai"
 CHAT_PATH = "/x402/api/inference/v1/chat/completions"
+
+# ---------------------------------------------------------------------------
+# x402 SDK — imported at __init__ time so absence raises ImportError clearly
+# ---------------------------------------------------------------------------
+try:
+    from x402 import x402ClientSync, parse_payment_required
+    from x402.mechanisms.evm.signers import EthAccountSigner
+    from x402.mechanisms.evm.exact import register_exact_evm_client
+    from eth_account import Account as EthAccount
+except ImportError as e:
+    raise ImportError(
+        "x402 or eth-account not installed. Run: pip install x402 'eth-account[ledger]'"
+    ) from e
 
 
 class SurplusIntelligenceProvider(XSearchProvider):
     """Calls Grok via surplusintelligence.ai x402 marketplace.
 
-    Signs payments with antseed wallet. Supports x_search tool forwarding.
+    Uses the official x402 SDK v2 to sign payments with the antseed wallet.
+    Implements a two-step x_search pattern:
+      1. Model generates the search query (no actual search is executed)
+      2. Caller provides results → model returns formatted JSON
+
+    This is NOT auto-executing x_search. The caller is responsible for
+    actually running the generated queries. See chain-monitor-management skill.
     """
 
     def __init__(
@@ -114,8 +104,13 @@ class SurplusIntelligenceProvider(XSearchProvider):
                     "ensure ~/.antseed/identity.key exists."
                 )
 
-        self._account = Account.from_key(self._pk)
-        self._address = self._account.address
+        account = EthAccount.from_key(self._pk)
+        self._address = account.address
+
+        # Build x402 SDK client and register EVM exact scheme
+        self._x402 = x402ClientSync()
+        signer = EthAccountSigner(account)
+        register_exact_evm_client(self._x402, signer)
 
         self._client = httpx.AsyncClient(
             base_url=X402_BASE,
@@ -124,8 +119,7 @@ class SurplusIntelligenceProvider(XSearchProvider):
         )
 
         logger.info(
-            f"[SurplusI] Wallet: {self._address[:10]}..., "
-            f"model: {self._model}"
+            f"[SurplusI] Wallet: {self._address[:10]}..., model: {self._model}"
         )
 
     @property
@@ -142,7 +136,16 @@ class SurplusIntelligenceProvider(XSearchProvider):
         from_date: str,
         to_date: str,
     ) -> SearchResult:
-        """One X Search call via surplusintelligence x402."""
+        """Two-step x_search: (1) get query from model, (2) return results.
+
+        Step 1 costs ~$0.0034 and returns a query string.
+        Step 2 costs ~$0.0034 and returns formatted tweets.
+
+        Since this provider cannot execute x_search itself, it returns the
+        generated query string in the SearchResult.tweets field with a
+        special marker. Downstream code should execute the query and call
+        search_with_results() to complete the flow.
+        """
         if len(handles) > 10:
             raise ValueError(f"Max 10 handles, got {len(handles)}")
 
@@ -150,237 +153,208 @@ class SurplusIntelligenceProvider(XSearchProvider):
             "type": "function",
             "function": {
                 "name": "x_search",
-                "description": "Search X/Twitter posts from specific handles",
+                "description": "Search X/Twitter posts and user profiles",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "allowed_x_handles": {
-                            "type": "array",
-                            "items": {"type": "string"},
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "X search query, e.g. "
+                                "'from:username since:2026-05-11 until:2026-05-12'"
+                            ),
                         },
-                        "from_date": {"type": "string"},
-                        "to_date": {"type": "string"},
                     },
-                    "required": ["allowed_x_handles", "from_date", "to_date"],
+                    "required": ["query"],
                 },
             },
         }
 
-        payload = {
+        user_message = (
+            f"Search X for tweets from {', '.join('@' + h for h in handles)} "
+            f"between {from_date} and {to_date}. Return ALL matching tweets "
+            "as a JSON array."
+        )
+
+        # ---- Step 1: get x_search tool call from model ----
+        step1_payload = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Search posts from these X handles within "
-                        f"{from_date} to {to_date}: {', '.join(handles)}"
-                    ),
-                },
+                {"role": "user", "content": user_message},
             ],
             "tools": [x_search_tool],
-            "tool_choice": "auto",
+            "tool_choice": {"type": "function", "function": {"name": "x_search"}},
             "temperature": 0.0,
             "stream": False,
         }
 
         try:
-            # Step 1: get x402 challenge
-            challenge_resp = await self._client.post(CHAT_PATH, json=payload)
+            resp1 = await self._pay_and_send(step1_payload)
+        except Exception as e:
+            return SearchResult(error=f"[SurplusI Step1] {e}")
+
+        if resp1 is None:
+            return SearchResult(error="[SurplusI Step1] No response")
+
+        data1 = resp1
+        msg1 = data1.get("choices", [{}])[0].get("message", {})
+        tcs1 = msg1.get("tool_calls", [])
+
+        if not tcs1:
+            # No tool call requested — model produced text directly
+            content = msg1.get("content", "") or ""
+            tweets = self._parse_tweets_json(content)
+            usage = self._extract_usage(data1)
+            return SearchResult(tweets=tweets, usage=usage)
+
+        tc = tcs1[0]
+        call_id = tc.get("id", "")
+        func = tc.get("function", {})
+        if func.get("name") != "x_search":
+            return SearchResult(error=f"[SurplusI] Unexpected tool: {func.get('name')}")
+
+        # Extract the generated query string
+        try:
+            args = json.loads(func.get("arguments", "{}"))
+            query = args.get("query", "")
+        except json.JSONDecodeError:
+            return SearchResult(error="[SurplusI] Failed to parse x_search arguments")
+
+        logger.info(f"[SurplusI] Generated query: {query}")
+
+        # ---- Step 2: return empty results to model to get JSON output ----
+        step2_payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+                msg1,  # assistant message with tool_calls
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": "[]",  # no actual search results
+                },
+            ],
+            "tools": [x_search_tool],
+            "temperature": 0.0,
+            "stream": False,
+        }
+
+        try:
+            resp2 = await self._pay_and_send(step2_payload)
+        except Exception as e:
+            return SearchResult(
+                error=f"[SurplusI Step2] {e}",
+                tweets=[{"_query": query}],  # preserve the query
+            )
+
+        if resp2 is None:
+            return SearchResult(error="[SurplusI Step2] No response")
+
+        msg2 = resp2.get("choices", [{}])[0].get("message", {})
+        content2 = msg2.get("content", "") or ""
+        tweets = self._parse_tweets_json(content2)
+
+        # Merge usage from both steps
+        usage1 = self._extract_usage(data1)
+        usage2 = self._extract_usage(resp2)
+        merged_usage = TokenUsage(
+            input_tokens=usage1.input_tokens + usage2.input_tokens,
+            output_tokens=usage1.output_tokens + usage2.output_tokens,
+            cached_tokens=usage1.cached_tokens + usage2.cached_tokens,
+        )
+
+        if not tweets:
+            # No tweets found — tag with the query so downstream can retry
+            tweets = [{"_query": query}]
+
+        return SearchResult(tweets=tweets, usage=merged_usage)
+
+    # ---------------------------------------------------------------------------
+    # Internal helpers
+    # ---------------------------------------------------------------------------
+
+    async def _pay_and_send(self, payload: dict[str, Any]) -> dict | None:
+        """Send a request, handling x402 payment if required.
+
+        Returns the parsed JSON response on success, None on failure.
+        """
+        try:
+            resp = await self._client.post(CHAT_PATH, json=payload)
         except httpx.RequestError as e:
             logger.error(f"[SurplusI] Connection failed: {e}")
-            return SearchResult(error=f"Connection: {e}")
+            return None
 
-        if challenge_resp.status_code == 200:
-            # No payment needed? Process directly
-            data = challenge_resp.json()
-            return self._parse_response(data)
+        if resp.status_code == 200:
+            return resp.json()
 
-        if challenge_resp.status_code != 402:
+        if resp.status_code != 402:
             logger.error(
-                f"[SurplusI] Unexpected status {challenge_resp.status_code}: "
-                f"{challenge_resp.text[:300]}"
+                f"[SurplusI] Unexpected status {resp.status_code}: {resp.text[:300]}"
             )
-            return SearchResult(error=f"HTTP {challenge_resp.status_code}")
+            return None
 
-        # Step 2: parse payment challenge
-        payment_req_b64 = (
-            challenge_resp.headers.get("payment-required")
-            or challenge_resp.headers.get("x-payment-required", "")
+        # Parse 402 and create payment with SDK
+        pr_header = resp.headers.get("payment-required") or ""
+        if not pr_header:
+            logger.error("[SurplusI] 402 but no PAYMENT-REQUIRED header")
+            return None
+
+        try:
+            pr_raw = json.loads(base64.b64decode(pr_header))
+            parsed = parse_payment_required(pr_raw)
+        except Exception as e:
+            logger.error(f"[SurplusI] Failed to parse payment requirement: {e}")
+            return None
+
+        # SDK creates correctly-formatted payment payload
+        result = self._x402.create_payment_payload(
+            payment_required=parsed,
+            resource=parsed.resource,
+            extensions=parsed.extensions,
         )
-        if not payment_req_b64:
-            logger.error("[SurplusI] No PAYMENT-REQUIRED header")
-            return SearchResult(error="Missing PAYMENT-REQUIRED header")
+
+        d = result.model_dump() if hasattr(result, "model_dump") else vars(result)
+        pay_sig = base64.b64encode(json.dumps(d).encode()).decode()
 
         try:
-            payment_req = json.loads(base64.b64decode(payment_req_b64))
-        except Exception as e:
-            logger.error(f"[SurplusI] Failed to decode payment challenge: {e}")
-            return SearchResult(error=f"Payment decode: {e}")
-
-        accepts = payment_req.get("accepts", [])
-
-        # Prefer upto (Permit2), fallback to exact (EIP-3009)
-        upto = next((a for a in accepts if a.get("scheme") == "upto"), None)
-        selected = upto or accepts[0] if accepts else None
-        if not selected:
-            return SearchResult(error="No payment scheme available")
-
-        # Step 3: sign payment
-        try:
-            if selected.get("scheme") == "upto":
-                payment_sig = self._sign_upto(selected)
-            else:
-                payment_sig = self._sign_exact(selected)
-        except Exception as e:
-            logger.error(f"[SurplusI] Payment signing failed: {e}")
-            return SearchResult(error=f"Signing: {e}")
-
-        # Step 4: retry with payment
-        try:
-            paid_resp = await self._client.post(
+            resp2 = await self._client.post(
                 CHAT_PATH,
                 json=payload,
-                headers={"PAYMENT-SIGNATURE": payment_sig},
+                headers={"PAYMENT-SIGNATURE": pay_sig},
             )
         except httpx.RequestError as e:
             logger.error(f"[SurplusI] Paid request failed: {e}")
-            return SearchResult(error=f"Paid request: {e}")
+            return None
 
-        if paid_resp.status_code != 200:
+        if resp2.status_code != 200:
             logger.error(
-                f"[SurplusI] Paid request returned {paid_resp.status_code}: "
-                f"{paid_resp.text[:300]}"
+                f"[SurplusI] Paid request returned {resp2.status_code}: "
+                f"{resp2.text[:300]}"
             )
-            return SearchResult(error=f"Paid HTTP {paid_resp.status_code}")
+            return None
 
-        payment_resp_header = paid_resp.headers.get(
-            "payment-response", ""
-        )
-        if payment_resp_header:
+        # Log settlement cost
+        pr_resp = resp2.headers.get("payment-response") or ""
+        if pr_resp:
             try:
-                settlement = json.loads(base64.b64decode(payment_resp_header))
-                cost = int(settlement.get("amount", "0")) / 1_000_000
+                settlement = json.loads(base64.b64decode(pr_resp))
+                cost = int(settlement.get("amount", "0")) / 1e6
                 logger.info(f"[SurplusI] Settled: ${cost:.6f} USDC")
             except Exception:
                 pass
 
-        return self._parse_response(paid_resp.json())
+        return resp2.json()
 
-    def _sign_exact(self, requirement: dict) -> str:
-        """Sign an EIP-3009 exact authorization for x402 v2."""
-        amount = int(requirement.get("amount", "0"))
-        asset = requirement.get("asset", "")
-        pay_to = requirement.get("payTo", "")
-
-        extra = requirement.get("extra", {})
-        version = extra.get("version", "2")
-        chain_id_str = requirement.get("network", "eip155:8453")
-        chain_id = int(chain_id_str.split(":")[-1])
-
-        import time
-        now = int(time.time())
-        nonce_raw = f"{self._address}:{now}:{amount}"
-        nonce = "0x" + __import__("hashlib").sha256(nonce_raw.encode()).hexdigest()
-
-        domain = {
-            "name": "USD Coin",
-            "version": version,
-            "chainId": chain_id,
-            "verifyingContract": asset,
-        }
-        message = {
-            "from": self._address,
-            "to": pay_to,
-            "value": amount,
-            "validAfter": 0,
-            "validBefore": now + 3600,
-            "nonce": nonce,
-        }
-        types = {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "TransferWithAuthorization": [
-                {"name": "from", "type": "address"},
-                {"name": "to", "type": "address"},
-                {"name": "value", "type": "uint256"},
-                {"name": "validAfter", "type": "uint256"},
-                {"name": "validBefore", "type": "uint256"},
-                {"name": "nonce", "type": "bytes32"},
-            ],
-        }
-        full = {
-            "types": types,
-            "domain": domain,
-            "primaryType": "TransferWithAuthorization",
-            "message": message,
-        }
-
-        signed = Account.sign_typed_data(self._pk, full_message=full)
-        sig_hex = "0x" + signed.signature.hex()
-
-        # x402 v2 expects amounts as strings
-        payload = {
-            "scheme": "exact",
-            "network": chain_id_str,
-            "asset": asset,
-            "amount": str(amount),
-            "payTo": pay_to,
-            "signature": sig_hex,
-            "from": self._address,
-            "nonce": nonce,
-            "validAfter": "0",
-            "validBefore": str(now + 3600),
-        }
-        return base64.b64encode(json.dumps(payload).encode()).decode()
-
-    def _sign_upto(self, requirement: dict) -> str:
-        """Sign a Permit2 upto authorization (Permit2 batch + transferFrom)."""
-        # For upto, we sign the same EIP-3009 structure but mark it as upto scheme.
-        # Permit2 proxy handles actual settlement.
-        signed = self._sign_exact(requirement)
-        payload = json.loads(base64.b64decode(signed))
-        payload["scheme"] = "upto"
-        return base64.b64encode(json.dumps(payload).encode()).decode()
-
-    # ------------------------------------------------------------------
-    # Response parsing
-    # ------------------------------------------------------------------
-    def _parse_response(self, data: dict) -> SearchResult:
-        usage_raw = data.get("usage", {})
-        choices = data.get("choices", [])
-        content = ""
-        if choices:
-            content = choices[0].get("message", {}).get("content", "")
-
-        tweets = self._parse_tweets_json(content)
-
-        # Check for tool_calls in response
-        if not tweets and choices:
-            tool_calls = choices[0].get("message", {}).get("tool_calls", [])
-            for tc in tool_calls:
-                func = tc.get("function", {})
-                if func.get("name") == "x_search":
-                    try:
-                        args = json.loads(func.get("arguments", "{}"))
-                        results = args.get("results", [])
-                        if isinstance(results, list):
-                            tweets = results
-                    except json.JSONDecodeError:
-                        pass
-
-        return SearchResult(
-            tweets=tweets,
-            usage=TokenUsage(
-                input_tokens=usage_raw.get("prompt_tokens", 0),
-                output_tokens=usage_raw.get("completion_tokens", 0),
-                cached_tokens=(
-                    usage_raw.get("prompt_tokens_details", {}).get("cached_tokens", 0)
-                ),
+    @staticmethod
+    def _extract_usage(data: dict) -> TokenUsage:
+        u = data.get("usage", {})
+        return TokenUsage(
+            input_tokens=u.get("prompt_tokens", 0),
+            output_tokens=u.get("completion_tokens", 0),
+            cached_tokens=u.get("prompt_tokens_details", {}).get(
+                "cached_tokens", 0
             ),
         )
 
@@ -394,9 +368,9 @@ class SurplusIntelligenceProvider(XSearchProvider):
         if cleaned.startswith("```"):
             nl = cleaned.find("\n")
             if nl > 0:
-                cleaned = cleaned[nl + 1:]
+                cleaned = cleaned[nl + 1 :]
             if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
+                cleaned = cleaned[-3:].strip()
             cleaned = cleaned.strip()
 
         try:
@@ -409,7 +383,7 @@ class SurplusIntelligenceProvider(XSearchProvider):
         except json.JSONDecodeError:
             pass
 
-        # Find JSON array bounds as fallback
+        # Find JSON array bounds as last resort
         start = cleaned.find("[")
         end = cleaned.rfind("]")
         if start >= 0 and end > start:
