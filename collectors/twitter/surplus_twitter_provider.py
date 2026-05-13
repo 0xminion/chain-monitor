@@ -179,6 +179,72 @@ class SurplusTwitterProvider(XSearchProvider):
     # Internal helpers
     # -------------------------------------------------------------------------
 
+    async def _pay_and_send_retry(
+        self, path: str, params: dict[str, Any], max_retries: int = 3
+    ) -> dict | None:
+        """Retry on Vercel 403 with exponential backoff.
+
+        Returns response JSON on 200, continues to payment on 402,
+        returns None on persistent failure."""
+        import asyncio
+        for attempt in range(1, max_retries + 1):
+            delay = 2 ** attempt  # 2s, 4s, 8s
+            logger.info(f"[SurplusTwitter] Retry {attempt}/{max_retries} after {delay}s")
+            await asyncio.sleep(delay)
+            try:
+                resp = await self._client.get(path, params=params)
+            except httpx.RequestError as e:
+                logger.error(f"[SurplusTwitter] Retry {attempt} connection failed: {e}")
+                continue
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code == 402:
+                # Got the payment challenge — proceed with payment via _pay_and_send's 402 handler
+                return await self._handle_402(resp, path, params)
+            logger.warning(f"[SurplusTwitter] Retry {attempt} got {resp.status_code}")
+        return None
+
+    async def _handle_402(self, resp: httpx.Response, path: str, params: dict) -> dict | None:
+        """Handle the x402 payment challenge after a retry succeeded."""
+        pr_header = resp.headers.get("payment-required") or ""
+        if not pr_header:
+            logger.error("[SurplusTwitter] 402 but no PAYMENT-REQUIRED header")
+            return None
+        try:
+            pr_raw = json.loads(base64.b64decode(pr_header))
+            parsed = parse_payment_required(pr_raw)
+        except Exception as e:
+            logger.error(f"[SurplusTwitter] Failed to parse payment requirement: {e}")
+            return None
+
+        amount_micro_usdc = int(parsed.accepts[0].amount)
+        amount_usd = amount_micro_usdc / 1_000_000
+        if amount_usd > self._max_payment_usd:
+            logger.error(f"[SurplusTwitter] Cost {amount_usd:.4f} exceeds max {self._max_payment_usd}")
+            return None
+
+        result = self._x402.create_payment_payload(
+            payment_required=parsed,
+            resource=parsed.resource,
+            extensions=parsed.extensions,
+        )
+        d = result.model_dump() if hasattr(result, "model_dump") else vars(result)
+        pay_sig = base64.b64encode(json.dumps(d).encode()).decode()
+
+        try:
+            resp2 = await self._client.get(
+                path, params=params,
+                headers={"PAYMENT-SIGNATURE": pay_sig},
+            )
+        except httpx.RequestError as e:
+            logger.error(f"[SurplusTwitter] Paid retry failed: {e}")
+            return None
+
+        if resp2.status_code == 200:
+            return resp2.json()
+        logger.error(f"[SurplusTwitter] Paid retry failed: {resp2.status_code} {resp2.text[:200]}")
+        return None
+
     async def _pay_and_send(self, path: str, params: dict[str, Any]) -> dict | None:
         """Send a GET request, handling x402 payment if required.
 
@@ -192,6 +258,11 @@ class SurplusTwitterProvider(XSearchProvider):
 
         if resp.status_code == 200:
             return resp.json()
+
+        # Vercel DDoS checkpoint — retry with backoff
+        if resp.status_code == 403 and "Vercel Security Checkpoint" in resp.text:
+            logger.warning(f"[SurplusTwitter] Vercel 403 — retrying with backoff")
+            return await self._pay_and_send_retry(path, params)
 
         if resp.status_code != 402:
             logger.error(

@@ -108,7 +108,7 @@ class DailyDigestFormatter:
     with clickable source links.
     """
 
-    def format(
+    async def format(
         self,
         signals: list[Signal],
         source_health: dict = None,
@@ -160,7 +160,7 @@ class DailyDigestFormatter:
         ]
 
         # Summarize each chain via async LLM call
-        summaries = asyncio.run(self._summarize_all(chain_order))
+        summaries = await self._summarize_all(chain_order)
 
         # Separate high-signal sections vs tail
         head_chains = []
@@ -184,12 +184,9 @@ class DailyDigestFormatter:
             lines.append("")
 
         if tail_chains:
-            lines.append("**Additional signals:**")
-            tail_text = " ".join(
-                f"{e.split(chr(10))[0]}" for e in tail_chains
-            )
-            lines.append(tail_text)
-            lines.append("")
+            for entry in tail_chains:
+                lines.append(entry)
+                lines.append("")
 
         # Source health
         if source_health:

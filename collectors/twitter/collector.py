@@ -173,7 +173,15 @@ class TwitterCollector(BaseCollector):
             self._token_tracker.record(result.usage, had_error=result.error is not None)
             return batch, result
 
-        tasks = [asyncio.create_task(_search_batch(b)) for b in batches]
+        # Launch tasks with staggered delay to avoid triggering Vercel's
+        # DDoS protection on surplusintelligence.ai (fires 403 "Security Checkpoint"
+        # when all 14 requests hit simultaneously in <50ms)
+        import asyncio
+        tasks = []
+        for i, batch in enumerate(batches):
+            if i > 0:
+                await asyncio.sleep(0.3)  # 300ms stagger between batch launches
+            tasks.append(asyncio.create_task(_search_batch(batch)))
         all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect all tweets with chain/metadata attribution

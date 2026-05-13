@@ -140,7 +140,7 @@ async def main_async():
     logger.info(f"Total signals: {len(signals)}, High priority: {len(high_priority)}")
 
     formatter = DailyDigestFormatter()
-    digest = formatter.format(signals, source_health=health, source_health_detail=feed_health)
+    digest = await formatter.format(signals, source_health=health, source_health_detail=feed_health)
 
     # Always save digest to disk
     digest_path = Path(__file__).parent / "storage" / "twitter" / "summaries" / "daily_digest_latest.md"
