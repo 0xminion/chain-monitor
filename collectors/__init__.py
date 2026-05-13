@@ -9,7 +9,7 @@ from collectors.regulatory_collector import RegulatoryCollector
 from collectors.risk_alert_collector import RiskAlertCollector
 from collectors.rss_collector import RSSCollector
 from collectors.tradingview_collector import TradingViewCollector
-from collectors.twitter_collector import TwitterCollector
+from collectors.twitter.collector import TwitterCollector
 
 __all__ = [
     "BaseCollector",

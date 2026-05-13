@@ -9,10 +9,7 @@ reference data — but ONLY for inclusion in agent prompts as guidance.
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional
-
-from processors.agent_native import save_agent_task, find_agent_output, load_agent_output
 
 logger = logging.getLogger(__name__)
 
@@ -97,41 +94,41 @@ CATEGORY_KEYWORDS = {
 
 SUBCATEGORY_MAP = {
     "RISK_ALERT": {
-        "hack": "hack, exploit, drained, stolen, attack",
-        "outage": "outage, downtime, halt, offline",
-        "critical_bug": "critical bug, vulnerability, cve",
+        "hack": ["hack", "exploit", "drained", "stolen", "attack"],
+        "outage": ["outage", "downtime", "halt", "offline"],
+        "critical_bug": ["critical bug", "vulnerability", "cve"],
     },
     "REGULATORY": {
-        "enforcement": "enforcement, lawsuit, subpoena, wells notice, fine, penalty",
-        "license": "license, approval, authorized",
-        "comment_period": "comment period, proposed rule, consultation",
+        "enforcement": ["enforcement", "lawsuit", "subpoena", "wells notice", "fine", "penalty"],
+        "license": ["license", "approval", "authorized"],
+        "comment_period": ["comment period", "proposed rule", "consultation"],
     },
     "FINANCIAL": {
-        "tvl_milestone": "tvl crosses/reaches milestone",
-        "tvl_spike": "tvl up/increase/surge",
-        "volume_breakout": "volume ath/record/breakout",
-        "funding_round": "funding, raised, series, round",
-        "airdrop": "airdrop, token distribution",
-        "tge": "tge, token launch, token generation",
+        "tvl_milestone": ["tvl crosses", "reaches milestone"],
+        "tvl_spike": ["tvl up", "increase", "surge"],
+        "volume_breakout": ["volume ath", "record", "breakout"],
+        "funding_round": ["funding", "raised", "series", "round"],
+        "airdrop": ["airdrop", "token distribution"],
+        "tge": ["tge", "token launch", "token generation"],
     },
     "TECH_EVENT": {
-        "mainnet_launch": "mainnet launch, mainnet live, genesis",
-        "upgrade": "upgrade, hard fork, eip, bip, simd",
-        "release": "release, version, v0, v1, v2",
-        "governance_submitted": "proposal submitted, draft, rfc",
-        "governance_passed": "proposal passed, approved, accepted",
-        "audit": "audit, audited, security review",
+        "mainnet_launch": ["mainnet launch", "mainnet live", "genesis"],
+        "upgrade": ["upgrade", "hard fork", "eip", "bip", "simd"],
+        "release": ["release", "version", "v0", "v1", "v2"],
+        "governance_submitted": ["proposal submitted", "draft", "rfc"],
+        "governance_passed": ["proposal passed", "approved", "accepted"],
+        "audit": ["audit", "audited", "security review"],
     },
     "PARTNERSHIP": {
-        "integration": "integration, integrate, deploy on",
-        "collaboration": "partnership, collaboration, teams up",
+        "integration": ["integration", "integrate", "deploy on"],
+        "collaboration": ["partnership", "collaboration", "teams up"],
     },
     "VISIBILITY": {
-        "keynote": "keynote, conference talk, speaker",
-        "ama": "ama, ask me anything, community call",
-        "hire": "hired, joined, appointed, new cto, new ceo",
-        "departure": "departed, left, stepped down, resigned",
-        "podcast": "podcast, interview, episode",
+        "keynote": ["keynote", "conference talk", "speaker"],
+        "ama": ["ama", "ask me anything", "community call"],
+        "hire": ["hired", "joined", "appointed", "new cto", "new ceo"],
+        "departure": ["departed", "left", "stepped down", "resigned"],
+        "podcast": ["podcast", "interview", "episode"],
     },
 }
 

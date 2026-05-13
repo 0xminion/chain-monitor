@@ -370,7 +370,7 @@ class SurplusIntelligenceProvider(XSearchProvider):
             if nl > 0:
                 cleaned = cleaned[nl + 1 :]
             if cleaned.endswith("```"):
-                cleaned = cleaned[-3:].strip()
+                cleaned = cleaned[:-3].strip()
             cleaned = cleaned.strip()
 
         try:

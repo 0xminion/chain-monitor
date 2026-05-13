@@ -1,272 +1,170 @@
-"""Unit tests for TwitterCollector.
+"""Unit tests for the new composable TwitterCollector (collectors/twitter/collector.py)."""
 
-Tests:
-- Config loading
-- Noise filtering
-- Tweet-to-event conversion
-- Reliability boost for RTs of official accounts
-- Markdown summary formatting
-"""
-
+import asyncio
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 import pytest
-from collectors.twitter_collector import TwitterCollector
-from processors.categorizer import EventCategorizer
+
+from collectors.twitter.collector import (
+    TwitterCollector,
+    RAW_OUT_DIR,
+    SUMMARY_OUT_DIR,
+)
+
+
+@pytest.fixture
+def collector():
+    """Create a collector with a mock provider."""
+    return TwitterCollector(lookback_hours=24)
 
 
 @pytest.fixture
 def sample_tweets():
+    """Sample tweets in the new internal format (from SurplusTwitterProvider etc)."""
     return [
         {
-            "tweet_id": "180000000000000001",
-            "url": "https://x.com/monad_xyz/status/180000000000000001",
-            "timestamp": "2026-04-21T14:30:00.000Z",
-            "text": "Mainnet launch is next week! Exciting times for Monad.",
+            "id": "2054368886603276574",
+            "handle": "jessepollak",
+            "text": "x402 now supports batched settlement. This unlocks many tiny payments.",
+            "created_at": "2026-05-13T02:37:18.000Z",
             "is_retweet": False,
-            "original_author": "",
-            "is_quote_tweet": False,
-            "quoted_text": "",
-            "likes": 1200,
-            "retweets": 340,
-            "replies": 89,
-            "media_urls": [],
-            "chain": "monad",
-            "account_handle": "monad_xyz",
+            "retweeted_handle": None,
+            "likes": 450,
+            "retweets": 120,
+            "replies": 35,
+            "chain": "base",
             "account_role": "official",
-            "account_name": "Monad",
             "account_reliability": 0.95,
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "account_name": "Jesse Pollak",
         },
         {
-            "tweet_id": "180000000000000002",
-            "url": "https://x.com/keoneHD/status/180000000000000002",
-            "timestamp": "2026-04-21T16:00:00.000Z",
+            "id": "2054368886603276575",
+            "handle": "keoneHD",
             "text": "gm builders",
+            "created_at": "2026-05-13T01:00:00.000Z",
             "is_retweet": False,
-            "original_author": "",
-            "is_quote_tweet": False,
-            "quoted_text": "",
+            "retweeted_handle": None,
             "likes": 45,
             "retweets": 2,
             "replies": 1,
-            "media_urls": [],
             "chain": "monad",
-            "account_handle": "keoneHD",
             "account_role": "contributor",
-            "account_name": "Keone Hon",
             "account_reliability": 0.90,
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "account_name": "Keone Hon",
         },
         {
-            "tweet_id": "180000000000000003",
-            "url": "https://x.com/keoneHD/status/180000000000000003",
-            "timestamp": "2026-04-21T18:00:00.000Z",
+            "id": "2054368886603276576",
+            "handle": "keoneHD",
             "text": "RT @monad_xyz: Mainnet launch is next week!",
+            "created_at": "2026-05-13T02:00:00.000Z",
             "is_retweet": True,
-            "original_author": "monad_xyz",
-            "is_quote_tweet": False,
-            "quoted_text": "",
+            "retweeted_handle": "monad_xyz",
             "likes": 300,
             "retweets": 120,
             "replies": 15,
-            "media_urls": [],
             "chain": "monad",
-            "account_handle": "keoneHD",
             "account_role": "contributor",
-            "account_name": "Keone Hon",
             "account_reliability": 0.90,
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "account_name": "Keone Hon",
         },
         {
-            "tweet_id": "180000000000000004",
-            "url": "https://x.com/monad_xyz/status/180000000000000004",
-            "timestamp": "2026-04-21T20:00:00.000Z",
-            "text": "Big news: we're partnering with Protocol X for cross-chain integration.",
+            "id": "2054368886603276577",
+            "handle": "solana",
+            "text": "Alpenglow upgrade is now live on mainnet.",
+            "created_at": "2026-05-13T03:00:00.000Z",
             "is_retweet": False,
-            "original_author": "",
-            "is_quote_tweet": False,
-            "quoted_text": "",
-            "likes": 800,
-            "retweets": 200,
-            "replies": 56,
-            "media_urls": [],
-            "chain": "monad",
-            "account_handle": "monad_xyz",
-            "account_role": "official",
-            "account_name": "Monad",
-            "account_reliability": 0.95,
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
-        },
-        {
-            "tweet_id": "180000000000000005",
-            "url": "https://x.com/solana/status/180000000000000005",
-            "timestamp": "2026-04-21T10:00:00.000Z",
-            "text": "Excited to keynote at Breakpoint 2026! See you there.",
-            "is_retweet": False,
-            "original_author": "",
-            "is_quote_tweet": False,
-            "quoted_text": "",
+            "retweeted_handle": None,
             "likes": 2500,
             "retweets": 600,
             "replies": 130,
-            "media_urls": [],
             "chain": "solana",
-            "account_handle": "solana",
             "account_role": "official",
-            "account_name": "Solana",
             "account_reliability": 0.95,
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "account_name": "Solana",
         },
     ]
 
 
-class TestTwitterCollector:
-    def test_tweets_to_events_basic(self, sample_tweets):
-        collector = TwitterCollector(standalone_mode=True, lookback_hours=48)
-        # Mock accounts so _tweets_to_events doesn't fail on empty cfg
-        collector._accounts = {
-            "monad": {
-                "official": [{"handle": "@monad_xyz", "name": "Monad", "reliability": 0.95}],
-                "contributors": [{"handle": "@keoneHD", "name": "Keone Hon", "role": "founder", "reliability": 0.90}],
-            },
-            "solana": {
-                "official": [{"handle": "@solana", "name": "Solana", "reliability": 0.95}],
-                "contributors": [],
-            },
-        }
+class TestTweetToEventConversion:
+    """Test _tweets_to_events with new composable collector."""
 
+    def test_basic_conversion(self, collector, sample_tweets):
         events = collector._tweets_to_events(sample_tweets)
         assert len(events) == len(sample_tweets)
+        assert all(e["source"] == "twitter" for e in events)
 
-        # Check official event has high reliability
-        official_event = events[0]
-        assert official_event["chain"] == "monad"
-        assert official_event["reliability"] == 0.95
-        assert official_event["has_official_source"] is True
-        assert "Mainnet launch is next week" in official_event["description"]
+    def test_event_fields(self, collector, sample_tweets):
+        events = collector._tweets_to_events([sample_tweets[0]])
+        ev = events[0]
+        assert ev["chain"] == "base"
+        assert ev["reliability"] == 0.95
+        assert ev["has_official_source"] is True
+        assert "x402 now supports batched settlement" in ev["description"]
+        assert ev["evidence"]["url"] == "https://x.com/jessepollak/status/2054368886603276574"
+        assert ev["evidence"]["likes"] == 450
+        assert ev["evidence"]["retweets"] == 120
 
-    def test_rt_reliability_boost(self, sample_tweets):
-        """RTs of official accounts get reliability bumped to official level."""
-        collector = TwitterCollector(standalone_mode=True, lookback_hours=48)
-        collector._accounts = {
-            "monad": {
-                "official": [{"handle": "@monad_xyz", "name": "Monad", "reliability": 0.95}],
-                "contributors": [{"handle": "@keoneHD", "name": "Keone Hon", "role": "founder", "reliability": 0.90}],
-            },
-        }
+    def test_retweet_handling(self, collector, sample_tweets):
+        events = collector._tweets_to_events([sample_tweets[2]])  # RT
+        ev = events[0]
+        assert "reposted @monad_xyz" in ev["description"]
 
-        rt_tweet = sample_tweets[2]  # Keone RT of monad_xyz
-        events = collector._tweets_to_events([rt_tweet])
+    def test_query_marker_filtered(self, collector):
+        """_query markers from SurplusIntelligenceProvider are filtered out."""
+        tweets = [
+            {"_query": "from:solana since:2026-05-12"},
+            {"id": "1", "handle": "solana", "text": "real tweet", "is_retweet": False,
+             "created_at": "2026-05-13T00:00:00Z", "likes": 0, "retweets": 0, "replies": 0,
+             "chain": "solana", "account_role": "official", "account_reliability": 0.9,
+             "account_name": "Solana"},
+        ]
+        events = collector._tweets_to_events(tweets)
         assert len(events) == 1
-        assert events[0]["reliability"] == 0.95
-        assert "monad_xyz" in events[0]["description"]
-
-    def test_noise_filter(self, sample_tweets):
-        """The agent should categorize 'gm builders' as noise."""
-        c = EventCategorizer()
-        gm_event = {
-            "chain": "monad",
-            "category": "NEWS",
-            "description": "gm builders",
-            "source": "twitter",
-            "source_name": "Twitter (@keoneHD)",
-            "evidence": {"text": "gm builders"},
-        }
-        # Simulate agent having categorized this as NOISE
-        agent_results = [
-            {"id": 0, "category": "NOISE", "subcategory": "general", "reasoning": "Low-value greeting", "is_noise": True, "primary_mentions": []},
-        ]
-        enriched = c.apply_categories([gm_event], agent_results)
-        assert enriched[0]["category"] == "NOISE"
-        assert enriched[0]["semantic"]["is_noise"] is True
-
-    def test_tech_event_detection(self, sample_tweets):
-        """Mainnet launch tweet should be categorized as TECH_EVENT by agent."""
-        c = EventCategorizer()
-        event = {
-            "chain": "monad",
-            "category": "NEWS",
-            "description": "Mainnet launch is next week! Exciting times for Monad.",
-            "source": "twitter",
-            "source_name": "Twitter (@monad_xyz)",
-            "evidence": {"text": "Mainnet launch is next week! Exciting times for Monad."},
-        }
-        agent_results = [
-            {"id": 0, "category": "TECH_EVENT", "subcategory": "mainnet_launch", "reasoning": "Mainnet announcement", "is_noise": False, "primary_mentions": ["monad"]},
-        ]
-        enriched = c.apply_categories([event], agent_results)
-        assert enriched[0]["category"] == "TECH_EVENT"
-
-    def test_partnership_detection(self, sample_tweets):
-        """Partnership tweet should be categorized as PARTNERSHIP by agent."""
-        c = EventCategorizer()
-        event = {
-            "chain": "monad",
-            "category": "NEWS",
-            "description": "Big news: we're partnering with Protocol X for cross-chain integration.",
-            "source": "twitter",
-            "source_name": "Twitter (@monad_xyz)",
-            "evidence": {"text": "Big news: we're partnering with Protocol X for cross-chain integration."},
-        }
-        agent_results = [
-            {"id": 0, "category": "PARTNERSHIP", "subcategory": "collaboration", "reasoning": "Partnership announcement", "is_noise": False, "primary_mentions": ["monad"]},
-        ]
-        enriched = c.apply_categories([event], agent_results)
-        assert enriched[0]["category"] == "PARTNERSHIP"
-
-    def test_visibility_detection(self, sample_tweets):
-        """Keynote tweet should be categorized as VISIBILITY by agent."""
-        c = EventCategorizer()
-        event = {
-            "chain": "solana",
-            "category": "NEWS",
-            "description": "Excited to keynote at Breakpoint 2026! See you there.",
-            "source": "twitter",
-            "source_name": "Twitter (@solana)",
-            "evidence": {"text": "Excited to keynote at Breakpoint 2026! See you there."},
-        }
-        agent_results = [
-            {"id": 0, "category": "VISIBILITY", "subcategory": "keynote", "reasoning": "Conference keynote announcement", "is_noise": False, "primary_mentions": ["solana"]},
-        ]
-        enriched = c.apply_categories([event], agent_results)
-        assert enriched[0]["category"] == "VISIBILITY"
+        assert events[0]["description"] == "real tweet"
 
 
-def test_load_accounts():
-    collector = TwitterCollector(standalone_mode=True, lookback_hours=48)
-    assert "monad" in collector._accounts
-    assert "solana" in collector._accounts
-    monad_official = collector._accounts["monad"]["official"]
-    assert len(monad_official) >= 1
-    assert monad_official[0]["handle"] == "monad_xyz"
+class TestBatchHandling:
+    """Test handle batching logic."""
+
+    def test_batch_sizes(self):
+        handles = [(f"chain{i}", f"user{i}", {"role": "official"}) for i in range(25)]
+        batches = TwitterCollector._batch_handles(handles, max_per_batch=10)
+        assert len(batches) == 3
+        assert len(batches[0]) == 10
+        assert len(batches[1]) == 10
+        assert len(batches[2]) == 5
+
+    def test_single_batch(self):
+        handles = [(f"chain{i}", f"user{i}", {}) for i in range(3)]
+        batches = TwitterCollector._batch_handles(handles)
+        assert len(batches) == 1
+        assert len(batches[0]) == 3
+
+
+class TestLoadAccounts:
+    """Test account loading from config."""
+
+    def test_accounts_loaded(self, collector):
+        assert len(collector._accounts) > 0
+        assert "solana" in collector._accounts
+        assert "ethereum" in collector._accounts
+
+    def test_account_structure(self, collector):
+        sol = collector._accounts["solana"]
+        assert "official" in sol
+        assert "contributors" in sol
 
 
 class TestMarkdownSummary:
-    def test_append_summary(self, tmp_path):
-        from collectors.twitter_collector import TwitterCollector
-        collector = TwitterCollector(standalone_mode=True, lookback_hours=48)
-        summary_path = tmp_path / "test_summary.md"
-        tweets = [
-            {
-                "chain": "monad",
-                "account_handle": "monad_xyz",
-                "account_role": "official",
-                "timestamp": "2026-04-21T14:30:00.000Z",
-                "text": "Mainnet launch!",
-                "is_retweet": False,
-                "is_quote_tweet": False,
-                "url": "https://x.com/monad_xyz/status/1",
-            }
-        ]
+    """Test _append_summary_md formatting."""
+
+    def test_append_summary(self, collector, tmp_path, sample_tweets):
         now = datetime.now(timezone.utc)
-        collector._append_summary_md(summary_path, tweets, now)
-        content = summary_path.read_text()
-        assert "monad" in content
-        assert "Mainnet launch" in content
-        assert "https://x.com/monad_xyz/status/1" in content
+        p = tmp_path / "summary.md"
+        collector._append_summary_md(p, [sample_tweets[0]], now)
+        content = p.read_text()
+        assert "base" in content
+        assert "jessepollak" in content
+        assert "x402 now supports" in content

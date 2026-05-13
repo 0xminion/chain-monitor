@@ -1,229 +1,138 @@
 # Chain Monitor — Architecture
 
-**Version:** v0.1.0-agent-native
+**Version:** v1.0  
 **Last updated:** May 2026
 
 ---
 
-## Pipeline Overview
-
-7-stage deterministic pipeline. The running agent is the only reasoning engine — there are no external LLM calls, no Telegram bot, and no inline model inference.
+## Pipeline
 
 ```
-┌────────────────────┐
-│ Stage 0: Collect     │ ← asyncio.gather across 9 collectors
-│    (parallel)        │     RSS, DefiLlama, CoinGecko, TradingView, Events,
-│                      │     Hackathon Outcomes, Risk Alert, Regulatory, Twitter
-└──────────┬──────────┘
-           │ list[RawEvent]
-           v
-┌────────────────────┐
-│ Stage 1: Dedup       │ ← O(n) hash-based dedup (URL + fingerprint)
-│                      │     Source health computed.
-└──────────┬──────────┘
-           │ list[RawEvent] + health report
-           v
-┌────────────────────┐
-│ Stage 2: Categorize  │ ← source-provided categories with agent-native
-│                      │     checkpoint override. No LLM blocking.
-└──────────┬──────────┘
-           │ list[RawEvent] with category/subcategory
-           v
-┌────────────────────┐
-│ Stage 3: Score       │ ← rule-based P2-P9 scoring + chain mapping
-│                      │     Baselines sourced from config/baselines.yaml
-└──────────┬──────────┘
-           │ list[Signal]
-           v
-┌────────────────────┐
-│ Stage 4: Reinforce   │ ← cross-source merge (dedup on fingerprint)
-│                      │     Same event from RSS = one reinforced signal
-└──────────┬──────────┘
-           │ dict[chain, list[Signal]]
-           v
-┌────────────────────┐
-│ Stage 5: Analyze     │ ← per-chain deterministic analysis
-│                      │     builds ChainDigest (summary, events, score)
-└──────────┬──────────┘
-           │ list[ChainDigest]
-           v
-┌────────────────────┐
-│ Stage 6: Synthesize  │ ← AgentDigestRunner builds markdown prompt
-│                      │     Prompt saved to storage/agent_input/
-└──────────┬──────────┘
-           │ str (Markdown prompt)
-           v
-┌────────────────────┐
-│ Stage 7: Deliver     │ ← Agent-native prose synthesis
-│                      │     The running agent reads prompt, writes digest
-└────────────────────┘
+Collect (async parallel)
+  │ 9 collectors + composable Twitter provider
+  │
+  v
+Categorize (keyword-based)
+  │ RISK_ALERT → REGULATORY → FINANCIAL → PARTNERSHIP → TECH_EVENT → VISIBILITY
+  │
+  v
+Score (deterministic)
+  │ Impact 1-5 × Urgency 1-3 → priority_score
+  │ Twitter gets urgency boost (min +1)
+  │
+  v
+Reinforce (dedup)
+  │ URL match → merge activity entries
+  │ Text similarity (Jaccard ≥ 0.6) → merge
+  │ Echo detection (≥0.85 sim, ≥3 sources) → drop
+  │
+  v
+Group by chain → sort by signal count
+  │
+  v
+Summarize (Ollama: gemma4:31b-cloud)
+  │ Per-chain prose with inline [text](url) markdown links
+  │
+  v
+Deliver
+  ├─ daily_digest_latest.md (disk)
+  ├─ signal_bundle.json (structured, for cron agent synthesis)
+  └─ Telegram (optional, if bot token configured)
 ```
 
 ---
 
-## Design Decisions
+## Twitter Architecture (`collectors/twitter/`)
 
-### Agent-Native Architecture
-
-The traditional LLM-in-pipeline approach (calling OpenAI/Ollama during each run) was removed because:
-
-1. **Hallucination risk:** inline LLM calls fabricate URLs, dollar amounts, and partnerships
-2. **Latency:** 30-120s blocking calls slow a pipeline that should finish in ~5min
-3. **Token cost:** daily + weekly synthesis consumes ~50K tokens/day per model provider
-4. **Reliability:** local Ollama models crash on 16GB Steam Deck under concurrent browser load
-
-The agent-native model inverts this: the pipeline produces deterministic structured data, the running agent (you) reads a rich prompt and writes prose. Trust moves from opaque model inference to explicit prompt + human reasoning.
-
-### Twitter: Subprocess Workers with Camoufox
-
-X throttles concurrent tabs within a single browser context. A single Playwright `Browser` + 5+ concurrent `Page` objects yields degraded or empty timelines. The Twitter collector uses **subprocess-based isolation**:
-
-- `collectors/twitter_collector.py` batches 138 handles across N batches
-- Each batch spawns `scripts/twitter_worker.py` via `asyncio.create_subprocess_exec`
-- Workers use **Camoufox** anti-detect browser with `storage_state` cookies
-- Concurrency controlled by `asyncio.Semaphore(max_workers)` — default 15
-- No `ProcessPoolExecutor` — avoids Playwright EPIPE crashes on SteamOS
-- Each worker reuses a single browser context across its batch of handles
-
-**Why subprocess over ProcessPoolExecutor:**
-- `fork()` inherits parent's Playwright event loop → EPIPE on page close
-- `spawn()` via multiprocessing works but adds complexity vs. clean subprocess
-- Subprocess isolation means a crashed worker doesn't take down the pipeline
-
----
-
-## Stage-by-Stage Details
-
-### Stage 0: Parallel Collect
-
-All collectors implement `BaseCollector` with `async collect()` returning `list[RawEvent]`. `parallel_runner.collect_all()` gathers them with `asyncio.gather(return_exceptions=True)` so one broken collector cannot crash the pipeline.
-
-Twitter uses subprocess workers. Each worker scrapes a batch of handles sequentially with a single Camoufox browser context, printing newline-delimited JSON to stdout. The collector parses stdout and converts tweets to `RawEvent` dicts.
-
-### Stage 1: Dedup
-
-`dedup_engine.py` maintains a rolling hash set across pipeline runs. Deduplication keys:
-
-- Primary: `hashlib.sha256(url + normalized_text[:120])`
-- Fallback: `hashlib.sha256(normalized_text[:200])` for events without URLs
-
-Complexity: O(n) single pass.
-
-### Stage 2: Categorize
-
-`EventCategorizer.apply_categories()` maps events using source-provided categories. When agent categorization results exist on disk, they override source defaults. No blocking agent checkpoint in production — the pipeline flows through with source-provided categories when no agent output exists.
-
-### Stage 3–4: Score + Reinforce
-
-`SignalScorer.score()` converts a categorized event into a `Signal` with `impact` (1-5), `urgency` (1-3), and `priority_score = impact × urgency`. Twitter events get role-aware scoring (official=high impact, contributor=medium) that preserves category-based urgency (e.g., RISK_ALERT hack events keep urgency=3).
-
-Agent-native semantic scores (from `event["semantic"]`) override deterministic scoring when available.
-
-`SignalReinforcer.process()` merges signals with identical fingerprints. A signal reinforced by 3+ sources gets `composite_confidence = min(0.95, max_reliability × 1.3)`.
-
-### Stage 5: Per-chain Analyze
-
-`chain_analyzer.analyze_all_chains()` iterates each configured chain and builds a `ChainDigest` from its signals. Deterministic rules pick:
-
-- `dominant_topic`: category with most signals
-- `key_events`: top-N by priority (sorted descending, max 5)
-- `priority_score`: highest individual signal priority + source-count bonus
-
-### Stage 6: Prompt Synthesis
-
-`AgentDigestRunner.synthesize()` calls `summary_engine._build_daily_prompt()` to produce a markdown prompt containing:
-
-1. Date header
-2. Source health summary
-3. One `### ChainName (Score: X)` section per active chain
-4. Per-event `URL:` and `Detail:` fields for every signal
-5. Strict output format instructions (word count, link placement, prose rules)
-
-The prompt is saved to `storage/agent_input/daily_prompt_YYYYmmDD_HHMMSS.md`.
-
-### Stage 7: Agent-native Delivery
-
-The running agent reads the saved prompt and writes the final digest prose directly into the active chat. No code invocation — the agent is the synthesis engine.
-
----
-
-## Data Flow
+Composable provider pattern. Swap backends by setting `XSEARCH_PROVIDER` env var.
 
 ```
-RawEvent → Dedup → CategorizedEvent → Signal → ReinforcedSignal → ChainDigest → Prompt
+collectors/twitter/
+├── provider.py                  XSearchProvider (abstract base)
+├── direct_xai.py                DirectXAIProvider (api.x.ai)
+├── antseed_provider.py          AntseedBuyerProvider (P2P proxy)
+├── surplus_provider.py          SurplusIntelligenceProvider (Grok + x402)
+├── surplus_twitter_provider.py  SurplusTwitterProvider (Twitter API v2 via x402) ← DEFAULT
+├── collector.py                 TwitterCollector (batches, converts to events)
+└── token_tracker.py             PipelineTokenTracker
 ```
 
-Persistence points (all atomic via `safe_text_write` / `safe_json_write`):
+**Collection flow:**
+1. `config/twitter_accounts.yaml` → 138 handles across 27 chains
+2. Batch into groups of ≤10 (X API hard cap) → 14 batches
+3. Launch tasks with 300ms stagger (avoids Vercel DDoS protection on surplusintelligence.ai)
+4. Provider returns `SearchResult(tweets, usage)`
+5. `_tweets_to_events()` converts to pipeline event dicts with `source: "twitter"`, X URLs, role metadata
 
-| Artifact | Path | Purpose |
-|----------|------|---------|
-| Raw events | `storage/events/<id>.json` | Reinforcer reloads on restart |
-| Health log | `storage/health/run_*.json` | Per-run stats + timing |
-| Metrics | `storage/metrics/metrics.jsonl` | `PipelineMetrics` telemetry |
-| Agent prompt | `storage/agent_input/daily_prompt_*.md` | Prompt for agent synthesis |
-| Daily digest | `storage/twitter/summaries/daily_digest_*.txt` | Weekly builder input |
-| Raw tweets | `storage/twitter/raw/tweets_*.json` | Twitter persistence |
+**Retry + Backoff:** SurplusTwitterProvider retries Vercel 403 "Security Checkpoint" with exponential backoff (2s/4s/8s) and re-attempts x402 payment on 402.
 
----
-
-## Concurrency & Resource Budget
-
-| Stage | Concurrency | Bottleneck | Mitigation |
-|-------|-------------|------------|------------|
-| Collect | asyncio.gather + subprocess workers for Twitter | API rate limits | Configured semaphore + batching |
-| Dedup | Single-threaded (O(n)) | None | None |
-| Score | Single-threaded (O(n)) | None | None |
-| Reinforce | Single-threaded | Disk I/O | FileLock on signal storage |
-| Analyze | asyncio.gather | Data volume | Deterministic, fast |
-| Synthesize | Single-threaded | Disk write | Instant |
-| Deliver | Agent-native (chat) | None | Prompt persisted for retry |
-
-Steam Deck-specific constraints enforced in `config/pipeline.yaml`:
-
-- `memory_throttle_mb: 500` — when `<500MB` free, concurrency drops to 2
-- Twitter worker timeout: 300s per batch
-- Chrome zombie cleanup via `_kill_zombie_chrome()` in workers
+**Cost:** $0.0275/call × 14 batches = ~$0.39/run (SurplusTwitterProvider default)
 
 ---
 
-## Extension Points
+## Scoring
 
-- **Add collector:** subclass `BaseCollector`, implement `collect()`, add to `main.py` collector list
-- **Add chain:** `scripts/chain_monitor_cli.py chains add <name>` or edit `config/chains.yaml`
-- **Change prompt:** edit `processors/summary_engine.py` `_build_daily_prompt()`
-- **Change scoring:** edit `processors/scoring.py`
-- **Add event category:** update `processors/categorizer.py` `CATEGORY_KEYWORDS`
+### Impact (1-5)
+
+| Category | Subcategory | Impact |
+|----------|-------------|--------|
+| RISK_ALERT | hack > $10M | 5 |
+| RISK_ALERT | hack/exploit/outage/critical_bug | 4 |
+| RISK_ALERT | default | 3 |
+| REGULATORY | enforcement | 5 |
+| REGULATORY | license/approval | 4 |
+| REGULATORY | comment_period | 3 |
+| FINANCIAL | tvl_milestone | 4 |
+| FINANCIAL | tvl_spike ≥ 25% | 4 |
+| FINANCIAL | funding ≥ $50M | 4 |
+| TECH_EVENT | mainnet_launch | 5 |
+| TECH_EVENT | upgrade | max(floor, 4) |
+| TECH_EVENT | governance_passed | 4 |
+| PARTNERSHIP | tier 1 | 4 |
+| VISIBILITY | keynote/hire/departure | 3 |
+
+### Urgency (1-3)
+
+- RISK_ALERT (hack/exploit/outage) → 3
+- REGULATORY (enforcement) → 3
+- High-impact FINANCIAL/TECH_EVENT (impact ≥ 4) → 2
+- governance_vote → 2
+- **Twitter boost**: all Twitter signals get min urgency 2; founder/lead/cto roles or ≥500 likes → urgency 3
+- Default → 1
 
 ---
 
-## Key Files
+## Summarizer (`output/summarizer.py`)
 
-| File | Purpose |
-|------|---------|
-| `main.py` | 7-stage pipeline orchestrator |
-| `processors/parallel_runner.py` | `collect_all()` async gather |
-| `processors/dedup_engine.py` | O(n) hash dedup |
-| `processors/scoring.py` | Rule-based signal scoring |
-| `processors/reinforcement.py` | Cross-source signal merge |
-| `processors/chain_analyzer.py` | Per-chain digest building |
-| `processors/summary_engine.py` | Markdown prompt builder |
-| `processors/agent_runner.py` | Prompt persister (agent-native only) |
-| `collectors/twitter_collector.py` | Subprocess-based Twitter extraction |
-| `scripts/twitter_worker.py` | Camoufox worker for batch handle scraping |
-| `config/pipeline.yaml` | Centralized tunables (workers, thresholds, retention) |
-| `scripts/chain_monitor_cli.py` | Management CLI for chains, cron, digest, health |
+Calls local Ollama at `SUMMARIZE_API_URL` (default `http://localhost:11434/v1`) with model `SUMMARIZE_MODEL` (default `gemma4:31b-cloud`).
+
+**Prompt**: Rich instruction set + per-signal `[description](url)` lines. Model returns 2-4 sentence prose with inline markdown links. Zero token cost (local inference).
+
+**Concurrency**: All chains summarized in parallel via `asyncio.gather`.
 
 ---
 
-## Agent-Native Synthesis Budget
+## Persistence
 
-No external LLM calls during pipeline execution. Token count: zero.
+| Artifact | Path | Format |
+|----------|------|--------|
+| Signal events | `storage/events/<id>.json` | Signal.to_dict() |
+| Run log | `storage/health/run_*.json` | Stats + timing |
+| Raw tweets | `storage/twitter/raw/tweets_*.json` | List of tweet dicts |
+| Daily digest | `storage/twitter/summaries/daily_digest_latest.md` | Markdown prose |
+| Signal bundle | `storage/twitter/summaries/signal_bundle.json` | Structured, for cron |
+| Twitter summary | `storage/twitter/summaries/twitter_summary_*.md` | Monthly markdown |
 
-- Stage 0–5: pure computation, no tokens
-- Stage 6: prompt written to disk (zero tokens consumed by pipeline)
-- Stage 7: the running agent synthesizes prose independently
+---
 
-Prompt sizes for context sizing:
+## Key Design Decisions
 
-- Daily: ~5-15K chars per active chain
-- Weekly: up to 200K chars of digest text (truncated by builder)
+1. **Composable Twitter over browser scraping.** Subprocess Camoufox workers were replaced with API providers. Real tweet IDs, real metrics, no login walls, no memory leaks.
+
+2. **Ollama summarizer over antseed buyer.** Zero-cost local inference for per-chain prose. Env-swappable endpoint. Prompt cached and deterministic (temperature=0).
+
+3. **Every chain gets its own block.** No "Additional signals" group. No score gate. Every chain renders identically regardless of tweet count.
+
+4. **Signal bundle for cron.** Pipeline saves structured JSON alongside prose digest. Cron agent reads bundle and synthesizes independently — no need to re-run collectors.
+
+5. **Keyword-based categorization over agent-native checkpoint.** The agent-native `prepare_agent_task()` → `try_load_results()` → `apply_categories()` loop was replaced with direct `categorize()` that uses `CATEGORY_KEYWORDS` and `SUBCATEGORY_MAP` (lists, not strings).

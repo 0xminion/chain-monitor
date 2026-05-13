@@ -166,8 +166,8 @@ class TestFullPipeline:
 class TestAgentCategorizerCheckpoint:
     """Verify that EventCategorizer now requires agent checkpoint."""
 
-    def test_categorizer_raises_on_direct_call(self):
-        from processors.categorizer import EventCategorizer
+    def test_categorizer_keyword_categorization(self):
+        """categorize() now performs keyword-based classification."""
         cat = EventCategorizer()
-        with pytest.raises(RuntimeError, match="agent-native"):
-            cat.categorize({"description": "test event"})
+        result = cat.categorize({"description": "Hack drained $5M", "evidence": {}})
+        assert result["category"] == "RISK_ALERT"

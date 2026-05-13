@@ -1,118 +1,92 @@
 # Chain Monitor
 
-Multi-chain crypto intelligence pipeline. Monitors 27 blockchain ecosystems across 6 event categories, scores signals, and structures daily/weekly digests for agent-native prose synthesis.
-
-The running agent is the only reasoning engine in the loop: it reads the generated prompt and writes the final digest prose directly into the active chat. No external LLM calls. No Telegram bot.
-
----
+Multi-chain crypto intelligence pipeline. Monitors 27 blockchain ecosystems across 6 event categories with [composable Twitter X Search providers](collectors/twitter/), deterministic scoring, and Ollama-powered per-chain prose synthesis.
 
 ## Pipeline (7 stages)
 
-1. **Parallel Collect** — 9 collectors run concurrently via `asyncio.gather`
-2. **Dedup** — O(n) hash-based deduplication
-3. **Categorize** — source-provided categories with agent-native checkpoint override
-4. **Score + Reinforce** — rule-based heuristics merge similar signals across sources
-5. **Per-chain Analyze** — deterministic analysis builds `ChainDigest` objects
-6. **Agent Prompt Synthesis** — structured markdown prompt saved to `storage/agent_input/`
-7. **Agent-native Delivery** — running agent reads prompt and writes prose
-
----
+1. **Parallel Collect** — 9 collectors (incl. composable Twitter) run concurrently via `asyncio.gather`
+2. **Categorize** — keyword-based classification (RISK_ALERT, REGULATORY, FINANCIAL, PARTNERSHIP, TECH_EVENT, VISIBILITY)
+3. **Score** — deterministic impact/urgency scoring with Twitter urgency boost
+4. **Reinforce** — cross-source signal deduplication (URL + text similarity)
+5. **Per-chain Grouping** — signals bucketed by chain, sorted by count
+6. **Prose Synthesis** — [Ollama summarizer](output/summarizer.py) (`gemma4:31b-cloud`) generates per-chain prose with markdown `[text](url)` links
+7. **Deliver** — digest saved to disk + optional Telegram delivery
 
 ## Quick Start
 
 ```bash
 cd chain-monitor
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Install Playwright browsers + Camoufox
-python -m playwright install chromium
+# Configure .env (see below)
+cp .env.example .env
+# Edit .env with your keys
 
-# Setup .env (data source API keys only; no LLM config needed)
-python3 scripts/setup.py
-
-# Health check
-python3 scripts/doctor.py
-
-# Run the full pipeline
+# Run the pipeline
 python3 main.py
-
-# Skip Twitter (faster, no Playwright needed)
-python3 main.py --skip-twitter
-
-# With resource profiling
-python3 run_pipeline_live.py
-python3 run_pipeline_live.py --skip-twitter
 
 # Run tests
 python3 -m pytest tests/ -q
 ```
 
----
+## Twitter Collection
+
+Twitter uses a **composable provider architecture** under `collectors/twitter/`. The default provider is [SurplusTwitterProvider](collectors/twitter/surplus_twitter_provider.py) — direct Twitter API v2 via x402 micropayment at $0.0275/call.
+
+**14 batches × 10 handles** (X API cap) for 138 monitored accounts. Providers are swappable via `XSEARCH_PROVIDER` env var:
+
+| Provider | Backend | Cost/run |
+|----------|---------|----------|
+| `surplus_twitter` *(default)* | Twitter API v2 via x402 | ~$0.39 |
+| `direct_xai` | xAI X Search API | ~$0.07 |
+| `antseed_buyer` | Antseed P2P proxy | ~$0.10 |
+| `surplus_intelligence` | Grok 2-step tool-calling | ~$0.10 |
 
 ## Structure
 
 | Directory | Purpose |
 |-----------|---------|
-| `collectors/` | 9 data ingestors: RSS, Twitter, DefiLlama, regulatory, etc. |
-| `processors/` | Dedup, scoring, reinforcement, chain analysis, prompt synthesis |
-| `output/` | Weekly digest builder (reads 7 days of persisted daily prompts) |
-| `config/` | `chains.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml`, `twitter_accounts.yaml` |
-| `scripts/` | `setup.py`, `doctor.py`, `chain_monitor_cli.py`, `twitter_worker.py` |
-| `storage/` | Events, health logs, narrative history, agent prompts, raw tweets |
-
----
-
-## Collectors
-
-| Collector | Source | Signals |
-|-----------|--------|---------|
-| DefiLlama | TVL, fees, volume | FINANCIAL |
-| CoinGecko | Price, market cap anomalies | FINANCIAL |
-| RSS | 80+ feeds across 27 chains | All categories |
-| Regulatory | SEC EDGAR, policy | REGULATORY |
-| Risk Alert | Hack/vulnerability feeds | RISK_ALERT |
-| TradingView | News flow via Playwright | All categories |
-| Events | Conferences, hackathons | VISIBILITY |
-| Hackathon Outcomes | DevPost competitions | VISIBILITY |
-| Twitter | 138 chain accounts via Camoufox subprocess workers | All categories |
-
----
+| `collectors/` | 9 data ingestors: RSS, Twitter, DefiLlama, CoinGecko, TradingView, Events, Hackathon Outcomes, Regulatory, Risk Alert |
+| `collectors/twitter/` | Composable X Search providers + collector + token tracker |
+| `processors/` | Categorizer, scorer, reinforcer, signal model, narrative tracker |
+| `output/` | Daily digest formatter, [summarizer](output/summarizer.py), weekly digest, Telegram sender |
+| `config/` | `chains.yaml`, `twitter_accounts.yaml`, `baselines.yaml`, `sources.yaml`, `pipeline.yaml` |
+| `scripts/` | Setup, doctor, exports |
+| `storage/` | Events, health logs, narrative history, raw tweets, digest output |
 
 ## Configuration
-
-`config/pipeline.yaml` holds all tunable constants (workers, thresholds, retention). `config/loader.py` reads YAML + `.env` with sensible defaults. No hardcoded values in Python.
 
 Key env vars (`.env`):
 
 ```
 LOG_LEVEL=INFO
 DATA_RETENTION_DAYS=90
-TWITTER_MAX_WORKERS=3
-TWITTER_NUM_BATCHES=15
-TWITTER_LOOKBACK_HOURS=72
+XSEARCH_PROVIDER=surplus_twitter
 
-# Optional data source keys
-COINGECKO_API_KEY=***
-GITHUB_TOKEN=***
+# Ollama summarizer
+SUMMARIZE_API_URL=http://localhost:11434/v1
+SUMMARIZE_MODEL=gemma4:31b-cloud
+
+# API keys (optional per collector)
+COINGECKO_API_KEY=...
+CRYPTORANK_API_KEY=...
+TELEGRAM_BOT_TOKEN=...
 ```
 
-Twitter cookies: `storage/twitter/cookies.json` (Playwright `storage_state` format). Required for authenticated scraping. See `scripts/export_cookies.py` for export from Chrome.
+## Digest Format
 
----
+Per-chain prose with inline source links:
 
-## Agent-Native Delivery
+```
+**Ethereum** (Score: 12)
+[Clear signing went live](https://blog.ethereum.org/...) — an open ERC-7730
+standard to end blind signing. The [CLARITY Act markup](https://decrypt.co/...)
+was scheduled by the Senate Banking Panel.
 
-The pipeline writes a structured Markdown prompt (`storage/agent_input/daily_prompt_*.md`) containing:
-
-- Per-chain event summaries with URLs
-- Source health report
-- Cross-chain theme prompt
-
-The running agent reads this file and produces the final digest prose directly in chat. Zero external LLM dependencies. Zero Telegram bot.
-
----
+**Solana** (Score: 8)
+[Alpenglow upgrade began testing](https://decrypt.co/...) ahead of full rollout.
+[Beezie expanded tokenized collectibles](https://x.com/solana/status/...) to Solana.
+```
 
 ## Testing
 
@@ -120,9 +94,7 @@ The running agent reads this file and produces the final digest prose directly i
 python3 -m pytest tests/ -q
 ```
 
-250 tests cover unit, integration, system, and regression suites.
-
----
+200+ tests covering unit, integration, and system suites.
 
 ## License
 

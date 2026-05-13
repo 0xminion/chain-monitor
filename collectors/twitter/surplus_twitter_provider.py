@@ -114,8 +114,6 @@ class SurplusTwitterProvider(XSearchProvider):
         signer = EthAccountSigner(account)
         register_exact_evm_client(self._x402, signer)
 
-        TWITTER_SEARCH_PATH = "/tweets/search/recent"
-
         self._client = httpx.AsyncClient(
             base_url=TWITTER_API_BASE,
             headers={"Content-Type": "application/json"},
