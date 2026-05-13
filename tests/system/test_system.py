@@ -2,6 +2,7 @@
 
 import pytest
 
+
 class TestConfigFilesLoad:
     """Verify all config files load."""
 
@@ -36,6 +37,7 @@ class TestConfigFilesLoad:
         for chain_name in chains:
             assert chain_name in baselines, f"Missing baseline for chain: {chain_name}"
 
+
 class TestImportsWork:
     """Verify all imports work."""
 
@@ -52,13 +54,12 @@ class TestImportsWork:
         from collectors.base import BaseCollector, SourceHealth
         from collectors.defillama import DefiLlamaCollector
         from collectors.coingecko_collector import CoinGeckoCollector
-        
         from collectors.rss_collector import RSSCollector
         assert BaseCollector is not None
 
     def test_import_output(self):
-        from processors.summary_engine import synthesize_digest
-        assert synthesize_digest is not None
+        from output.daily_digest import DailyDigestFormatter
+        assert DailyDigestFormatter is not None
 
     def test_import_config(self):
         from config.loader import (
@@ -72,13 +73,14 @@ class TestImportsWork:
         import collectors
         assert hasattr(collectors, "DefiLlamaCollector")
         assert hasattr(collectors, "CoinGeckoCollector")
-
         assert hasattr(collectors, "RSSCollector")
+
 
 class TestCollectorInstantiation:
     """Verify collector classes can be instantiated."""
 
     def test_defillama_collector(self):
+
         from collectors.defillama import DefiLlamaCollector
         c = DefiLlamaCollector()
         assert c.name == "DefiLlama"
@@ -96,6 +98,7 @@ class TestCollectorInstantiation:
         assert c.name == "RSS"
         assert c.health is not None
 
+
 class TestProcessorInstantiation:
     """Verify processor classes can be instantiated."""
 
@@ -110,9 +113,11 @@ class TestProcessorInstantiation:
         c = EventCategorizer()
         assert c is not None
 
-    def test_agent_native_synthesis(self):
-        from processors.summary_engine import synthesize_digest
-        assert synthesize_digest is not None
+    def test_formatter(self):
+        from output.daily_digest import DailyDigestFormatter
+        f = DailyDigestFormatter()
+        assert f is not None
+
 
 class TestSourceHealth:
     """Verify SourceHealth works."""

@@ -1,47 +1,42 @@
-"""Chain Monitor v0.1.0 — Agent-native pipeline.
+"""Chain Monitor — Main entry point (agent-native pipeline + composable Twitter providers).
 
 7-stage pipeline:
-  1. Parallel collect (async gather across all collectors)
+  1. Parallel collect (async gather across all collectors incl. composable Twitter)
   2. Dedup (O(n) hash-based)
   3. Agent categorization checkpoint (running agent provides all categories)
-  4. Score + Reinforce (deterministic heuristics)
+  4. Score + Reinforce (deterministic heuristics + Twitter urgency boost)
   5. Per-chain deterministic analyze (builds ChainDigest for agent review)
-  6. Agent prompt synthesis (rich markdown prompt saved for running agent)
+  6. Agent prompt synthesis (rich markdown prompt with Ollama summarizer)
   7. Persist + optional delivery + cleanup
 
-No external LLM calls. No keyword matching. The running agent is the only
-semantic reasoning engine in the pipeline.
+No external LLM calls. The running agent is the only semantic reasoning engine.
+Twitter uses composable X Search providers (SurplusTwitter API v2 by default).
 """
 
 import asyncio
+import json
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from config.loader import get_active_chains, get_env, reload_configs, get_pipeline_value
-from processors.pipeline_types import PipelineContext
-from processors.parallel_runner import collect_all
-from processors.dedup_engine import deduplicate_events
+from config.loader import get_chains, get_active_chains, get_env
+from collectors.defillama import DefiLlamaCollector
+from collectors.coingecko_collector import CoinGeckoCollector
+from collectors.rss_collector import RSSCollector
+from collectors.regulatory_collector import RegulatoryCollector
+from collectors.risk_alert_collector import RiskAlertCollector
+from collectors.tradingview_collector import TradingViewCollector
+from collectors.events_collector import EventsCollector
+from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
+from collectors.twitter.collector import TwitterCollector
 from processors.categorizer import EventCategorizer
 from processors.scoring import SignalScorer
 from processors.reinforcement import SignalReinforcer
-from processors.chain_analyzer import analyze_all_chains
-from processors.summary_engine import synthesize_digest
-from processors.pipeline_utils import safe_json_write
-from processors.metrics import PipelineMetrics
-from processors.agent_runner import AgentDigestRunner
-
-# Import all collectors
-from collectors.defillama import DefiLlamaCollector
-from collectors.coingecko_collector import CoinGeckoCollector
-from collectors.events_collector import EventsCollector
-from collectors.hackathon_outcomes_collector import HackathonOutcomesCollector
-from collectors.regulatory_collector import RegulatoryCollector
-from collectors.risk_alert_collector import RiskAlertCollector
-from collectors.rss_collector import RSSCollector
-from collectors.tradingview_collector import TradingViewCollector
-from collectors.twitter_collector import TwitterCollector
-
-import logging
+from processors.narrative_tracker import NarrativeTracker
+from output.daily_digest import DailyDigestFormatter
+from output.weekly_digest import WeeklyDigestFormatter
+from output.telegram_sender import TelegramSender
 
 logging.basicConfig(
     level=get_env("LOG_LEVEL", "INFO"),
@@ -49,31 +44,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("chain-monitor")
 
-__version__ = "0.1.0"
 
-
-async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = False,
-                       skip_twitter: bool = False) -> PipelineContext:
-    """Execute the full 7-stage agent-native pipeline.
-
-    Args:
-        metrics: Optional PipelineMetrics instance for telemetry.
-        weekly: If True, run weekly synthesis instead of daily.
-
-    Returns a PipelineContext with all intermediate and final data.
-    """
-    metrics = metrics or PipelineMetrics()
-    reload_configs()
-    ctx = PipelineContext()
-    ctx.started_at = datetime.now(timezone.utc)
-    logger.info("=" * 50)
-    logger.info("Chain Monitor v0.1.0 — Agent-native pipeline")
-    logger.info(f"Active chains: {len(get_active_chains())}")
-    logger.info("=" * 50)
-
-    # ── Stage 1: Parallel Collect ─────────────────────────────────────
-    metrics.stage_start("collect")
-    collectors = [
+async def run_collectors() -> tuple:
+    """Run all collectors concurrently. Returns (events, health, feed_health, token_summary)."""
+    sync_collectors = [
         DefiLlamaCollector(),
         CoinGeckoCollector(),
         RSSCollector(),
@@ -83,220 +57,165 @@ async def run_pipeline(metrics: PipelineMetrics | None = None, weekly: bool = Fa
         EventsCollector(),
         HackathonOutcomesCollector(),
     ]
-    if not skip_twitter:
-        collectors.append(TwitterCollector(standalone_mode=False))
+    twitter = TwitterCollector()
+    health = {}
+    feed_health = {}
+    all_events = []
 
-    ctx.raw_events, ctx.health, ctx.feed_health = await collect_all(
-        collectors, max_concurrent=get_pipeline_value("pipeline.max_concurrent_collectors", 4)
-    )
-    for collector in collectors:
-        name = collector.name
-        ev_count = len([e for e in ctx.raw_events if e.source == name or getattr(e, 'source', '') == name])
-        is_down = ctx.health.get(name, {}).get("status") == "down"
-        metrics.record_collector(name, events=ev_count, error=is_down)
-    metrics.stage_end("collect", events_in=0, events_out=len(ctx.raw_events), errors=sum(1 for h in ctx.health.values() if h.get("status") == "down"))
-    logger.info(
-        f"Stage 1 complete: {len(ctx.raw_events)} raw events from "
-        f"{len([c for c in collectors if ctx.health.get(c.name, {}).get('status') != 'down'])} healthy collectors"
-    )
+    async def _run_sync(collector):
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, collector.collect)
+            return collector, result, None
+        except Exception as e:
+            return collector, [], e
 
-    # ── Stage 2: Dedup (O(n)) ─────────────────────────────────────────
-    metrics.stage_start("dedup")
-    ctx.unique_events = deduplicate_events(ctx.raw_events)
-    metrics.stage_end("dedup", events_in=len(ctx.raw_events), events_out=len(ctx.unique_events), errors=0)
-    logger.info(
-        f"Stage 2 complete: {len(ctx.unique_events)} unique events "
-        f"({len(ctx.raw_events) - len(ctx.unique_events)} duplicates dropped)"
-    )
+    sync_tasks = [asyncio.create_task(_run_sync(c)) for c in sync_collectors]
+    twitter_task = asyncio.create_task(twitter.collect())
 
-    # ── Stage 3: Categorization (non-blocking) ───────────────────────────
-    metrics.stage_start("categorize")
+    sync_results = await asyncio.gather(*sync_tasks)
+    for collector, result, error in sync_results:
+        if error:
+            logger.error(f"  {collector.name} failed: {error}")
+        else:
+            all_events.extend(result)
+            logger.info(f"  {collector.name}: {len(result)} events")
+        health[collector.name] = collector.get_health()
+        if hasattr(collector, 'get_feed_health'):
+            feed_health.update(collector.get_feed_health())
+
+    try:
+        twitter_events = await twitter_task
+        all_events.extend(twitter_events)
+        logger.info(f"  twitter: {len(twitter_events)} events")
+    except Exception as e:
+        logger.error(f"  twitter failed: {e}")
+
+    health["twitter"] = twitter.get_health()
+    token_summary = twitter.get_token_summary()
+    return all_events, health, feed_health, token_summary
+
+
+def process_events(raw_events: list[dict]):
     categorizer = EventCategorizer()
-
-    # Try to load existing agent categorization results
-    agent_results = categorizer.try_load_results()
-    if agent_results is not None:
-        logger.info(f"[categorizer] Loaded agent results for {len(agent_results)} events")
-    else:
-        logger.info("[categorizer] No agent results found — using source-provided categories")
-
-    event_dicts = [
-        {
-            "chain": ev.chain,
-            "category": ev.category,
-            "subcategory": ev.subcategory,
-            "description": ev.description,
-            "source": ev.source,
-            "reliability": ev.reliability,
-            "evidence": ev.evidence,
-            "semantic": ev.semantic,
-        }
-        for ev in ctx.unique_events
-    ]
-
-    if agent_results is not None:
-        categorized_dicts = categorizer.apply_categories(event_dicts, agent_results)
-    else:
-        # Source-provided fallback — don't block pipeline
-        categorized_dicts = event_dicts
-
-    metrics.stage_end("categorize", events_in=len(event_dicts), events_out=len(categorized_dicts), errors=0)
-    logger.info(f"Stage 3 complete: {len(categorized_dicts)} events categorized")
-
-    # ── Stage 4: Score + Reinforce ─────────────────────────────────────────
-    metrics.stage_start("score")
     scorer = SignalScorer()
     reinforcer = SignalReinforcer()
+    narrative_tracker = NarrativeTracker()
+    signals = []
+    for event in raw_events:
+        categorized = categorizer.categorize(event)
+        signal = scorer.score(categorized)
+        processed_signal, action = reinforcer.process(signal)
+        if action != "echo":
+            narrative_tracker.record_signal(processed_signal)
+        signals.append(processed_signal)
+        if action == "created":
+            logger.info(f"  NEW: [{processed_signal.chain}] {processed_signal.description[:60]}")
+        elif action == "reinforced":
+            logger.info(f"  REINFORCED ({processed_signal.source_count}x): [{processed_signal.chain}] {processed_signal.description[:60]}")
+    return signals, narrative_tracker
 
-    signals_for_storage: list = []
-    score_errors = 0
-    for ev_dict in categorized_dicts:
-        try:
-            signal = scorer.score(ev_dict)
-            signals_for_storage.append(signal)
-        except Exception as exc:
-            score_errors += 1
-            logger.warning(f"Scoring failed for {ev_dict.get('chain')}: {type(exc).__name__}: {exc}")
 
-    ctx.signals = signals_for_storage
-    metrics.stage_end("score", events_in=len(categorized_dicts), events_out=len(ctx.signals), errors=score_errors)
-    logger.info(f"Stage 4a complete: {len(ctx.signals)} signals scored")
+def cleanup_old_signals():
+    reinforcer = SignalReinforcer()
+    retention_days = int(get_env("DATA_RETENTION_DAYS", "90"))
+    reinforcer.cleanup_old(retention_days)
 
-    metrics.stage_start("reinforce")
-    reinforced_signals: list = []
-    reinforce_errors = 0
-    for sig in signals_for_storage:
-        try:
-            processed_signal, action = reinforcer.process(sig)
-            reinforced_signals.append(processed_signal)
-            if action == "created":
-                logger.info(f"  NEW: [{sig.chain}] {sig.description[:60]} (score {sig.priority_score})")
-            elif action == "reinforced":
-                logger.info(f"  REINFORCED ({sig.source_count}x): [{sig.chain}] {sig.description[:60]}")
-        except Exception as exc:
-            reinforce_errors += 1
-            logger.warning(f"Reinforcement failed for signal [{sig.chain}]: {type(exc).__name__}: {exc}")
 
-    ctx.signals = reinforced_signals
-    metrics.stage_end("reinforce", events_in=len(signals_for_storage), events_out=len(ctx.signals), errors=reinforce_errors)
-    logger.info(f"Stage 4b complete: {len(ctx.signals)} signals reinforced")
+async def main_async():
+    logger.info("=" * 50)
+    logger.info("Chain Monitor — Starting collection run")
+    logger.info(f"Time: {datetime.now(timezone.utc).isoformat()}")
+    logger.info(f"Active chains: {len(get_active_chains())}")
+    logger.info("=" * 50)
+    t0 = time.time()
 
-    # ── Stage 5: Per-chain deterministic analyze ─────────────────────────────
-    metrics.stage_start("analyze")
-    signals_by_chain: dict[str, list] = {}
-    for sig in ctx.signals:
-        signals_by_chain.setdefault(sig.chain, []).append(sig)
+    raw_events, health, feed_health, token_summary = await run_collectors()
+    logger.info(f"Total raw events: {len(raw_events)}")
 
-    # Ensure every configured chain has an entry (even empty)
-    for chain_name in get_active_chains():
-        signals_by_chain.setdefault(chain_name, [])
-
-    ctx.chain_digests = await analyze_all_chains(signals_by_chain)
-    significant = sum(1 for d in ctx.chain_digests if d.has_significant_activity())
-    metrics.stage_end("analyze", events_in=len(ctx.signals), events_out=len(ctx.chain_digests), errors=0)
-    logger.info(
-        f"Stage 5 complete: {len(ctx.chain_digests)} chain digests, "
-        f"{significant} with significant activity"
-    )
-
-    # ── Stage 6: Agent-native synthesis (closed loop) ────────────────────────
-    metrics.stage_start("synthesize")
-    agent_runner = AgentDigestRunner()
-    if weekly:
-        ctx.final_digest = await agent_runner.synthesize_weekly()
-    else:
-        ctx.final_digest = await agent_runner.synthesize(
-            ctx.chain_digests,
-            source_health=ctx.health,
-            source_health_detail=ctx.feed_health,
+    if token_summary:
+        ts = token_summary
+        logger.info(
+            f"[tokens] Twitter X Search: {ts['calls']} calls, "
+            f"{ts['input_tokens']} in / {ts['output_tokens']} out / "
+            f"{ts['total_tokens']} total tokens "
+            f"(avg {ts['avg_input_per_call']}/{ts['avg_output_per_call']} per call)"
         )
-    metrics.stage_end("synthesize", events_in=len(ctx.chain_digests), events_out=len(ctx.final_digest), errors=0)
-    logger.info(f"Stage 6 complete: digest length {len(ctx.final_digest)} chars")
 
-    # ── Stage 7: Persist + optional delivery + cleanup ───────────────────────────
-    metrics.stage_start("deliver")
-    # 7a: Save run log
-    _save_run_log(ctx)
+    signals, narrative_tracker = process_events(raw_events)
+    high_priority = [s for s in signals if s.priority_score >= 8]
+    logger.info(f"Total signals: {len(signals)}, High priority: {len(high_priority)}")
 
-    # 7b: Persist daily digest for weekly rollup
-    _persist_daily_digest(ctx.final_digest)
+    formatter = DailyDigestFormatter()
+    digest = await formatter.format(signals, source_health=health, source_health_detail=feed_health)
 
-    # 7c: Collector heartbeat alerts (Recommendation #6)
-    alert_lines = metrics.get_collector_alert_lines(ctx.health)
-    if alert_lines:
-        for alert in alert_lines:
-            logger.warning(alert)
-        # Inject alerts into digest if there are any
-        if alert_lines and ctx.final_digest:
-            ctx.final_digest = ctx.final_digest + "\n\n" + "\n".join(alert_lines)
+    # Always save digest to disk
+    digest_path = Path(__file__).parent / "storage" / "twitter" / "summaries" / "daily_digest_latest.md"
+    digest_path.parent.mkdir(parents=True, exist_ok=True)
+    digest_path.write_text(digest)
+    logger.info(f"Digest saved to {digest_path}")
 
-    # ── Stage 7d: Agent-native delivery (no external Telegram) ──────────────
-    # In v0.2+, the running agent (you) reads the saved prompt and writes
-    # prose directly into this chat. The TelegramSender is deprecated.
-    logger.info("Digest delivered via agent-native channel (this chat)")
+    # Save structured signal bundle for agent-driven prose synthesis (cron)
+    signal_bundle = [s.to_dict() for s in signals]
+    bundle_path = Path(__file__).parent / "storage" / "twitter" / "summaries" / "signal_bundle.json"
+    with open(bundle_path, "w") as f:
+        json.dump({
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "signal_count": len(signals),
+            "source_health": health,
+            "feed_health": feed_health,
+            "signals": signal_bundle,
+        }, f, indent=2)
+    logger.info(f"Signal bundle saved to {bundle_path}")
 
-    # Cleanup old signals
-    try:
-        retention_days = get_pipeline_value("pipeline.data_retention_days", 90)
-        reinforcer.cleanup_old(retention_days)
-    except (ValueError, Exception):
-        logger.warning("Failed to cleanup old signals")
+    if formatter.should_send(signals):
+        sender = TelegramSender()
+        success = await sender.send(digest)
+        logger.info(f"Daily digest sent: {success}")
+    else:
+        logger.info("No daily digest sent (< 3 events scored >=6)")
 
-    # Write metrics
-    metrics.write()
+    now = datetime.now(timezone.utc)
+    if now.weekday() == 6:
+        weekly_formatter = WeeklyDigestFormatter()
+        weekly = weekly_formatter.format(signals, narrative_tracker=narrative_tracker, source_health=health)
+        weekly_success = await sender.send(weekly)
+        logger.info(f"Weekly digest sent: {weekly_success}")
 
-    logger.info("Pipeline complete")
-    return ctx
+    cleanup_old_signals()
+    narrative_tracker.cleanup_old(retention_weeks=13)
 
+    elapsed = time.time() - t0
 
-def _save_run_log(ctx: PipelineContext):
-    """Write pipeline statistics to storage/health/ atomically."""
     log_dir = Path(__file__).parent / "storage" / "health"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    stats = {
-        "raw_events": len(ctx.raw_events),
-        "unique_events": len(ctx.unique_events),
-        "signals": len(ctx.signals),
-        "chain_digests": len(ctx.chain_digests),
-        "chains_with_activity": sum(1 for d in ctx.chain_digests if d.has_significant_activity()),
-        "digest_length": len(ctx.final_digest),
+    run_log = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "digest_sent": False,  # Caller can update if needed
-        "source_health": ctx.health,
+        "elapsed_seconds": round(elapsed, 1),
+        "raw_events": len(raw_events),
+        "signals": len(signals),
+        "high_priority": len(high_priority),
+        "digest_sent": formatter.should_send(signals),
+        "source_health": health,
     }
+    if token_summary:
+        run_log["twitter_token_usage"] = token_summary
 
-    log_path = log_dir / f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-    try:
-        safe_json_write(log_path, stats)
-        logger.info(f"Run log saved: {log_path}")
-    except Exception as exc:
-        logger.warning(f"Failed to write run log: {exc}")
+    log_path = log_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(log_path, "w") as f:
+        json.dump(run_log, f, indent=2)
 
-
-def _persist_daily_digest(digest_text: str):
-    """Write daily digest to storage/twitter/summaries for weekly rollup."""
-    digest_dir = Path(__file__).parent / "storage" / "twitter" / "summaries"
-    digest_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    path = digest_dir / f"daily_digest_{ts}.txt"
-    try:
-        from processors.pipeline_utils import safe_text_write
-        safe_text_write(path, digest_text)
-        logger.info(f"Daily digest persisted: {path}")
-    except Exception as exc:
-        logger.warning(f"Failed to persist daily digest: {exc}")
+    logger.info(f"Run complete - {elapsed:.1f}s")
+    return signals
 
 
-async def main():
-    """Main entry — run pipeline."""
-    import argparse
-    parser = argparse.ArgumentParser(description="Chain Monitor Agent-Native Pipeline")
-    parser.add_argument("--weekly", action="store_true", help="Run weekly digest synthesis")
-    parser.add_argument("--skip-twitter", action="store_true", help="Skip Twitter collector")
-    args = parser.parse_args()
-    await run_pipeline(weekly=args.weekly, skip_twitter=args.skip_twitter)
+def main():
+    return asyncio.run(main_async())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    main()

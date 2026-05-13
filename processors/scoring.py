@@ -1,7 +1,7 @@
 """Signal scorer — assigns impact/urgency scores based on baselines."""
 
 import logging
-import re
+from typing import Optional
 
 from config.loader import get_baselines, get_chains
 from processors.signal import Signal
@@ -56,36 +56,11 @@ class SignalScorer:
         description = event.get("description", "")
         source = event.get("source", "unknown")
         reliability = event.get("reliability", 0.7)
-        evidence = event.get("evidence") or {}
+        evidence = event.get("evidence", description)
 
         baseline = self.baselines.get(chain, {})
         impact, urgency = self._calculate_scores(event, category, baseline)
-
-        # Twitter nuanced override — role-aware, not blanket.
-        # Preserve category-based urgency (e.g. RISK_ALERT hack/exploit = 3)
-        # only override impact and use max(urgency) to avoid killing high-urgency events.
-        if "twitter" in str(source).lower():
-            tw_impact, tw_urgency = self._score_twitter(event)
-            impact = tw_impact
-            urgency = max(urgency, tw_urgency)
-
-        # --- AGENT-NATIVE SEMANTIC OVERRIDE ---
-        # If the agent already scored this event via semantic enrichment,
-        # trust its judgment over deterministic heuristics.
-        semantic = event.get("semantic")
-        if isinstance(semantic, dict) and semantic.get("confidence", 0) > 0:
-            ai_impact = semantic.get("impact")
-            ai_urgency = semantic.get("urgency")
-            if ai_impact is not None and ai_urgency is not None:
-                impact = int(ai_impact)
-                urgency = int(ai_urgency)
-                logger.debug(f"[scorer] Using agent-native scores: impact={impact} urgency={urgency}")
-
         trader_context = self._generate_trader_context(chain, category, description, baseline, evidence)
-
-        # Override trader_context from agent if present
-        if isinstance(semantic, dict) and semantic.get("trader_context"):
-            trader_context = semantic["trader_context"]
 
         signal = Signal(
             id=Signal.generate_id(chain, category, description),
@@ -119,7 +94,7 @@ class SignalScorer:
         elif category == "VISIBILITY":
             impact = self._score_visibility(event)
 
-        # Urgency defaults
+        # Urgency
         subcategory = event.get("subcategory", "")
         if category == "RISK_ALERT" and subcategory in ("hack", "exploit", "outage"):
             urgency = 3
@@ -132,54 +107,24 @@ class SignalScorer:
         else:
             urgency = 1
 
-        # Hyperliquid regulatory override
+        # Twitter urgency boost — social signals are inherently more time-sensitive
+        source = event.get("source", "") or ""
+        if source.lower() == "twitter":
+            evidence = event.get("evidence", {})
+            likes = int(evidence.get("likes", 0)) if isinstance(evidence, dict) else 0
+            retweets = int(evidence.get("retweets", 0)) if isinstance(evidence, dict) else 0
+            # High engagement or founder/lead accounts get urgency bump
+            if likes >= 500 or retweets >= 100 or evidence.get("role", "") in ("founder", "lead", "cto"):
+                urgency = max(urgency, 3)
+            else:
+                urgency = max(urgency, 2)
+
+        # Hyperliquid regulatory override — only for enforcement, not approvals/licenses
         if event.get("chain") == "hyperliquid" and category == "REGULATORY":
             if event.get("subcategory") in ("enforcement", "general"):
                 impact = baseline.get("regulatory_any_mention_impact", 5)
 
         return impact, urgency
-
-    def _score_twitter(self, event: dict) -> tuple[int, int]:
-        """Nuanced Twitter scoring based on account role and tweet substance.
-
-        DEPRECATED in favour of agent-native semantic scoring via
-        event["semantic"]["impact"] / ["urgency"]. This fallback remains
-        for events that arrived without agent enrichment.
-        """
-        evidence = event.get("evidence") or {}
-        if not isinstance(evidence, dict):
-            evidence = {}
-
-        role = (evidence.get("role") or "").lower()
-        text = (event.get("description") or "").strip()
-
-        # --- Official accounts
-        if role == "official":
-            return 9, 1
-        if role in ("contributor", "core contributor"):
-            return 3, 2
-        if self._is_engagement_only(text):
-            return 2, 1
-        return 3, 1
-
-    _ENGAGEMENT_ONLY_RE = re.compile(
-        r"^(gm|gn|wagmi|lfg|[🚀👀🔥💎🙏❤️⭐✨💯👍🎉🫡👏🤝🎯🔋⚡])+$"
-        r"|^(?:\s*(?:\b(?:gm|gn|wagmi|lfg|bullish|bearish|moon|diamond hands)\b|[🚀👀🔥💎🙏❤️⭐✨💯👍🎉🫡👏🤝🎯🔋⚡])\s*){2,}$",
-        flags=re.IGNORECASE,
-    )
-
-    def _is_engagement_only(self, text: str) -> bool:
-        """Detect tweets that are purely engagement / no substance."""
-        if not text or len(text) < 5:
-            return True
-        if self._ENGAGEMENT_ONLY_RE.match(text.strip()):
-            return True
-        words = text.split()
-        if len(words) <= 3:
-            substance = {"launched", "partnership", "upgrade", "audit", "hack", "cve", "mainnet", "testnet", "bridge", "dex", "ama", "grant", "funding"}
-            if not any(w.lower() in substance for w in words):
-                return True
-        return False
 
     def _score_financial(self, event: dict, baseline: dict) -> int:
         subcategory = event.get("subcategory", "")
@@ -255,6 +200,7 @@ class SignalScorer:
 
     def _generate_trader_context(self, chain: str, category: str, description: str, baseline: dict, evidence: dict = None) -> str:
         """Generate trader-relevant context for a signal."""
+        # Check chain-specific overrides first
         chain_ctx = CHAIN_TRADER_CONTEXT.get(chain, {})
         if category in chain_ctx:
             return chain_ctx[category]
@@ -289,9 +235,11 @@ class SignalScorer:
                     result += f"\n  Context: {notes}"
                 return result
 
+            # Fallback for other metrics
             notes = baseline.get("trader_context_notes", "")
             return f"{chain.capitalize()}: {evidence.get('metric', 'dev activity')} on {repo}. {notes}".strip()
 
+        # Fall back to template
         template = TRADER_TEMPLATES.get(category, "")
         if not template:
             return ""
@@ -300,12 +248,16 @@ class SignalScorer:
             pct_change = evidence.get("pct_change", 0)
             current_tvl = evidence.get("current_tvl", 0) or 0
             current_tvl_b = current_tvl / 1e9 if current_tvl else 0
+
+            # Build base context from template
             result = template.format(
                 chain=chain.capitalize(),
                 detail=description[:80],
                 pct_change=pct_change,
                 current_tvl=current_tvl_b,
             )
+
+            # Add evidence-backed protocol attribution
             top_drivers = evidence.get("top_drivers", [])
             if top_drivers:
                 driver_lines = []
@@ -322,11 +274,15 @@ class SignalScorer:
                         tvl_str = f"${tvl/1e3:.0f}K"
                     driver_lines.append(f"{name} ({cat}) {tvl_str} {change_7d:+.1f}%")
                 result += "\n  On-chain: " + "; ".join(driver_lines)
+
+            # Append chain-specific notes
             notes = baseline.get("trader_context_notes", "")
             if notes:
                 result += f"\n  Context: {notes}"
+
             return result
 
+        # Non-financial templates — provide safe defaults for any placeholder
         baseline_val = baseline.get("tvl_absolute_milestone", "N/A")
         baseline_str = f"${baseline_val:,.0f}" if isinstance(baseline_val, (int, float)) else str(baseline_val)
 

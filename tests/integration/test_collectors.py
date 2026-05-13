@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
 
+
 class TestDefiLlamaCollector:
     """Test DefiLlamaCollector with mocked API."""
 
@@ -73,6 +74,7 @@ class TestDefiLlamaCollector:
         assert sig["source"] == "DefiLlama"
         assert sig["reliability"] == 0.8
         assert sig["evidence"] == {"key": "val"}
+
 
 class TestCoinGeckoCollector:
     """Test CoinGeckoCollector with mocked API."""
@@ -143,6 +145,7 @@ class TestCoinGeckoCollector:
             signals = collector.collect()
             assert signals == []
 
+
 class TestRSSCollector:
     """Test RSSCollector with mocked feed."""
 
@@ -158,10 +161,7 @@ class TestRSSCollector:
             assert isinstance(signals, list)
 
     def test_process_feed_with_valid_rss(self, collector):
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        pub_date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
-        rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+        rss_xml = """<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
           <channel>
             <title>Test Feed</title>
@@ -169,7 +169,7 @@ class TestRSSCollector:
               <title>Ethereum upgrade scheduled for next month</title>
               <description>Ethereum will undergo a major upgrade</description>
               <link>https://example.com/eth-upgrade</link>
-              <pubDate>{pub_date}</pubDate>
+              <pubDate>Mon, 13 Apr 2026 12:00:00 GMT</pubDate>
             </item>
           </channel>
         </rss>"""
@@ -200,10 +200,7 @@ class TestRSSCollector:
             assert len(signals) == 0
 
     def test_process_feed_with_default_chain(self, collector):
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        pub_date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
-        rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+        rss_xml = """<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
           <channel>
             <title>Test Feed</title>
@@ -211,7 +208,7 @@ class TestRSSCollector:
               <title>Generic update posted</title>
               <description>Some generic update</description>
               <link>https://example.com/update</link>
-              <pubDate>{pub_date}</pubDate>
+              <pubDate>Mon, 13 Apr 2026 12:00:00 GMT</pubDate>
             </item>
           </channel>
         </rss>"""

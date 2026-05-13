@@ -190,208 +190,81 @@ class EventCategorizer:
     TASK_TYPE = "categorize"
 
     def categorize(self, event: dict) -> dict:
-        """DEPRECATED — agent-native pipeline does not use keyword categorization.
+        """Add category and subcategory to event dict."""
+        # Build text for matching from all available fields
+        # Priority: description (full tweet text, full RSS title) over evidence dict
+        text_parts = [event.get("description", "")]
 
-        Raises RuntimeError with instructions for the agent-native flow.
-        """
-        raise RuntimeError(
-            "EventCategorizer is agent-native. Keyword categorization has been removed.\n"
-            "Use: prepare_agent_task() → agent processes → try_load_results() → apply_categories()\n"
-            "The running agent must provide all categorization reasoning."
-        )
-
-    # -- Agent task preparation ------------------------------------------------
-
-    def prepare_agent_task(self, events: list[dict]) -> Path:
-        """Build and save a categorization task for the running agent.
-
-        Returns the path to the saved task file.
-        """
-        task_events = []
-        for i, ev in enumerate(events):
-            task_ev = {
-                "id": i,
-                "chain": ev.get("chain", "unknown"),
-                "source": ev.get("source", "") or ev.get("source_name", ""),
-                "description": ev.get("description", ""),
-                "reliability": ev.get("reliability", 0.5),
-                "evidence": self._flatten_evidence(ev.get("evidence", {})),
-                "is_twitter": "twitter" in str(ev.get("source", "")).lower(),
-            }
-            # Include tweet-specific metadata when present
-            evidence = ev.get("evidence", {}) if isinstance(ev.get("evidence"), dict) else {}
-            if evidence.get("is_retweet"):
-                task_ev["twitter_metadata"] = {
-                    "is_retweet": True,
-                    "original_author": evidence.get("original_author", ""),
-                }
-            if evidence.get("is_quote"):
-                task_ev["twitter_metadata"] = task_ev.get("twitter_metadata", {})
-                task_ev["twitter_metadata"]["is_quote"] = True
-                task_ev["twitter_metadata"]["quoted_text"] = evidence.get("quoted_text", "")
-            if evidence.get("author"):
-                task_ev["twitter_metadata"] = task_ev.get("twitter_metadata", {})
-                task_ev["twitter_metadata"]["author"] = evidence.get("author", "")
-                task_ev["twitter_metadata"]["role"] = evidence.get("role", "unknown")
-
-            task_events.append(task_ev)
-
-        payload = {
-            "instructions": self._build_agent_instructions(),
-            "events": task_events,
-            "output_format": self._build_output_format(),
-        }
-        return save_agent_task(self.TASK_TYPE, payload)
-
-    def try_load_results(self, task_id: Optional[str] = None) -> Optional[list[dict]]:
-        """Attempt to load agent categorization results.
-
-        Returns None if no output is available yet.
-        """
-        output_path = find_agent_output(self.TASK_TYPE, task_id=task_id)
-        if output_path is None:
-            return None
-        try:
-            data = load_agent_output(output_path)
-            results = data.get("results", [])
-            logger.info(f"[categorizer] Loaded {len(results)} agent-categorized events from {output_path}")
-            return results
-        except Exception as exc:
-            logger.warning(f"[categorizer] Failed to load agent output: {exc}")
-            return None
-
-    def apply_categories(self, events: list[dict], categorized_results: list[dict]) -> list[dict]:
-        """Apply agent categorization results to raw events.
-
-        Returns a new list of event dicts with category, subcategory, and semantic fields.
-        """
-        result_map = {r["id"]: r for r in categorized_results if "id" in r}
-        enriched = []
-
-        for i, ev in enumerate(events):
-            ev_copy = dict(ev)
-            if i in result_map:
-                r = result_map[i]
-                cat = r.get("category", "NEWS")
-                sub = r.get("subcategory", "general")
-                ev_copy["category"] = cat
-                ev_copy["subcategory"] = sub
-                ev_copy["semantic"] = {
-                    "category": cat,
-                    "subcategory": sub,
-                    "confidence": 0.85,
-                    "reasoning": r.get("reasoning", ""),
-                    "is_noise": r.get("is_noise", False),
-                    "primary_mentions": r.get("primary_mentions", []),
-                    "impact": r.get("impact"),
-                    "urgency": r.get("urgency"),
-                    "trader_context": r.get("trader_context"),
-                    "reliability": r.get("reliability"),
-                }
-            else:
-                ev_copy["category"] = "NEWS"
-                ev_copy["subcategory"] = "general"
-                ev_copy["semantic"] = {
-                    "category": "NEWS",
-                    "subcategory": "general",
-                    "confidence": 0.0,
-                    "reasoning": "Not categorized by agent",
-                    "is_noise": False,
-                    "primary_mentions": [],
-                    "impact": None,
-                    "urgency": None,
-                    "trader_context": None,
-                    "reliability": None,
-                }
-            enriched.append(ev_copy)
-
-        categorized_count = sum(1 for e in enriched if e.get("semantic", {}).get("confidence", 0) > 0)
-        logger.info(f"[categorizer] Applied agent categories to {categorized_count}/{len(events)} events")
-        return enriched
-
-    # -- Instruction builders --------------------------------------------------
-
-    def _build_agent_instructions(self) -> str:
-        """Build rich categorization instructions for the agent prompt."""
-        cat_lines = []
-        for cat in CATEGORY_ORDER:
-            desc = CATEGORY_DESCRIPTIONS.get(cat, "")
-            cat_lines.append(f"  - {cat}: {desc}")
-        cat_text = "\n".join(cat_lines)
-
-        subcat_lines = []
-        for cat, subcats in SUBCATEGORY_MAP.items():
-            subcat_lines.append(f"  {cat}:")
-            for sub, desc in subcats.items():
-                subcat_lines.append(f"    - {sub}: {desc}")
-        subcat_text = "\n".join(subcat_lines)
-
-        noise_lines = "\n    ".join(f"- '{phrase}'" for phrase in TWITTER_NOISE_PHRASES[:10])
-        price_lines = "\n    ".join(f"- '{kw}'" for kw in PRICE_NOISE_KEYWORDS[:10])
-
-        return (
-            "You are an expert crypto-industry analyst. Categorize each event into exactly one category and subcategory, then score impact, urgency, and trader relevance.\n\n"
-            "Categories (ordered by priority — first match wins when multiple could apply):\n"
-            f"{cat_text}\n\n"
-            "Subcategories:\n"
-            f"{subcat_text}\n\n"
-            "Scoring rules:\n"
-            "  impact (1-9): How much this event affects the chain/token/network.\n"
-            "    9: Official mainnet / regulatory approval / $100M+ hack / tier-1 CEX listing\n"
-            "    7: Protocol upgrade / major partnership / governance vote / testnet live\n"
-            "    5: Ecosystem app launch / tooling update / minor security fix\n"
-            "    3: Visibility (AMA, conference, hire) / retweet of minor news\n"
-            "    1: Noise / engagement bait / price commentary with no new facts\n"
-            "    Use 4, 6, 8 for intermediate severity.\n"
-            "  urgency (1-3): How soon relevant action is needed.\n"
-            "    3: Active exploit, bridge halted, enforcement in progress / imminent\n"
-            "    2: Governance vote closing, upgrade deploying, funding window\n"
-            "    1: General awareness, long-term positioning, no immediate decision needed\n"
-            "  trader_context (1 sentence): Concise, trader-facing takeaway. Why does this matter for positions, timing, or risk? If the event has no trading implication, write 'General narrative awareness — no immediate position impact.'\n"
-            "  reliability (0.0-1.0): How much to trust this source. Official accounts=0.95, core contributors=0.85, ecosystem builders=0.80, anonymous or hype accounts=0.55.\n\n"
-            "Rules:\n"
-            "1. Categorize by SEMANTIC CONTENT, not keyword presence.\n"
-            "2. A 'wen mainnet' reply to a mainnet announcement is VISIBILITY, not TECH_EVENT.\n"
-            "3. A retweet of official news inherits the original's category.\n"
-            "4. Funding announcements with amounts >= $1M receive FINANCIAL.\n"
-            "5. 'Audit complete' without findings → TECH_EVENT. 'Audit finding' → RISK_ALERT.\n"
-            "6. Engagement bait, price predictions, memes → NOISE (impact=1, urgency=1).\n"
-            "7. If chain-agnostic (mentions no specific chain), set primary_mentions to [].\n"
-            "8. For retweets: categorize and score based on the ORIGINAL content, not the reposter's commentary.\n"
-            "9. For quote tweets: categorize and score based on the new commentary + quoted content combined.\n"
-            "10. When in doubt between two categories, pick the one with higher real-world impact.\n"
-            "11. News from tier-1 media (The Block, CoinDesk, Bloomberg) that mentions a specific chain gets reliability boost to 0.85+.\n\n"
-            "Noise filters (mark as NOISE if primarily these):\n"
-            f"    {noise_lines}\n"
-            "    ... (and similar low-value phrases)\n\n"
-            "Price noise filters (mark as NOISE if primarily these):\n"
-            f"    {price_lines}\n"
-            "    ... (and similar price-commentary phrases)\n"
-        )
-
-    def _build_output_format(self) -> str:
-        return (
-            "Return a JSON array of results, one per event, in the SAME ORDER as the input events.\n"
-            "Each result must be:\n"
-            "{\n"
-            '  "id": <event id from input>,\n'
-            '  "category": "<CATEGORY>",\n'
-            '  "subcategory": "<subcategory>",\n'
-            '  "reasoning": "<1 sentence explaining the classification>",\n'
-            '  "is_noise": <true/false>,\n'
-            '  "primary_mentions": [<list of chain names mentioned, or []>],\n'
-            '  "impact": <integer 1-9>,\n'
-            '  "urgency": <integer 1-3>,\n'
-            '  "trader_context": "<1 sentence trader takeaway>",\n'
-            '  "reliability": <float 0.0-1.0>\n'
-            "}\n\n"
-            "CRITICAL: every event in the input must have a corresponding result with the correct id.\n"
-            "Do not skip events. Do not invent events. Do not return markdown fences.\n"
-        )
-
-    @staticmethod
-    def _flatten_evidence(evidence) -> dict:
-        """Normalize evidence field to a flat dict for the agent prompt."""
+        # Handle evidence as dict (extract title, summary, text) or string
+        evidence = event.get("evidence", "")
         if isinstance(evidence, dict):
-            return {k: str(v) for k, v in evidence.items()}
-        return {"raw": str(evidence)}
+            # Prefer evidence.text if non-empty, otherwise rely on description
+            ev_text = evidence.get("text", "") or evidence.get("title", "")
+            if ev_text:
+                text_parts.append(ev_text)
+            text_parts.extend([
+                evidence.get("summary", ""),
+                evidence.get("pr_title", ""),
+                evidence.get("link", ""),
+            ])
+        else:
+            text_parts.append(str(evidence))
+
+        text = " ".join(str(p) for p in text_parts if p).lower()
+
+        # Filter out price/trading noise from FINANCIAL
+        # But NEVER filter DefiLlama TVL data (it's real on-chain data)
+        source = event.get("source", "") or event.get("source_name", "")
+        is_defillama = source in ("DefiLlama", "defillama") or "defillama" in str(event.get("evidence","")).lower()
+        
+        existing = event.get("category", "")
+        if (existing == "FINANCIAL" or existing == "NEWS") and not is_defillama:
+            for noise_kw in PRICE_NOISE_KEYWORDS:
+                if noise_kw in text:
+                    # Mark as filtered — digest can skip these
+                    event["_filtered_price_noise"] = True
+                    event["category"] = "PRICE_NOISE"
+                    event["subcategory"] = "price_commentary"
+                    return event
+
+        # Don't override categories already set by collectors (e.g., DefiLlama → FINANCIAL)
+        # EXCEPT for generic categories — re-categorize these into specific ones
+        GENERIC_CATEGORIES = {"NEWS", "TECH_EVENT", "INFRASTRUCTURE", "ECOSYSTEM"}
+        if existing and existing not in GENERIC_CATEGORIES:
+            event["subcategory"] = self._detect_subcategory(text, existing)
+            return event
+
+        category = self._detect_category(text)
+        subcategory = self._detect_subcategory(text, category)
+        event["category"] = category
+        event["subcategory"] = subcategory
+        return event
+
+    def _detect_category(self, text: str) -> str:
+        """Detect primary category from text."""
+        # Specific overrides: tech phrases that PARTNERSHIP's "live on" would falsely match
+        tech_overrides = [
+            "live on mainnet", "live on testnet", "goes live on mainnet",
+            "is live on mainnet", "is live on testnet",
+            "upgrade is live", "upgrade went live", "upgrade live",
+            "hard fork", "soft fork", "mainnet launch",
+        ]
+        for phrase in tech_overrides:
+            if phrase in text:
+                return "TECH_EVENT"
+
+        # Standard order: RISK > REGULATORY > FINANCIAL > PARTNERSHIP > TECH > VISIBILITY
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in text:
+                    return category
+        return "TECH_EVENT"  # default
+
+    def _detect_subcategory(self, text: str, category: str) -> str:
+        """Detect subcategory within a category."""
+        subcats = SUBCATEGORY_MAP.get(category, {})
+        for subcat, keywords in subcats.items():
+            for keyword in keywords:
+                if keyword in text:
+                    return subcat
+        return "general"
