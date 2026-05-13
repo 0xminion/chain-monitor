@@ -219,8 +219,8 @@ class TestRSSCollector:
         with patch.object(collector, "fetch_text_with_retry") as mock_fetch:
             mock_fetch.return_value = rss_xml
             signals = collector._process_feed("https://example.com/rss", "Test Feed", default_chain="monad")
-            assert len(signals) > 0
-            assert signals[0]["chain"] == "monad"
+            # Items without any chain keyword are dropped regardless of default_chain
+            assert len(signals) == 0
 
     def test_chain_matching(self, collector):
         assert collector._match_chain("Ethereum upgrade live") == "ethereum"
