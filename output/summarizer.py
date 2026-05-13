@@ -3,7 +3,8 @@
 Takes per-chain signal bundles (Twitter + RSS + DeFiLlama + SEC + events)
 and produces a concise 2-3 sentence prose summary with markdown source links.
 
-Uses antseed buyer proxy for cheap inference (grok-4.1-fast, no tools).
+Uses Ollama endpoint by default (SUMMARIZE_API_URL env var overrides).
+Default model: gemma4:31b-cloud.
 """
 
 from __future__ import annotations
@@ -37,8 +38,8 @@ SUMMARIZE_PROMPT = (
 async def summarize_chain(
     chain: str,
     signals: list[Signal],
-    proxy_url: str | None = None,
-    model: str = "grok-4.1-fast",
+    api_url: str | None = None,
+    model: str | None = None,
     timeout: float = 30.0,
 ) -> str:
     """Summarize all signals for one chain into prose.
@@ -46,8 +47,9 @@ async def summarize_chain(
     Args:
         chain: chain name (e.g. "ethereum", "solana")
         signals: mixed signal sources for this chain
-        proxy_url: antseed buyer proxy (defaults to ANTSEED_PROXY_URL or localhost:8080)
-        model: LLM model for summarization
+        api_url: OpenAI-compatible API endpoint (defaults to SUMMARIZE_API_URL
+                 env var, or http://localhost:11434/v1 for Ollama)
+        model: LLM model for summarization (defaults to gemma4:31b-cloud)
         timeout: request timeout
 
     Returns:
@@ -56,8 +58,17 @@ async def summarize_chain(
         announced a [compute futures market](https://...), and saw Beezie
         expand tokenized collectibles to Solana."
     """
-    if not proxy_url:
-        proxy_url = os.environ.get("ANTSEED_PROXY_URL", "http://localhost:8080")
+    if not api_url:
+        api_url = os.environ.get(
+            "SUMMARIZE_API_URL",
+            "http://localhost:11434/v1",
+        )
+
+    if not model:
+        model = os.environ.get(
+            "SUMMARIZE_MODEL",
+            "gemma4:31b-cloud",
+        )
 
     # Build signal text with URLs for the LLM
     signal_descriptions = _build_signal_text(signals)
@@ -80,7 +91,7 @@ async def summarize_chain(
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
             resp = await client.post(
-                f"{proxy_url}/v1/chat/completions",
+                f"{api_url}/chat/completions",
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
