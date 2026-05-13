@@ -162,31 +162,14 @@ class DailyDigestFormatter:
         # Summarize each chain via async LLM call
         summaries = await self._summarize_all(chain_order)
 
-        # Separate high-signal sections vs tail
-        head_chains = []
-        tail_chains = []
         for (chain, sigs), prose in zip(chain_order, summaries):
             top_score = max((s.priority_score for s in sigs), default=0)
-            twitter_count = sum(
-                1 for s in sigs
-                if any(a.get("source", "").lower() == "twitter" for a in s.activity)
-            )
             chain_display = chain.capitalize() if chain.lower() != "unknown" else "General"
 
-            entry = f"**{chain_display}** (Score: {top_score})\n{prose}"
-            if twitter_count >= 5 or top_score >= 5:
-                head_chains.append(entry)
-            else:
-                tail_chains.append(entry)
-
-        for entry in head_chains:
-            lines.append(entry)
+            lines.append(f"**{chain_display}** (Score: {top_score})")
+            if prose:
+                lines.append(prose)
             lines.append("")
-
-        if tail_chains:
-            for entry in tail_chains:
-                lines.append(entry)
-                lines.append("")
 
         # Source health
         if source_health:
