@@ -163,6 +163,9 @@ class TestFullPipeline:
         assert action == "echo"
 
 
+from processors.categorizer import EventCategorizer
+
+
 class TestAgentCategorizerCheckpoint:
     """Verify that EventCategorizer now requires agent checkpoint."""
 
